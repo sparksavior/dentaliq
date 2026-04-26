@@ -1,0 +1,79 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ─────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: dentaliq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dentaliq
+      POSTGRES_USER: dentaliq
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dentaliq']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: dentaliq-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Ollama (local LLM) ─────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dentaliq-ollama
+    restart: unless-stopped
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollamadata:/root/.ollama
+    # Pull llama3.1 on first start
+    entrypoint: ['/bin/sh', '-c', 'ollama serve & sleep 5 && ollama pull llama3.1:8b && wait']
+
+  # ── Mailpit (local SMTP for dev emails) ────────
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: dentaliq-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025'   # SMTP
+      - '8025:8025'   # Web UI → http://localhost:8025
+
+  # ── pgAdmin (optional DB GUI) ──────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: dentaliq-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@dentaliq.ca
+      PGADMIN_DEFAULT_PASSWORD: localdev
+    ports:
+      - '5050:80'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - tools   # only starts with: docker-compose --profile tools up
+
+volumes:
+  pgdata:
+  redisdata:
+  ollamadata:
