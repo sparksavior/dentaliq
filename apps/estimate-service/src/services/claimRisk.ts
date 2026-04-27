@@ -12,109 +12,201 @@ import type { InsurancePlan } from '../data/coverage-rules'
 export interface RiskAssessment {
   risk: ClaimRisk
   reasons: string[]
-  confidence: number   // 0–1, how confident we are in the estimate
+  confidence: number
 }
 
-interface RiskInput {
+export interface RiskInput {
   code: CdtCode
   plan: InsurancePlan
   patientAge?: number
-  codesOnSameVisit?: string[]  // other CDT codes billed on the same date
+  codesOnSameVisit?: string[]
+  serviceDate?: string // ISO date string, defaults to today
 }
 
-// Pairs of codes that frequently cause rejections when billed together
-const CONFLICTING_PAIRS: Array<[string, string, string]> = [
-  ['D1110', 'D4910', 'Prophylaxis (D1110) and periodontal maintenance (D4910) should not be billed on the same visit.'],
-  ['D0120', 'D0150', 'Periodic exam (D0120) and comprehensive exam (D0150) should not be billed together.'],
-  ['D3310', 'D7140', 'Root canal (D33xx) and extraction of the same tooth on the same date is contradictory — insurers will reject.'],
-  ['D3320', 'D7140', 'Root canal (D33xx) and extraction of the same tooth on the same date is contradictory — insurers will reject.'],
-  ['D3330', 'D7140', 'Root canal (D33xx) and extraction of the same tooth on the same date is contradictory — insurers will reject.'],
-  ['D2750', 'D2391', 'Crown and filling on the same tooth on the same date will typically be rejected.'],
-  ['D2750', 'D2392', 'Crown and filling on the same tooth on the same date will typically be rejected.'],
-  ['D2750', 'D2393', 'Crown and filling on the same tooth on the same date will typically be rejected.'],
+// ─────────────────────────────────────────────────────────
+// Data-Driven Rules Matrix
+// In Phase 3, this array is loaded directly from PostgreSQL (t_tenant_risk_rules).
+// This enables dynamic updates for CDCP or provincial fee guides without code changes.
+// ─────────────────────────────────────────────────────────
+
+type RuleType = 'conflict' | 'exclusion' | 'age_limit' | 'xray_required' | 'high_risk' | 'custom'
+
+interface RiskRule {
+  id: string
+  type: RuleType
+  description: string
+  effectiveDate: string
+  expirationDate: string | null
+  riskWeight: number
+  conditions: {
+    targetCodes?: string[]        // Codes this rule applies to
+    conflictingCodes?: string[]   // Codes that cannot be billed on the same visit
+    minAge?: number
+    maxAge?: number
+    excludedCategories?: string[]
+    insurers?: string[]           // If empty, applies to all
+  }
+}
+
+const REGULATORY_RULES: RiskRule[] = [
+  {
+    id: 'rule_conflict_cleaning',
+    type: 'conflict',
+    description: 'Prophylaxis (D1110) and periodontal maintenance (D4910) cannot be billed on the same visit.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 35,
+    conditions: { targetCodes: ['D1110'], conflictingCodes: ['D4910'] }
+  },
+  {
+    id: 'rule_conflict_exams',
+    type: 'conflict',
+    description: 'Periodic exam (D0120) and comprehensive exam (D0150) should not be billed together.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 35,
+    conditions: { targetCodes: ['D0120'], conflictingCodes: ['D0150'] }
+  },
+  {
+    id: 'rule_conflict_endo_ext',
+    type: 'conflict',
+    description: 'Root canal and extraction of the same tooth on the same date is contradictory.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 45,
+    conditions: { targetCodes: ['D3310', 'D3320', 'D3330'], conflictingCodes: ['D7140'] }
+  },
+  {
+    id: 'rule_cdcp_fluoride',
+    type: 'age_limit',
+    description: 'Fluoride (D1208) is typically covered only for patients under 18 under modern regulations.',
+    effectiveDate: '2024-05-01', // Example: CDCP phase 1 launch date
+    expirationDate: null,
+    riskWeight: 20,
+    conditions: { targetCodes: ['D1208'], maxAge: 17 }
+  },
+  {
+    id: 'rule_child_prophy',
+    type: 'age_limit',
+    description: 'Child prophylaxis (D1120) is typically only covered for patients under 13.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 25,
+    conditions: { targetCodes: ['D1120'], maxAge: 12 }
+  },
+  {
+    id: 'rule_sealants',
+    type: 'age_limit',
+    description: 'Sealants (D1351) are typically covered for patients under 18 only.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 20,
+    conditions: { targetCodes: ['D1351'], maxAge: 17 }
+  },
+  {
+    id: 'rule_implant_exclusion',
+    type: 'exclusion',
+    description: 'Implants are excluded from most group benefit plans. Obtain written confirmation.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 50,
+    conditions: { excludedCategories: ['implant'] }
+  },
+  {
+    id: 'rule_adult_ortho',
+    type: 'exclusion',
+    description: 'Adult orthodontics (D8090) is excluded from many Canadian group plans.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 20,
+    conditions: { targetCodes: ['D8090'] }
+  },
+  {
+    id: 'rule_high_rejection_codes',
+    type: 'high_risk',
+    description: 'This code has a high baseline rejection rate — verify plan documents explicitly cover it.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 40,
+    conditions: { targetCodes: ['D6010', 'D6012', 'D6056', 'D6059', 'D6065'] }
+  },
+  {
+    id: 'rule_xray_required',
+    type: 'xray_required',
+    description: 'Radiograph required — attach current X-ray (taken within 6 months) to the claim.',
+    effectiveDate: '2010-01-01',
+    expirationDate: null,
+    riskWeight: 15,
+    conditions: { targetCodes: ['D2750', 'D2720', 'D2740', 'D3310', 'D3320', 'D3330', 'D4341', 'D7240'] }
+  }
 ]
-
-// Codes with known high rejection rates industry-wide
-const HIGH_REJECTION_CODES = new Set(['D6010', 'D6012', 'D6056', 'D6059', 'D6065', 'D8090'])
-
-// Codes that require an X-ray to be attached to the claim
-const XRAY_REQUIRED_CODES = new Set([
-  'D2750', 'D2720', 'D2740', 'D3310', 'D3320', 'D3330',
-  'D3346', 'D3347', 'D3348', 'D4341', 'D4342',
-  'D7220', 'D7230', 'D7240',
-])
 
 export function assessClaimRisk(input: RiskInput): RiskAssessment {
   const { code, plan, patientAge, codesOnSameVisit = [] } = input
+  const serviceDate = input.serviceDate ? new Date(input.serviceDate) : new Date()
+  
   const reasons: string[] = []
   let riskScore = 0
 
-  // 1. Pre-auth required but not flagged
+  // 1. Built-in hard requirements
   if (code.requiresPreAuth) {
     reasons.push(`Pre-authorization is required for ${code.code} — submit request to ${plan.insurerName} before treatment.`)
     riskScore += 30
   }
-
-  // 2. X-ray required for claim
-  if (code.requiresXray || XRAY_REQUIRED_CODES.has(code.code)) {
-    reasons.push(`Radiograph required — attach current X-ray (taken within 6 months) to the claim.`)
-    riskScore += 15
-  }
-
-  // 3. High rejection category
-  if (HIGH_REJECTION_CODES.has(code.code)) {
-    reasons.push(`${code.code} has a high baseline rejection rate — verify patient plan documents explicitly cover this procedure.`)
-    riskScore += 40
-  }
-
-  // 4. Implant category → explicitly excluded
-  if (code.category === 'implant') {
-    reasons.push(`Implants are excluded from most group benefit plans. Obtain written confirmation of coverage before proceeding.`)
-    riskScore += 50
-  }
-
-  // 5. Zero ortho coverage
+  
   if (code.category === 'ortho' && plan.orthoCoverage === 0) {
-    reasons.push(`${plan.insurerName} plan shows 0% orthodontic coverage. Confirm lifetime ortho maximum hasn't been exhausted.`)
+    reasons.push(`${plan.insurerName} plan shows 0% orthodontic coverage. Confirm lifetime maximum hasn't been exhausted.`)
     riskScore += 40
   }
 
-  // 6. Adult ortho — many plans exclude
-  if (code.code === 'D8090') {
-    reasons.push(`Adult orthodontics (D8090) is excluded from many Canadian group plans. Verify before proceeding.`)
-    riskScore += 20
+  // 2. Evaluate Dynamic Rules Matrix
+  for (const rule of REGULATORY_RULES) {
+    // Versioning Check: Skip if rule is not active on serviceDate
+    const effective = new Date(rule.effectiveDate)
+    if (serviceDate < effective) continue
+    if (rule.expirationDate) {
+      const expired = new Date(rule.expirationDate)
+      if (serviceDate >= expired) continue
+    }
+
+    // Insurer Check
+    if (rule.conditions.insurers && rule.conditions.insurers.length > 0) {
+      if (!rule.conditions.insurers.includes(plan.insurerName)) continue
+    }
+
+    let isTriggered = false
+
+    // Target Codes / Categories
+    const matchesTargetCode = rule.conditions.targetCodes?.includes(code.code)
+    const matchesCategory = rule.conditions.excludedCategories?.includes(code.category)
+
+    if (rule.type === 'conflict' && matchesTargetCode) {
+      isTriggered = rule.conditions.conflictingCodes?.some(c => codesOnSameVisit.includes(c)) ?? false
+    } 
+    else if (rule.type === 'age_limit' && matchesTargetCode && patientAge !== undefined) {
+      if (rule.conditions.maxAge !== undefined && patientAge > rule.conditions.maxAge) isTriggered = true
+      if (rule.conditions.minAge !== undefined && patientAge < rule.conditions.minAge) isTriggered = true
+    }
+    else if (rule.type === 'exclusion') {
+      if (matchesTargetCode || matchesCategory) isTriggered = true
+      // Extra age check for adult ortho
+      if (code.code === 'D8090' && patientAge !== undefined && patientAge < 18) {
+        isTriggered = false // Exemption for minors
+      }
+    }
+    else if ((rule.type === 'high_risk' || rule.type === 'xray_required') && matchesTargetCode) {
+      isTriggered = true
+    }
+
+    if (isTriggered) {
+      reasons.push(rule.description)
+      riskScore += rule.riskWeight
+    }
   }
 
-  // 7. Age-based rules
-  if (patientAge !== undefined) {
-    if (code.code === 'D1120' && patientAge >= 13) {
-      reasons.push(`D1120 (child prophylaxis) is typically only covered for patients under 13. Consider D1110 for adults.`)
-      riskScore += 25
-    }
-    if (code.code === 'D1351' && patientAge >= 18) {
-      reasons.push(`Sealants (D1351) are typically only covered for patients under 18.`)
-      riskScore += 20
-    }
-    if (code.category === 'ortho' && patientAge >= 18) {
-      reasons.push(`Adult orthodontic coverage varies significantly by plan — confirm benefits before starting treatment.`)
-      riskScore += 15
-    }
-  }
-
-  // 8. Conflicting code combinations
-  for (const [codeA, codeB, reason] of CONFLICTING_PAIRS) {
-    if (
-      (code.code === codeA && codesOnSameVisit.includes(codeB)) ||
-      (code.code === codeB && codesOnSameVisit.includes(codeA))
-    ) {
-      reasons.push(reason)
-      riskScore += 35
-    }
-  }
-
-  // 9. High fee — likely near or over annual max
+  // 3. High fee ratio check
   if (plan.annualMax && code.typicalFee > plan.annualMax * 0.6) {
-    reasons.push(`Procedure fee ($${code.typicalFee}) represents more than 60% of the plan's annual maximum ($${plan.annualMax.toLocaleString()}). Verify remaining annual balance before billing.`)
+    reasons.push(`Procedure fee ($${code.typicalFee}) represents >60% of the plan's annual maximum ($${plan.annualMax.toLocaleString()}). Verify remaining balance.`)
     riskScore += 10
   }
 

@@ -7,6 +7,7 @@ import { getEnv } from '@dentaliq/config'
 import { createLogger } from '@dentaliq/logger'
 
 import { tenantRoutes } from './routes/tenants'
+import { patientsRoutes } from './routes/patients'
 
 // ─────────────────────────────────────────────────────────
 // DentalIQ — Tenant Service  (port 3002)
@@ -48,6 +49,7 @@ async function buildApp() {
   }))
 
   await app.register(tenantRoutes, { prefix: '/tenants' })
+  await app.register(patientsRoutes, { prefix: '/patients' })
 
   return app
 }

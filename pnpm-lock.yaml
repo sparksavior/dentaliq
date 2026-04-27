@@ -100,6 +100,58 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
+  apps/estimate-service:
+    dependencies:
+      '@dentaliq/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@dentaliq/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@dentaliq/llm-interface':
+        specifier: workspace:*
+        version: link:../../packages/llm-interface
+      '@dentaliq/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@dentaliq/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@fastify/cors':
+        specifier: ^9.0.1
+        version: 9.0.1
+      '@fastify/helmet':
+        specifier: ^11.1.1
+        version: 11.1.1
+      '@fastify/jwt':
+        specifier: ^8.0.1
+        version: 8.0.1
+      '@fastify/rate-limit':
+        specifier: ^9.1.0
+        version: 9.1.0
+      '@paralleldrive/cuid2':
+        specifier: ^2.2.2
+        version: 2.3.1
+      drizzle-orm:
+        specifier: ^0.31.0
+        version: 0.31.4(@libsql/client@0.14.0)(@types/pg@8.20.0)(@types/react@19.2.14)(pg@8.20.0)(postgres@3.4.9)(react@19.2.4)
+      fastify:
+        specifier: ^4.27.0
+        version: 4.29.1
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      tsx:
+        specifier: ^4.11.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   apps/tenant-service:
     dependencies:
       '@dentaliq/config':

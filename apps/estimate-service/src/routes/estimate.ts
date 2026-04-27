@@ -40,6 +40,30 @@ export async function estimateRoutes(app: FastifyInstance) {
     return reply.code(201).send({ success: true, data: result })
   })
 
+  // POST /estimate/narrative — generates pre-auth letter
+  const NarrativeBodySchema = z.object({
+    cdtCode: z.string(),
+    insurerName: z.string(),
+    patientName: z.string().optional(),
+    clinicalNotes: z.string().optional(),
+  })
+
+  app.post('/estimate/narrative', {
+    preHandler: requireAuth(app),
+  }, async (req, reply) => {
+    const body = NarrativeBodySchema.parse(req.body)
+    const { generateNarrative } = await import('../services/llmNarrativeGenerator')
+    
+    const narrative = await generateNarrative({
+      cdtCode: body.cdtCode,
+      insurerName: body.insurerName,
+      patientName: body.patientName,
+      clinicalNotes: body.clinicalNotes,
+    })
+    
+    return reply.code(201).send({ success: true, data: narrative })
+  })
+
   // GET /estimate/codes — list all CDT codes (for frontend dropdowns)
   app.get('/estimate/codes', {
     preHandler: requireAuth(app),

@@ -16,6 +16,7 @@ export interface FullEstimateRequest extends EstimateRequest {
   insurerName: string      // free-text insurer name from request
   patientAge?: number
   codesOnSameVisit?: string[]
+  serviceDate?: string     // For date-based regulation versioning
   skipLlm?: boolean        // true in tests or if caller wants rules-only
 }
 
@@ -32,6 +33,7 @@ export async function runEstimate(req: FullEstimateRequest): Promise<EstimateRes
     plan,
     patientAge: req.patientAge,
     codesOnSameVisit: req.codesOnSameVisit,
+    serviceDate: req.serviceDate,
   })
 
   let explanation: string

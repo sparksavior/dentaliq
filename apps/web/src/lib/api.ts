@@ -59,6 +59,43 @@ function authRequest<T>(path: string, options: RequestInit = {}) {
   return request<T>(AUTH_URL, path, options)
 }
 
+const TENANT_URL = process.env.NEXT_PUBLIC_TENANT_URL ?? 'http://localhost:3002'
+
+function tenantRequest<T>(path: string, token: string, options: RequestInit = {}) {
+  return request<T>(TENANT_URL, path, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, ...options.headers },
+  })
+}
+
+export interface Patient {
+  id: string
+  first_name: string
+  last_name: string
+  date_of_birth?: string
+  phone?: string
+  email?: string
+  insurance_plan_id?: string
+  created_at: string
+}
+
+export interface CreatePatientInput {
+  firstName: string
+  lastName: string
+  dateOfBirth?: string
+  phone?: string
+  email?: string
+  insuranceProvider?: string
+}
+
+export const patientsApi = {
+  getPatients: (token: string) => tenantRequest<Patient[]>('/patients', token),
+  createPatient: (token: string, data: CreatePatientInput) => 
+    tenantRequest<Patient>('/patients', token, { method: 'POST', body: JSON.stringify(data) }),
+  deletePatient: (token: string, id: string) => 
+    tenantRequest<{ success: true }>(`/patients/${id}`, token, { method: 'DELETE' }),
+}
+
 function estimateRequest<T>(path: string, token: string, options: RequestInit = {}) {
   return request<T>(ESTIMATE_URL, path, {
     ...options,
@@ -152,4 +189,7 @@ export const estimateApi = {
 
   getHistory: (token: string) =>
     estimateRequest<unknown[]>('/estimate/history', token),
+
+  generateNarrative: (token: string, input: { cdtCode: string, insurerName: string, patientName?: string, clinicalNotes?: string }) =>
+    estimateRequest<string>('/estimate/narrative', token, { method: 'POST', body: JSON.stringify(input) }),
 }

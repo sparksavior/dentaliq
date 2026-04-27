@@ -38,8 +38,11 @@ function buildDb() {
   // SQLite via @libsql/client (default — works without Docker)
   const { createClient } = require('@libsql/client')
   const { drizzle }      = require('drizzle-orm/libsql')
+  const path = require('path')
   const dbPath = process.env.DATABASE_PATH ?? 'dentaliq.db'
-  const url    = dbPath.startsWith('file:') ? dbPath : `file:${dbPath}`
+  const absolutePath = path.isAbsolute(dbPath) ? dbPath : path.join(__dirname, '../../../', dbPath)
+  console.log('[DEBUG DB] Loaded from:', absolutePath)
+  const url    = absolutePath.startsWith('file:') ? absolutePath : `file:${absolutePath}`
   const client = createClient({ url })
   return drizzle(client, { schema }) as ReturnType<typeof import('drizzle-orm/libsql').drizzle>
 }
