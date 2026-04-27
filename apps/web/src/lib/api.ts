@@ -1,6 +1,6 @@
 // Typed API client
 
-const AUTH_URL     = process.env.NEXT_PUBLIC_AUTH_URL     ?? 'http://localhost:3001'
+const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? 'http://localhost:3001'
 const ESTIMATE_URL = process.env.NEXT_PUBLIC_ESTIMATE_URL ?? 'http://localhost:3004'
 
 export interface RegisterInput {
@@ -90,10 +90,47 @@ export interface CreatePatientInput {
 
 export const patientsApi = {
   getPatients: (token: string) => tenantRequest<Patient[]>('/patients', token),
-  createPatient: (token: string, data: CreatePatientInput) => 
+  createPatient: (token: string, data: CreatePatientInput) =>
     tenantRequest<Patient>('/patients', token, { method: 'POST', body: JSON.stringify(data) }),
-  deletePatient: (token: string, id: string) => 
+  deletePatient: (token: string, id: string) =>
     tenantRequest<{ success: true }>(`/patients/${id}`, token, { method: 'DELETE' }),
+  getAiContext: (token: string) =>
+    tenantRequest<any>('/patients/ai-context', token),
+}
+
+export interface ClinicLocation {
+  id: string
+  name: string
+  address?: string
+  phone?: string
+  email?: string
+  status: 'active' | 'inactive'
+  operating_hours?: string
+  pms_type?: string
+  pms_connected?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ClinicLocationInput {
+  name: string
+  address?: string
+  phone?: string
+  email?: string
+  status?: 'active' | 'inactive'
+  operatingHours?: string
+  pmsType?: string
+}
+
+export const clinicsApi = {
+  list:   (token: string) =>
+    tenantRequest<ClinicLocation[]>('/clinics', token),
+  create: (token: string, data: ClinicLocationInput) =>
+    tenantRequest<ClinicLocation>('/clinics', token, { method: 'POST', body: JSON.stringify(data) }),
+  update: (token: string, id: string, data: Partial<ClinicLocationInput>) =>
+    tenantRequest<{ success: true }>(`/clinics/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (token: string, id: string) =>
+    tenantRequest<{ success: true }>(`/clinics/${id}`, token, { method: 'DELETE' }),
 }
 
 function estimateRequest<T>(path: string, token: string, options: RequestInit = {}) {

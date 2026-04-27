@@ -42,28 +42,28 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full max-w-md">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-xl font-semibold text-slate-900 mb-1">
+    <div style={{ width: '100%', maxWidth: 440 }}>
+      <div style={{ background: 'var(--color-background-secondary)', borderRadius: 16, border: '0.5px solid var(--color-border-tertiary)', padding: '2rem', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8 }}>
           {requiresMfa ? 'Two-factor authentication' : 'Sign in to your account'}
         </h1>
-        <p className="text-sm text-slate-500 mb-6">
+        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>
           {requiresMfa
             ? 'Enter the 6-digit code from your authenticator app.'
             : 'Welcome back. Enter your credentials below.'}
         </p>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fef2f2', border: '0.5px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#dc2626' }}>
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {!requiresMfa ? (
             <>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
                   Email address
                 </label>
                 <input
@@ -72,13 +72,15 @@ export default function LoginPage() {
                   autoComplete="email"
                   value={form.email}
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '0.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none' }}
                   placeholder="you@yourclinic.com"
+                  onFocus={(e) => e.target.style.borderColor = '#0f766e'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--color-border-secondary)'}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
                   Password
                 </label>
                 <input
@@ -87,11 +89,13 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '0.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none' }}
                   placeholder="••••••••"
+                  onFocus={(e) => e.target.style.borderColor = '#0f766e'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--color-border-secondary)'}
                 />
-                <div className="mt-1.5 text-right">
-                  <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">
+                <div style={{ marginTop: 8, textAlign: 'right' }}>
+                  <Link href="/forgot-password" style={{ fontSize: 12, color: '#0f766e', textDecoration: 'none' }}>
                     Forgot password?
                   </Link>
                 </div>
@@ -99,7 +103,7 @@ export default function LoginPage() {
             </>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
                 Authenticator code
               </label>
               <input
@@ -111,8 +115,10 @@ export default function LoginPage() {
                 autoFocus
                 value={form.totpCode}
                 onChange={(e) => setForm((f) => ({ ...f, totpCode: e.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 text-center tracking-widest text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '0.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 20, textAlign: 'center', letterSpacing: '0.2em', outline: 'none' }}
                 placeholder="000000"
+                onFocus={(e) => e.target.style.borderColor = '#0f766e'}
+                onBlur={(e) => e.target.style.borderColor = 'var(--color-border-secondary)'}
               />
             </div>
           )}
@@ -120,16 +126,16 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            style={{ width: '100%', padding: '12px', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 500, border: 'none', borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'background 0.2s', marginTop: '1rem' }}
           >
             {loading ? 'Signing in…' : requiresMfa ? 'Verify' : 'Sign in'}
           </button>
         </form>
 
         {!requiresMfa && (
-          <p className="mt-6 text-center text-sm text-slate-500">
+          <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: 14, color: 'var(--color-text-secondary)' }}>
             New to DentalIQ?{' '}
-            <Link href="/signup" className="font-medium text-blue-600 hover:underline">
+            <Link href="/signup" style={{ color: '#0f766e', fontWeight: 500, textDecoration: 'none' }}>
               Create an account
             </Link>
           </p>
