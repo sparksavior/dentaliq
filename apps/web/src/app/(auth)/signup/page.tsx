@@ -1,34 +1,24 @@
 'use client'
 
-import { useState, useEffect, useRef, type FormEvent } from 'react'
+import { useState, useRef, type FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authApi, ApiError } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
 
-// ─────────────────────────────────────────────────────────
-// 5-step signup flow from App.jsx, wired to real auth API
-// Step 0: Account details + plan
-// Step 1: Email verify (dev → check terminal)
-// Step 2: Connect PMS (Open Dental, coming Phase 2)
-// Step 3: Security / MFA setup
-// Step 4: Done — go to dashboard
-// ─────────────────────────────────────────────────────────
-
 const STEP_NAMES = ['Account', 'Verify', 'Connect', 'Security', 'Done']
 
 const PLANS = [
-  { id: 'starter',    name: 'Starter',    price: 199,  desc: '1 clinic location',    color: '#0f766e' },
-  { id: 'pro',        name: 'Pro',        price: 349,  desc: 'Up to 3 locations',    color: '#0e7490', popular: true },
-  { id: 'enterprise', name: 'Enterprise', price: null, desc: 'Unlimited locations',  color: '#4f46e5' },
+  { id: 'starter',    name: 'Starter',    price: 199,  desc: '1 clinic location',    features: ['Cost estimator', 'Claim risk checks', 'Basic analytics'], color: '#0f766e' },
+  { id: 'pro',        name: 'Pro',        price: 349,  desc: 'Up to 3 locations',    features: ['Everything in Starter', 'AI pre-auth letters', 'Priority support', 'Multi-location'], color: '#0e7490', popular: true },
+  { id: 'enterprise', name: 'Enterprise', price: null, desc: 'Unlimited locations',  features: ['Everything in Pro', 'API access', 'Dedicated CSM', 'Custom integrations'], color: '#4f46e5' },
 ]
 
-const inp = {
-  width: '100%', padding: '10px 12px',
-  border: '0.5px solid var(--color-border-secondary)',
-  borderRadius: 8, fontSize: 14, boxSizing: 'border-box' as const,
-  marginBottom: 12, background: 'var(--color-background-primary)',
-  color: 'var(--color-text-primary)', fontFamily: 'system-ui',
-  outline: 'none',
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '11px 14px',
+  border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14,
+  color: '#0f172a', background: '#fff', outline: 'none',
+  boxSizing: 'border-box', fontFamily: 'system-ui',
+  transition: 'border-color 0.15s',
 }
 
 export default function SignupPage() {
@@ -37,13 +27,10 @@ export default function SignupPage() {
   const { setSession } = useAuth()
 
   const [step, setStep] = useState(0)
-  const [subStep, setSubStep] = useState(0)
   const [plan, setPlan] = useState<'starter' | 'pro' | 'enterprise'>(
     (params.get('plan') as any) ?? 'pro'
   )
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' })
-  const [numClinics, setNumClinics] = useState(1)
-  const [clinicNames, setClinicNames] = useState([''])
+  const [form, setForm] = useState({ name: '', clinic: '', email: '', phone: '', password: '', confirm: '' })
   const [verifyCode, setVerifyCode] = useState(['', '', '', '', '', ''])
   const [pmsStatus, setPmsStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
   const [pmsProgress, setPmsProgress] = useState(0)
@@ -52,8 +39,6 @@ export default function SignupPage() {
   const [mfaCode, setMfaCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [ollamaMsg, setOllamaMsg] = useState('')
-  const [ollamaLoading, setOllamaLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -61,18 +46,17 @@ export default function SignupPage() {
 
   const selectedPlan = PLANS.find((p) => p.id === plan) ?? PLANS[1]
 
-  // ── Step 0: Register + auto-login ─────────────────────────
   async function handleRegister(e: FormEvent) {
     e.preventDefault()
     setError('')
+    if (form.password !== form.confirm) return setError('Passwords do not match.')
+    if (form.password.length < 8) return setError('Password must be at least 8 characters.')
     setLoading(true)
     try {
-      const combinedClinicName = clinicNames.filter(Boolean).join(' & ') || 'My Clinic'
       await authApi.register({
         name: form.name, email: form.email, password: form.password,
-        clinicName: combinedClinicName, plan,
+        clinicName: form.clinic, plan,
       })
-      // Auto-login to get token for subsequent steps
       const result = await authApi.login({ email: form.email, password: form.password })
       if (!('requiresMfa' in result)) {
         setSessionToken(result.accessToken)
@@ -85,12 +69,10 @@ export default function SignupPage() {
     }
   }
 
-  // ── Step 1: Email verify (dev mode = skip) ────────────────
   function handleVerify() {
     setStep(2)
   }
 
-  // ── Step 2: Simulate PMS connection ───────────────────────
   function connectPms() {
     setPmsStatus('connecting')
     setPmsProgress(0)
@@ -105,7 +87,6 @@ export default function SignupPage() {
     }, 280)
   }
 
-  // ── Step 3: MFA setup ─────────────────────────────────────
   async function loadMfa() {
     if (!sessionToken || mfaData) return
     try {
@@ -116,7 +97,7 @@ export default function SignupPage() {
       })
       const json = await res.json()
       if (json.success) setMfaData(json.data)
-    } catch { /* MFA setup is optional during onboarding */ }
+    } catch { /* MFA is optional */ }
   }
 
   async function enableMfa() {
@@ -135,272 +116,267 @@ export default function SignupPage() {
     setLoading(false)
   }
 
-  // ── Step 4: Complete — set session + go to dashboard ──────
   async function goToDashboard() {
     if (sessionToken) {
       try {
         const user = await authApi.me(sessionToken)
         setSession(sessionToken, user)
-      } catch { /* session already set or expired */ }
+      } catch { /* session already set */ }
     }
-    router.push('/dashboard?tour=true')
+    router.push('/dashboard')
   }
 
-  // Generate Ollama message when reaching step 4
-  useEffect(() => {
-    if (step === 4) {
-      setOllamaLoading(true)
-      fetch('http://localhost:11434/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'phi3',
-          prompt: `Write a very short (1 to 2 sentences max) encouraging welcome message for a dentist named Dr. ${form.name.split(' ')[0]} who just joined DentalIQ software to manage their ${numClinics} clinic(s). Make it uplifting, professional, and exciting! Do not include any formatting or quotes, just the text.`,
-          stream: false
-        })
-      })
-      .then(r => r.json())
-      .then(d => setOllamaMsg(d.response || 'Welcome to DentalIQ! We are thrilled to have you.'))
-      .catch(() => setOllamaMsg('Welcome to DentalIQ! We are thrilled to have you.'))
-      .finally(() => setOllamaLoading(false))
-    }
-  }, [step, form.name, numClinics])
-
-  // ── Progress bar ──────────────────────────────────────────
-  const ProgressBar = () => (
-    <div style={{ display: 'flex', gap: 6, marginBottom: '2.5rem' }}>
-      {STEP_NAMES.map((s, i) => (
-        <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
-          <div style={{ height: 3, width: '100%', borderRadius: 2, background: i <= step ? '#0f766e' : 'var(--color-border-tertiary)' }} />
-          <span style={{ fontSize: 11, color: i <= step ? '#0f766e' : 'var(--color-text-secondary)' }}>{s}</span>
-        </div>
-      ))}
-    </div>
-  )
-
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--color-background-primary)', fontFamily: 'system-ui' }}>
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '2rem 2rem' }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '2.5rem' }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#fff', fontSize: 14, fontFamily: 'monospace' }}>+</span>
-          </div>
-          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-text-primary)', letterSpacing: '-0.02em' }}>DentalIQ</span>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui' }}>
+      {/* Top nav */}
+      <div style={{ borderBottom: '1px solid #e2e8f0', background: '#fff', padding: '0 2rem', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: '#fff' }}>+</div>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.03em' }}>DentalIQ</span>
         </div>
+        <a href="/login" style={{ fontSize: 14, color: '#64748b', textDecoration: 'none' }}>
+          Already have an account? <span style={{ color: '#0f766e', fontWeight: 600 }}>Sign in</span>
+        </a>
+      </div>
 
-        <ProgressBar />
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '2.5rem 1.5rem' }}>
+        {/* Step progress */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2.5rem', gap: 0 }}>
+          {STEP_NAMES.map((name, i) => (
+            <div key={name} style={{ display: 'flex', alignItems: 'center', flex: i < STEP_NAMES.length - 1 ? 1 : 'none' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600,
+                  background: i < step ? '#0f766e' : i === step ? 'linear-gradient(135deg, #0f766e, #0d9488)' : '#fff',
+                  color: i <= step ? '#fff' : '#94a3b8',
+                  border: i > step ? '2px solid #e2e8f0' : 'none',
+                  boxShadow: i === step ? '0 0 0 4px rgba(15,118,110,0.15)' : 'none',
+                  transition: 'all 0.3s',
+                }}>
+                  {i < step ? '✓' : i + 1}
+                </div>
+                <span style={{ fontSize: 11, fontWeight: i === step ? 600 : 400, color: i === step ? '#0f766e' : i < step ? '#64748b' : '#94a3b8', whiteSpace: 'nowrap' }}>{name}</span>
+              </div>
+              {i < STEP_NAMES.length - 1 && (
+                <div style={{ flex: 1, height: 2, background: i < step ? '#0f766e' : '#e2e8f0', marginBottom: 18, transition: 'background 0.3s' }} />
+              )}
+            </div>
+          ))}
+        </div>
 
         {error && (
-          <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(220, 38, 38, 0.1)', border: '0.5px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#ef4444' }}>
-            {error}
+          <div style={{ marginBottom: 20, padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, fontSize: 14, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>⚠</span> {error}
           </div>
         )}
 
-        {/* ── Step 0: Account Wizard ── */}
+        {/* Step 0: Account details */}
         {step === 0 && (
-          <div style={{ overflow: 'hidden', position: 'relative' }}>
-            <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: '1.5rem', color: 'var(--color-text-primary)' }}>
-              {subStep === 0 && "Let's start with your name"}
-              {subStep === 1 && "What's your contact info?"}
-              {subStep === 2 && "Secure your account"}
-              {subStep === 3 && "How many clinics do you run?"}
-              {subStep === 4 && "Name your clinic(s)"}
-              {subStep === 5 && "Choose your plan"}
-            </h2>
+          <form onSubmit={handleRegister}>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 4, letterSpacing: '-0.03em' }}>Create your account</h2>
+              <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>Start your 14-day free trial — no credit card required.</p>
 
-            <form onSubmit={(e) => {
-              e.preventDefault()
-              if (subStep === 2 && form.password !== form.confirm) return setError('Passwords do not match.')
-              if (subStep === 2 && form.password.length < 8) return setError('Password must be at least 8 characters.')
-              setError('')
-              
-              if (subStep < 5) setSubStep(s => s + 1)
-              else handleRegister(e)
-            }}>
-              
-              {subStep === 0 && (
-                <div style={{ animation: 'fadeIn 0.3s ease' }}>
-                  <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Full name</label>
-                  <input style={inp} placeholder="Dr. Sarah Chen" value={form.name} onChange={set('name')} required autoFocus />
-                </div>
-              )}
-
-              {subStep === 1 && (
-                <div style={{ animation: 'fadeIn 0.3s ease' }}>
-                  <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Work email</label>
-                  <input style={inp} type="email" placeholder="sarah@lakeviewdental.ca" value={form.email} onChange={set('email')} required autoFocus />
-
-                  <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6, marginTop: 12 }}>Phone (optional)</label>
-                  <input style={inp} placeholder="+1 (416) 555-0100" value={form.phone} onChange={set('phone')} />
-                </div>
-              )}
-
-              {subStep === 2 && (
-                <div style={{ animation: 'fadeIn 0.3s ease' }}>
-                  <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Password</label>
-                  <input style={inp} type="password" placeholder="Min. 8 characters" value={form.password} onChange={set('password')} required autoFocus />
-
-                  <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6, marginTop: 12 }}>Confirm password</label>
-                  <input style={inp} type="password" placeholder="••••••••" value={form.confirm} onChange={set('confirm')} required />
-                </div>
-              )}
-
-              {subStep === 3 && (
-                <div style={{ animation: 'fadeIn 0.3s ease' }}>
-                  <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Number of locations</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <input type="range" min="1" max="10" value={numClinics} onChange={(e) => {
-                      const num = parseInt(e.target.value)
-                      setNumClinics(num)
-                      setClinicNames(Array(num).fill(''))
-                    }} style={{ flex: 1, accentColor: '#0f766e' }} />
-                    <div style={{ fontSize: 24, fontWeight: 600, color: '#0f766e', width: 40, textAlign: 'center' }}>{numClinics}</div>
-                  </div>
-                </div>
-              )}
-
-              {subStep === 4 && (
-                <div style={{ animation: 'fadeIn 0.3s ease', maxHeight: 300, overflowY: 'auto', paddingRight: 10 }}>
-                  {clinicNames.map((name, i) => (
-                    <div key={i} style={{ marginBottom: 16 }}>
-                      <label style={{ fontSize: 13, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Clinic #{i + 1} Name</label>
-                      <input style={inp} placeholder={`e.g. Lakeview Dental - Location ${i + 1}`} value={name} onChange={(e) => {
-                        const newNames = [...clinicNames]
-                        newNames[i] = e.target.value
-                        setClinicNames(newNames)
-                      }} required autoFocus={i === 0} />
-                    </div>
+              {/* Plan selector */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 8 }}>Choose your plan</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  {PLANS.map((p) => (
+                    <button
+                      key={p.id} type="button"
+                      onClick={() => setPlan(p.id as any)}
+                      style={{
+                        padding: '12px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', position: 'relative',
+                        border: plan === p.id ? `2px solid ${p.color}` : '1.5px solid #e2e8f0',
+                        background: plan === p.id ? `${p.color}08` : '#fff',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {p.popular && (
+                        <div style={{ position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)', background: p.color, color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          POPULAR
+                        </div>
+                      )}
+                      <div style={{ fontSize: 14, fontWeight: 600, color: plan === p.id ? p.color : '#0f172a', marginBottom: 2 }}>{p.name}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: plan === p.id ? p.color : '#0f172a', marginBottom: 2 }}>
+                        {p.price ? `$${p.price}` : 'Custom'}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>{p.desc}</div>
+                    </button>
                   ))}
                 </div>
-              )}
-
-              {subStep === 5 && (
-                <div style={{ animation: 'fadeIn 0.3s ease' }}>
-                  <div style={{ marginBottom: '1.2rem' }}>
-                    <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
-                      {PLANS.map((p) => (
-                        <div key={p.id} onClick={() => setPlan(p.id as any)}
-                          style={{ padding: '16px', border: plan === p.id ? `2px solid ${p.color}` : '1px solid var(--color-border-tertiary)', borderRadius: 12, background: plan === p.id ? 'var(--color-background-secondary)' : 'var(--color-background-primary)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.2s' }}>
-                          <div>
-                            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)' }}>{p.name}</div>
-                            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{p.desc}</div>
-                          </div>
-                          <div style={{ fontSize: 18, fontWeight: 600, color: plan === p.id ? p.color : 'var(--color-text-primary)' }}>
-                            {p.price ? `$${p.price}/mo` : 'Custom'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '10px 14px', marginBottom: '1.2rem', fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
-                    By continuing you agree to our Terms of Service and Privacy Policy. Your health data is stored exclusively on Canadian infrastructure (AWS ca-central-1) and is PHIPA-compliant.
-                  </div>
+                <div style={{ marginTop: 10, padding: '10px 14px', background: '#f0fdfa', borderRadius: 8, border: '1px solid #99f6e4' }}>
+                  <div style={{ fontSize: 12, color: '#0f766e', fontWeight: 500, marginBottom: 4 }}>{selectedPlan.name} includes:</div>
+                  {selectedPlan.features.map(f => (
+                    <div key={f} style={{ fontSize: 12, color: '#0f766e', marginBottom: 2 }}>✓ {f}</div>
+                  ))}
                 </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 12, marginTop: '2rem' }}>
-                {subStep > 0 && (
-                  <button type="button" onClick={() => setSubStep(s => s - 1)}
-                    style={{ flex: 1, background: 'transparent', color: 'var(--color-text-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 8, padding: '14px', fontSize: 15, cursor: 'pointer', transition: 'background 0.2s' }}>
-                    Back
-                  </button>
-                )}
-                <button type="submit" disabled={loading}
-                  style={{ flex: 2, background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '14px', fontSize: 15, fontWeight: 500, cursor: 'pointer', opacity: loading ? 0.7 : 1, transition: 'background 0.2s' }}>
-                  {loading ? 'Creating account…' : subStep < 5 ? 'Next' : 'Create Account'}
-                </button>
               </div>
 
-              {subStep === 0 && (
-                <p style={{ marginTop: 24, textAlign: 'center', fontSize: 14, color: 'var(--color-text-secondary)' }}>
-                  Already have an account?{' '}
-                  <a href="/login" style={{ color: '#0f766e', fontWeight: 500, textDecoration: 'none' }}>Sign in</a>
-                </p>
-              )}
-            </form>
-          </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 0 }}>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Full name</label>
+                  <input
+                    style={inputStyle} placeholder="Dr. Sarah Chen" value={form.name} onChange={set('name')} required
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Clinic name</label>
+                  <input
+                    style={inputStyle} placeholder="Lakeview Dental Group" value={form.clinic} onChange={set('clinic')} required
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Work email</label>
+                  <input
+                    style={inputStyle} type="email" placeholder="you@yourclinic.ca" value={form.email} onChange={set('email')} required
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Phone <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional)</span></label>
+                  <input
+                    style={inputStyle} placeholder="+1 (416) 555-0100" value={form.phone} onChange={set('phone')}
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Password</label>
+                  <input
+                    style={inputStyle} type="password" placeholder="Min. 8 characters" value={form.password} onChange={set('password')} required
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Confirm password</label>
+                  <input
+                    style={inputStyle} type="password" placeholder="••••••••" value={form.confirm} onChange={set('confirm')} required
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, padding: '10px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+              By continuing you agree to our Terms of Service and Privacy Policy. Health data is stored exclusively on Canadian infrastructure (AWS ca-central-1) and is PHIPA-compliant.
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !form.name || !form.clinic || !form.email || !form.password}
+              style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 10, border: 'none', background: (loading || !form.name || !form.clinic || !form.email || !form.password) ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', letterSpacing: '-0.01em' }}
+            >
+              {loading ? 'Creating account…' : 'Continue →'}
+            </button>
+          </form>
         )}
 
-        {/* ── Step 1: Email verify ── */}
+        {/* Step 1: Email verify */}
         {step === 1 && (
-          <div>
-            <h2 style={{ fontSize: 22, fontWeight: 500, marginBottom: '0.6rem', color: 'var(--color-text-primary)' }}>Verify your email</h2>
-            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '2rem' }}>
-              We sent a verification link to <strong style={{ color: 'var(--color-text-primary)' }}>{form.email}</strong>
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: '1.2rem' }}>✉️</div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>Verify your email</h2>
+            <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>
+              We sent a verification link to <strong style={{ color: '#0f172a' }}>{form.email}</strong>
             </p>
 
-            {/* 6-digit input row */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: '1.5rem' }}>
               {verifyCode.map((v, i) => (
-                <input key={i} id={`vc-${i}`} maxLength={1} value={v}
+                <input
+                  key={i} id={`vc-${i}`} maxLength={1} value={v}
                   onChange={(e) => {
                     if (!/^\d?$/.test(e.target.value)) return
                     const next = [...verifyCode]; next[i] = e.target.value; setVerifyCode(next)
                     if (e.target.value && i < 5) (document.getElementById(`vc-${i + 1}`) as HTMLElement)?.focus()
                   }}
-                  style={{ width: 44, height: 52, textAlign: 'center', fontSize: 20, border: '0.5px solid var(--color-border-secondary)', borderRadius: 8, background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontFamily: 'monospace' }}
+                  style={{ width: 48, height: 56, textAlign: 'center', fontSize: 22, border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff', color: '#0f172a', fontFamily: 'monospace', outline: 'none', transition: 'border-color 0.15s' }}
+                  onFocus={e => e.target.style.borderColor = '#0f766e'}
+                  onBlur={e => e.target.style.borderColor = '#e2e8f0'}
                 />
               ))}
             </div>
 
-            <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '0.5px solid #fcd34d', borderRadius: 8, padding: '10px 14px', marginBottom: '1.5rem', fontSize: 12, color: '#d97706' }}>
-              <strong>Dev mode:</strong> Check your terminal — the verification link is printed there. Or click Continue to proceed without verifying.
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: '1.5rem', fontSize: 13, color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <span style={{ flexShrink: 0 }}>💡</span>
+              <span><strong>Dev mode:</strong> Check your terminal for the verification link. Or click Continue to skip email verification.</span>
             </div>
 
-            <button onClick={handleVerify} style={{ width: '100%', background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 15, cursor: 'pointer' }}>
+            <button
+              onClick={handleVerify}
+              style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+            >
               Continue →
             </button>
           </div>
         )}
 
-        {/* ── Step 2: Connect PMS ── */}
+        {/* Step 2: Connect PMS */}
         {step === 2 && (
-          <div>
-            <h2 style={{ fontSize: 22, fontWeight: 500, marginBottom: '0.6rem', color: 'var(--color-text-primary)' }}>Connect Open Dental</h2>
-            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>Automatically syncs patients, procedures, and insurance plans.</p>
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>Connect your PMS</h2>
+            <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>Automatically syncs patients, procedures, and insurance plans.</p>
 
             {pmsStatus === 'idle' && (
               <>
-                <div style={{ border: '0.5px solid var(--color-border-tertiary)', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '0.8rem' }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgba(59, 130, 246, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🦷</div>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>Open Dental</div>
-                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>v24.x · REST API · Recommended</div>
+                {/* Open Dental card */}
+                <div style={{ border: '1.5px solid #0f766e', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem', background: '#f0fdfa' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 10, background: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🦷</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Open Dental</div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>v24.x · REST API</div>
                     </div>
-                    <div style={{ marginLeft: 'auto', fontSize: 11, background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '3px 10px', borderRadius: 20 }}>Supported</div>
+                    <div style={{ fontSize: 11, background: '#d1fae5', color: '#065f46', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>Supported</div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 10 }}>Syncs: patients, procedures, insurance plans, claim history</div>
-                  <button onClick={connectPms} style={{ width: '100%', background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontSize: 14, cursor: 'pointer' }}>
+                  <div style={{ fontSize: 13, color: '#475569', marginBottom: 12 }}>
+                    Syncs: patients, procedures, insurance plans, appointment history
+                  </div>
+                  <button
+                    onClick={connectPms}
+                    style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: '#0f766e', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                  >
                     Connect Open Dental →
                   </button>
                 </div>
+
                 {['Dentrix G7+', 'ClearDent'].map((name) => (
-                  <div key={name} style={{ border: '0.5px dashed var(--color-border-tertiary)', borderRadius: 12, padding: '1rem', marginBottom: '0.8rem', opacity: 0.6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 4 }}>{name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>Coming Phase 2</div>
+                  <div key={name} style={{ border: '1px dashed #e2e8f0', borderRadius: 12, padding: '1rem', marginBottom: '0.8rem', opacity: 0.6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{name}</div>
+                    <div style={{ fontSize: 12, background: '#f1f5f9', color: '#64748b', padding: '3px 10px', borderRadius: 20 }}>Coming soon</div>
                   </div>
                 ))}
-                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                  <span onClick={() => { setStep(3); loadMfa() }} style={{ fontSize: 13, color: 'var(--color-text-secondary)', cursor: 'pointer' }}>Skip for now — set up manually later</span>
-                </div>
+
+                <button
+                  onClick={() => { setStep(3); loadMfa() }}
+                  style={{ width: '100%', marginTop: 8, padding: '11px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#64748b', fontSize: 14, cursor: 'pointer' }}
+                >
+                  Skip for now — connect manually later
+                </button>
               </>
             )}
 
             {pmsStatus === 'connecting' && (
               <div>
-                <div style={{ height: 6, background: 'var(--color-background-secondary)', borderRadius: 3, marginBottom: '1.5rem' }}>
-                  <div style={{ height: '100%', width: `${pmsProgress}%`, background: '#0f766e', borderRadius: 3, transition: 'width 0.3s' }} />
+                <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, marginBottom: '1.5rem', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pmsProgress}%`, background: 'linear-gradient(90deg, #0f766e, #0d9488)', borderRadius: 3, transition: 'width 0.3s' }} />
                 </div>
                 {['Provisioning your workspace', 'Configuring Open Dental bridge', 'Loading insurance rule engine', 'Enabling AI copilot'].map((s, i) => {
                   const done = Math.floor(pmsProgress / 25)
+                  const isActive = i === done
                   return (
-                    <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, opacity: i < done ? 1 : i === done ? 0.7 : 0.3 }}>
-                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: i < done ? '#0f766e' : 'var(--color-background-secondary)', border: `0.5px solid ${i < done ? '#0f766e' : 'var(--color-border-tertiary)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {i < done && <span style={{ color: '#fff', fontSize: 11 }}>✓</span>}
+                    <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, opacity: i < done ? 1 : isActive ? 1 : 0.35, transition: 'opacity 0.3s' }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: i < done ? '#0f766e' : isActive ? '#fef3c7' : '#f1f5f9', color: i < done ? '#fff' : isActive ? '#92400e' : '#94a3b8', transition: 'all 0.3s' }}>
+                        {i < done ? '✓' : isActive ? '…' : i + 1}
                       </div>
-                      <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{s}</span>
+                      <span style={{ fontSize: 14, color: i < done ? '#0f766e' : '#0f172a' }}>{s}</span>
                     </div>
                   )
                 })}
@@ -409,14 +385,17 @@ export default function SignupPage() {
 
             {pmsStatus === 'connected' && (
               <div>
-                <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '0.5px solid #6ee7b7', borderRadius: 12, padding: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 24 }}>✅</span>
+                <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>✓</div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: '#10b981' }}>Open Dental connected</div>
-                    <div style={{ fontSize: 12, color: '#059669' }}>Full sync available in Phase 2</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: '#065f46' }}>Open Dental connected!</div>
+                    <div style={{ fontSize: 13, color: '#047857' }}>Full patient sync available in production.</div>
                   </div>
                 </div>
-                <button onClick={() => { setStep(3); loadMfa() }} style={{ width: '100%', background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 15, cursor: 'pointer' }}>
+                <button
+                  onClick={() => { setStep(3); loadMfa() }}
+                  style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+                >
                   Continue to security setup →
                 </button>
               </div>
@@ -424,79 +403,99 @@ export default function SignupPage() {
           </div>
         )}
 
-        {/* ── Step 3: Security / MFA ── */}
+        {/* Step 3: MFA */}
         {step === 3 && (
-          <div>
-            <h2 style={{ fontSize: 22, fontWeight: 500, marginBottom: '0.6rem', color: 'var(--color-text-primary)' }}>Security setup</h2>
-            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>PHIPA requires appropriate safeguards for PHI access.</p>
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: '1.2rem' }}>🔐</div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>Security setup</h2>
+            <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>PHIPA requires appropriate access controls for patient health information.</p>
 
             {mfaData ? (
-              <div style={{ border: '0.5px solid var(--color-border-tertiary)', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem' }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 8 }}>Scan with your authenticator app</div>
-                <img src={mfaData.qrCodeDataUrl} alt="TOTP QR code" style={{ width: 160, height: 160, display: 'block', margin: '0 auto 12px', borderRadius: 8 }} />
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'center', marginBottom: 12 }}>
-                  Or enter the secret manually: <code style={{ fontFamily: 'monospace', fontSize: 11 }}>{mfaData.secret}</code>
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>Scan with Google Authenticator or Authy</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                  <img src={mfaData.qrCodeDataUrl} alt="TOTP QR code" style={{ width: 160, height: 160, borderRadius: 12, border: '1px solid #e2e8f0' }} />
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center', marginBottom: 14 }}>
+                  Or enter manually: <code style={{ fontFamily: 'monospace', background: '#f8fafc', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{mfaData.secret}</code>
                 </div>
                 <input
-                  value={mfaCode} onChange={(e) => setMfaCode(e.target.value)}
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
                   placeholder="Enter 6-digit code to confirm"
-                  maxLength={6} inputMode="numeric"
-                  style={{ ...inp, textAlign: 'center', letterSpacing: '0.2em', fontSize: 18, marginBottom: 0 }}
+                  maxLength={6}
+                  inputMode="numeric"
+                  style={{ ...inputStyle, textAlign: 'center', letterSpacing: '0.3em', fontSize: 22, fontFamily: 'monospace' }}
+                  onFocus={e => e.target.style.borderColor = '#0f766e'}
+                  onBlur={e => e.target.style.borderColor = '#e2e8f0'}
                 />
               </div>
             ) : (
-              <div style={{ border: '0.5px solid var(--color-border-tertiary)', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem' }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: 6 }}>Two-factor authentication</div>
-                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 8 }}>Protects patient health information per PHIPA. Set up via Settings after login.</div>
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem', background: '#f8fafc' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>Two-factor authentication</div>
+                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                  Protect access to patient data with an authenticator app. You can enable this later in Settings.
+                </div>
               </div>
             )}
 
-            <button onClick={enableMfa} disabled={loading} style={{ width: '100%', background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 15, cursor: 'pointer', marginBottom: 10 }}>
+            <button
+              onClick={enableMfa}
+              disabled={loading}
+              style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: loading ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}
+            >
               {loading ? 'Enabling…' : mfaData && mfaCode.length === 6 ? 'Enable MFA & continue →' : 'Skip for now →'}
             </button>
           </div>
         )}
 
-        {/* ── Step 4: Done ── */}
+        {/* Step 4: Done */}
         {step === 4 && (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 1.5rem' }}>✅</div>
-            <h2 style={{ fontSize: 24, fontWeight: 500, marginBottom: '0.6rem', color: 'var(--color-text-primary)' }}>You're all set!</h2>
-            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '2rem' }}>
-              {form.clinic} is live on DentalIQ. The AI copilot is ready.
-            </p>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2.5rem 2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 12 }}>
+              <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, margin: '0 auto 1.5rem', boxShadow: '0 4px 20px rgba(15,118,110,0.3)' }}>✓</div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '1.5rem', textAlign: 'left' }}>
-              {[
-                ['Account', 'Created ✓'],
-                ['Clinics', `${numClinics} Registered ✓`],
-                ['Plan', selectedPlan.name],
-                ['Trial ends', '14 days'],
-              ].map(([l, v]) => (
-                <div key={l} style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{l}</span>
-                  <span style={{ fontSize: 12, color: '#10b981', fontWeight: 500 }}>{v}</span>
-                </div>
-              ))}
+              <h2 style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>You're all set!</h2>
+              <p style={{ fontSize: 15, color: '#64748b', marginBottom: '2rem', lineHeight: 1.6 }}>
+                {form.clinic || 'Your clinic'} is live on DentalIQ. The AI copilot is ready.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '2rem', textAlign: 'left' }}>
+                {[
+                  ['Account', 'Created ✓'],
+                  ['Clinic', form.clinic || 'Ready ✓'],
+                  ['Plan', `${selectedPlan.name} — 14-day trial`],
+                  ['AI Copilot', 'Active ✓'],
+                ].map(([l, v]) => (
+                  <div key={l} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: '#64748b' }}>{l}</span>
+                    <span style={{ fontSize: 13, color: '#059669', fontWeight: 600 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 10, padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'left' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f766e', marginBottom: 6 }}>Quick start checklist</div>
+                {[
+                  'Run your first insurance estimate',
+                  'Add your first patient',
+                  'Connect your PMS (Settings → Integrations)',
+                  'Set up 2FA for PHIPA compliance',
+                ].map((item, i) => (
+                  <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 13, color: '#047857' }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#99f6e4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, flexShrink: 0 }}>{i + 1}</div>
+                    {item}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={goToDashboard}
+                style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer', letterSpacing: '-0.01em', boxShadow: '0 4px 14px rgba(15,118,110,0.3)' }}
+              >
+                Open Dashboard →
+              </button>
             </div>
-
-            {/* Ollama Encouraging Message */}
-            <div style={{ background: 'rgba(15, 118, 110, 0.08)', border: '1px solid var(--color-border-tertiary)', borderRadius: 12, padding: '1.5rem', marginBottom: '2rem', animation: 'fadeIn 0.5s ease' }}>
-              {ollamaLoading ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#0f766e' }}>
-                  <div className="h-4 w-4 rounded-full border-2 border-teal-600 border-t-transparent animate-spin" />
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>DentalIQ AI is generating your welcome...</span>
-                </div>
-              ) : (
-                <div style={{ color: '#0f766e', fontSize: 15, lineHeight: 1.5, fontStyle: 'italic', fontWeight: 500 }}>
-                  "{ollamaMsg}"
-                </div>
-              )}
-            </div>
-
-            <button onClick={goToDashboard} style={{ width: '100%', background: '#0f766e', color: '#fff', border: 'none', borderRadius: 8, padding: '13px', fontSize: 15, cursor: 'pointer' }}>
-              Open dashboard →
-            </button>
           </div>
         )}
       </div>

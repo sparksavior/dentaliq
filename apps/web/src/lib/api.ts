@@ -1,7 +1,8 @@
 // Typed API client
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? 'http://localhost:3001'
+const AUTH_URL     = process.env.NEXT_PUBLIC_AUTH_URL     ?? 'http://localhost:3001'
 const ESTIMATE_URL = process.env.NEXT_PUBLIC_ESTIMATE_URL ?? 'http://localhost:3004'
+const TENANT_URL   = process.env.NEXT_PUBLIC_TENANT_URL   ?? 'http://localhost:3002'
 
 export interface RegisterInput {
   name: string
@@ -32,6 +33,117 @@ export interface AuthTokens {
   user: AuthUser
 }
 
+export interface Tenant {
+  id: string
+  name: string
+  slug: string
+  plan: 'starter' | 'pro' | 'enterprise'
+  status: 'trial' | 'active' | 'suspended'
+  pmsType: 'open_dental' | 'dentrix' | 'cleardent' | 'none'
+  pmsConnected: boolean
+  pmsApiKey?: string | null
+  trialEndsAt: string | null
+  createdAt: string
+  updatedAt: string
+  memberCount: number
+}
+
+export interface Patient {
+  id: string
+  first_name: string
+  last_name: string
+  date_of_birth?: string
+  phone?: string
+  email?: string
+  insurance_plan_id?: string
+  created_at: string
+}
+
+export interface CreatePatientInput {
+  firstName: string
+  lastName: string
+  dateOfBirth?: string
+  phone?: string
+  email?: string
+  insuranceProvider?: string
+}
+
+export interface InsurancePlan {
+  id: string
+  insurer_name: string
+  plan_name: string | null
+  group_number: string | null
+  annual_max: number | null
+  preventive_coverage: number
+  basic_coverage: number
+  major_coverage: number
+  ortho_coverage: number
+  created_at: string
+}
+
+export interface CreateInsurancePlanInput {
+  insurerName: string
+  planName?: string
+  groupNumber?: string
+  annualMax?: number
+  preventiveCoverage?: number
+  basicCoverage?: number
+  majorCoverage?: number
+  orthoCoverage?: number
+}
+
+export interface EstimateHistoryItem {
+  id: string
+  patient_id: string | null
+  cdt_code: string
+  coverage_percent: number
+  patient_cost: number
+  insurer_pays: number
+  claim_risk: 'low' | 'medium' | 'high'
+  plain_explanation: string
+  created_by: string
+  created_at: string
+}
+
+export interface EstimateRequest {
+  cdtCode: string
+  insurerName: string
+  patientId?: string
+  patientAge?: number
+  codesOnSameVisit?: string[]
+}
+
+export interface EstimateResult {
+  id: string
+  cdtCode: string
+  coveragePercent: number
+  patientCost: number
+  insurerPays: number
+  plainExplanation: string
+  claimRisk: 'low' | 'medium' | 'high'
+  riskReasons: string[]
+  confidenceScore: number
+}
+
+export interface CdtCodeSummary {
+  code: string
+  description: string
+  category: string
+  typicalFee: number
+  requiresPreAuth: boolean
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public details?: string[],
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 async function request<T>(
   baseUrl: string,
   path: string,
@@ -59,8 +171,6 @@ function authRequest<T>(path: string, options: RequestInit = {}) {
   return request<T>(AUTH_URL, path, options)
 }
 
-const TENANT_URL = process.env.NEXT_PUBLIC_TENANT_URL ?? 'http://localhost:3002'
-
 function tenantRequest<T>(path: string, token: string, options: RequestInit = {}) {
   return request<T>(TENANT_URL, path, {
     ...options,
@@ -68,87 +178,11 @@ function tenantRequest<T>(path: string, token: string, options: RequestInit = {}
   })
 }
 
-export interface Patient {
-  id: string
-  first_name: string
-  last_name: string
-  date_of_birth?: string
-  phone?: string
-  email?: string
-  insurance_plan_id?: string
-  created_at: string
-}
-
-export interface CreatePatientInput {
-  firstName: string
-  lastName: string
-  dateOfBirth?: string
-  phone?: string
-  email?: string
-  insuranceProvider?: string
-}
-
-export const patientsApi = {
-  getPatients: (token: string) => tenantRequest<Patient[]>('/patients', token),
-  createPatient: (token: string, data: CreatePatientInput) =>
-    tenantRequest<Patient>('/patients', token, { method: 'POST', body: JSON.stringify(data) }),
-  deletePatient: (token: string, id: string) =>
-    tenantRequest<{ success: true }>(`/patients/${id}`, token, { method: 'DELETE' }),
-  getAiContext: (token: string) =>
-    tenantRequest<any>('/patients/ai-context', token),
-}
-
-export interface ClinicLocation {
-  id: string
-  name: string
-  address?: string
-  phone?: string
-  email?: string
-  status: 'active' | 'inactive'
-  operating_hours?: string
-  pms_type?: string
-  pms_connected?: number
-  created_at: string
-  updated_at: string
-}
-
-export interface ClinicLocationInput {
-  name: string
-  address?: string
-  phone?: string
-  email?: string
-  status?: 'active' | 'inactive'
-  operatingHours?: string
-  pmsType?: string
-}
-
-export const clinicsApi = {
-  list:   (token: string) =>
-    tenantRequest<ClinicLocation[]>('/clinics', token),
-  create: (token: string, data: ClinicLocationInput) =>
-    tenantRequest<ClinicLocation>('/clinics', token, { method: 'POST', body: JSON.stringify(data) }),
-  update: (token: string, id: string, data: Partial<ClinicLocationInput>) =>
-    tenantRequest<{ success: true }>(`/clinics/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) }),
-  remove: (token: string, id: string) =>
-    tenantRequest<{ success: true }>(`/clinics/${id}`, token, { method: 'DELETE' }),
-}
-
 function estimateRequest<T>(path: string, token: string, options: RequestInit = {}) {
   return request<T>(ESTIMATE_URL, path, {
     ...options,
     headers: { Authorization: `Bearer ${token}`, ...options.headers },
   })
-}
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public details?: string[],
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
 }
 
 export const authApi = {
@@ -183,34 +217,57 @@ export const authApi = {
     }),
 }
 
-// ── Estimate API types ────────────────────────────────────
+export const tenantsApi = {
+  getTenant: (token: string) =>
+    tenantRequest<Tenant>('/tenants/me', token),
 
-export interface EstimateRequest {
-  cdtCode: string
-  insurerName: string
-  patientId?: string
-  patientAge?: number
-  codesOnSameVisit?: string[]
+  updateTenant: (token: string, data: { name: string }) =>
+    tenantRequest<Tenant>('/tenants/me', token, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  connectPms: (token: string, data: { pmsType: 'open_dental' | 'dentrix' | 'cleardent'; pmsApiKey: string }) =>
+    tenantRequest<Tenant>('/tenants/me/pms', token, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  disconnectPms: (token: string) =>
+    tenantRequest<Tenant>('/tenants/me/pms', token, { method: 'DELETE' }),
 }
 
-export interface EstimateResult {
-  id: string
-  cdtCode: string
-  coveragePercent: number
-  patientCost: number
-  insurerPays: number
-  plainExplanation: string
-  claimRisk: 'low' | 'medium' | 'high'
-  riskReasons: string[]
-  confidenceScore: number
+export const patientsApi = {
+  getPatients: (token: string) => tenantRequest<Patient[]>('/patients', token),
+
+  createPatient: (token: string, data: CreatePatientInput) =>
+    tenantRequest<Patient>('/patients', token, { method: 'POST', body: JSON.stringify(data) }),
+
+  updatePatient: (token: string, id: string, data: CreatePatientInput) =>
+    tenantRequest<Patient>(`/patients/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  deletePatient: (token: string, id: string) =>
+    tenantRequest<{ success: true }>(`/patients/${id}`, token, { method: 'DELETE' }),
 }
 
-export interface CdtCodeSummary {
-  code: string
-  description: string
-  category: string
-  typicalFee: number
-  requiresPreAuth: boolean
+export const insurancePlansApi = {
+  getPlans: (token: string) =>
+    tenantRequest<InsurancePlan[]>('/insurance-plans', token),
+
+  createPlan: (token: string, data: CreateInsurancePlanInput) =>
+    tenantRequest<InsurancePlan>('/insurance-plans', token, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updatePlan: (token: string, id: string, data: CreateInsurancePlanInput) =>
+    tenantRequest<InsurancePlan>(`/insurance-plans/${id}`, token, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deletePlan: (token: string, id: string) =>
+    tenantRequest<{ success: true }>(`/insurance-plans/${id}`, token, { method: 'DELETE' }),
 }
 
 export const estimateApi = {
@@ -225,8 +282,8 @@ export const estimateApi = {
     estimateRequest<CdtCodeSummary[]>('/estimate/codes', token),
 
   getHistory: (token: string) =>
-    estimateRequest<unknown[]>('/estimate/history', token),
+    estimateRequest<EstimateHistoryItem[]>('/estimate/history', token),
 
-  generateNarrative: (token: string, input: { cdtCode: string, insurerName: string, patientName?: string, clinicalNotes?: string }) =>
+  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; clinicalNotes?: string }) =>
     estimateRequest<string>('/estimate/narrative', token, { method: 'POST', body: JSON.stringify(input) }),
 }

@@ -42,104 +42,163 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ width: '100%', maxWidth: 440 }}>
-      <div style={{ background: 'var(--color-background-secondary)', borderRadius: 16, border: '0.5px solid var(--color-border-tertiary)', padding: '2rem', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8 }}>
-          {requiresMfa ? 'Two-factor authentication' : 'Sign in to your account'}
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>
-          {requiresMfa
-            ? 'Enter the 6-digit code from your authenticator app.'
-            : 'Welcome back. Enter your credentials below.'}
-        </p>
+    <div style={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+      {/* Left panel — brand */}
+      <div style={{
+        background: 'linear-gradient(150deg, #0f766e 0%, #0d9488 50%, #115e59 100%)',
+        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        padding: '3rem', color: '#fff', position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Decorative circles */}
+        <div style={{ position: 'absolute', top: -80, right: -80, width: 300, height: 300, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
+        <div style={{ position: 'absolute', bottom: -60, left: -60, width: 240, height: 240, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
 
-        {error && (
-          <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fef2f2', border: '0.5px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#dc2626' }}>
-            {error}
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '3rem' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700 }}>+</div>
+            <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.03em' }}>DentalIQ</span>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {!requiresMfa ? (
-            <>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
-                  Email address
-                </label>
-                <input
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={form.email}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '0.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none' }}
-                  placeholder="you@yourclinic.com"
-                  onFocus={(e) => e.target.style.borderColor = '#0f766e'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--color-border-secondary)'}
-                />
-              </div>
+          <h1 style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.25, marginBottom: '1rem', letterSpacing: '-0.03em' }}>
+            Stop losing $3K/month<br />to insurance guesswork.
+          </h1>
+          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6, maxWidth: 340 }}>
+            Real-time coverage estimates, claim risk detection, and AI-drafted pre-auth letters — built for Ontario dental clinics.
+          </p>
+        </div>
 
+        <div style={{ position: 'relative' }}>
+          {[
+            { icon: '⚡', text: 'Coverage answers in under 2 seconds' },
+            { icon: '🛡', text: 'PHIPA-compliant · Canadian data centres' },
+            { icon: '🤖', text: 'AI pre-auth letters in 90 seconds' },
+          ].map((f) => (
+            <div key={f.text} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>{f.icon}</div>
+              <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.9)' }}>{f.text}</span>
+            </div>
+          ))}
+
+          <div style={{ marginTop: '2rem', padding: '1.2rem', background: 'rgba(255,255,255,0.1)', borderRadius: 12, backdropFilter: 'blur(8px)' }}>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.9)', lineHeight: 1.6, fontStyle: 'italic', marginBottom: 10 }}>
+              "We recovered $7,200 in the first month. The pre-auth drafting alone saves us 2 hours a day."
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>KM</div>
               <div>
-                <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '0.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none' }}
-                  placeholder="••••••••"
-                  onFocus={(e) => e.target.style.borderColor = '#0f766e'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--color-border-secondary)'}
-                />
-                <div style={{ marginTop: 8, textAlign: 'right' }}>
-                  <Link href="/forgot-password" style={{ fontSize: 12, color: '#0f766e', textDecoration: 'none' }}>
-                    Forgot password?
-                  </Link>
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Dr. K. Mehta</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Oakville Family Dental</div>
               </div>
-            </>
-          ) : (
-            <div>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>
-                Authenticator code
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="\d{6}"
-                maxLength={6}
-                required
-                autoFocus
-                value={form.totpCode}
-                onChange={(e) => setForm((f) => ({ ...f, totpCode: e.target.value }))}
-                style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '0.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 20, textAlign: 'center', letterSpacing: '0.2em', outline: 'none' }}
-                placeholder="000000"
-                onFocus={(e) => e.target.style.borderColor = '#0f766e'}
-                onBlur={(e) => e.target.style.borderColor = 'var(--color-border-secondary)'}
-              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#fff' }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <h2 style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.02em' }}>
+            {requiresMfa ? 'Two-factor authentication' : 'Welcome back'}
+          </h2>
+          <p style={{ fontSize: 14, color: '#64748b', marginBottom: '2rem' }}>
+            {requiresMfa
+              ? 'Enter the 6-digit code from your authenticator app.'
+              : 'Sign in to your DentalIQ account.'}
+          </p>
+
+          {error && (
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, fontSize: 14, color: '#dc2626' }}>
+              {error}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{ width: '100%', padding: '12px', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 500, border: 'none', borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'background 0.2s', marginTop: '1rem' }}
-          >
-            {loading ? 'Signing in…' : requiresMfa ? 'Verify' : 'Sign in'}
-          </button>
-        </form>
+          <form onSubmit={handleSubmit}>
+            {!requiresMfa ? (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Email address</label>
+                  <input
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={form.email}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="you@yourclinic.com"
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#fff', transition: 'border-color 0.15s' }}
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                </div>
 
-        {!requiresMfa && (
-          <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: 14, color: 'var(--color-text-secondary)' }}>
-            New to DentalIQ?{' '}
-            <Link href="/signup" style={{ color: '#0f766e', fontWeight: 500, textDecoration: 'none' }}>
-              Create an account
-            </Link>
-          </p>
-        )}
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Password</label>
+                  <input
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                    value={form.password}
+                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                    placeholder="••••••••"
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#fff', transition: 'border-color 0.15s' }}
+                    onFocus={e => e.target.style.borderColor = '#0f766e'}
+                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  />
+                  <div style={{ textAlign: 'right', marginTop: 6 }}>
+                    <Link href="/forgot-password" style={{ fontSize: 12, color: '#0f766e', textDecoration: 'none' }}>Forgot password?</Link>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Authenticator code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  required
+                  autoFocus
+                  value={form.totpCode}
+                  onChange={(e) => setForm((f) => ({ ...f, totpCode: e.target.value }))}
+                  placeholder="000000"
+                  style={{ width: '100%', padding: '14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 24, color: '#0f172a', outline: 'none', boxSizing: 'border-box', textAlign: 'center', letterSpacing: '0.3em', fontFamily: 'monospace', transition: 'border-color 0.15s' }}
+                  onFocus={e => e.target.style.borderColor = '#0f766e'}
+                  onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%', marginTop: 8, padding: '12px', borderRadius: 10, border: 'none',
+                background: loading ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)',
+                color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s', letterSpacing: '-0.01em',
+              }}
+            >
+              {loading ? 'Signing in…' : requiresMfa ? 'Verify →' : 'Sign in →'}
+            </button>
+          </form>
+
+          {!requiresMfa && (
+            <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: 14, color: '#64748b' }}>
+              New to DentalIQ?{' '}
+              <Link href="/signup" style={{ color: '#0f766e', fontWeight: 600, textDecoration: 'none' }}>
+                Create an account
+              </Link>
+            </p>
+          )}
+
+          <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'center', gap: 20 }}>
+            {['PHIPA Compliant', 'SOC 2 Ready', 'Canadian Data'].map(badge => (
+              <div key={badge} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8' }}>
+                <span style={{ color: '#0f766e' }}>✓</span> {badge}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

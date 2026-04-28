@@ -8,7 +8,7 @@ import { createLogger } from '@dentaliq/logger'
 
 import { tenantRoutes } from './routes/tenants'
 import { patientsRoutes } from './routes/patients'
-import { clinicsRoutes } from './routes/clinics'
+import { insurancePlansRoutes } from './routes/insurance-plans'
 
 // ─────────────────────────────────────────────────────────
 // DentalIQ — Tenant Service  (port 3002)
@@ -51,7 +51,7 @@ async function buildApp() {
 
   await app.register(tenantRoutes, { prefix: '/tenants' })
   await app.register(patientsRoutes, { prefix: '/patients' })
-  await app.register(clinicsRoutes, { prefix: '/clinics' })
+  await app.register(insurancePlansRoutes, { prefix: '/insurance-plans' })
 
   return app
 }
