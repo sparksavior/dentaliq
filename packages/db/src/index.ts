@@ -41,7 +41,7 @@ function buildDb() {
   const path = require('path')
   const dbPath = process.env.DATABASE_PATH ?? 'dentaliq.db'
   const absolutePath = path.isAbsolute(dbPath) ? dbPath : path.join(__dirname, '../../../', dbPath)
-  console.log('[DEBUG DB] Loaded from:', absolutePath)
+  console.log(`[DATABASE_INIT] Service ${process.env.SERVICE_NAME || 'unknown'} using DB at: ${absolutePath}`)
   const url    = absolutePath.startsWith('file:') ? absolutePath : `file:${absolutePath}`
   const client = createClient({ url })
   return drizzle(client, { schema }) as ReturnType<typeof import('drizzle-orm/libsql').drizzle>

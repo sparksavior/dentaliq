@@ -35,9 +35,9 @@ export async function estimateRoutes(app: FastifyInstance) {
     })
 
     // Persist estimate to per-tenant table
-    await persistEstimate(jwtUser.tenantId, jwtUser.sub, body.patientId, result)
+    const id = await persistEstimate(jwtUser.tenantId, jwtUser.sub, body.patientId, result)
 
-    return reply.code(201).send({ success: true, data: result })
+    return reply.code(201).send({ success: true, data: { ...result, id } })
   })
 
   // POST /estimate/narrative — generates pre-auth letter
@@ -46,6 +46,8 @@ export async function estimateRoutes(app: FastifyInstance) {
     insurerName: z.string(),
     patientName: z.string().optional(),
     clinicalNotes: z.string().optional(),
+    previousNarrative: z.string().optional(),
+    revisionInstructions: z.string().optional(),
   })
 
   app.post('/estimate/narrative', {
@@ -59,6 +61,8 @@ export async function estimateRoutes(app: FastifyInstance) {
       insurerName: body.insurerName,
       patientName: body.patientName,
       clinicalNotes: body.clinicalNotes,
+      previousNarrative: body.previousNarrative,
+      revisionInstructions: body.revisionInstructions,
     })
     
     return reply.code(201).send({ success: true, data: narrative })
@@ -90,13 +94,77 @@ export async function estimateRoutes(app: FastifyInstance) {
     const db = getDb() as any
     try {
       const rows = await db.all(sql.raw(`
-        SELECT * FROM "${tablePrefix}_estimates"
-        ORDER BY created_at DESC
+        SELECT e.*, p.first_name, p.last_name 
+        FROM "${tablePrefix}_estimates" e
+        LEFT JOIN "${tablePrefix}_patients" p ON e.patient_id = p.id
+        ORDER BY e.created_at DESC
         LIMIT 50
       `))
       return reply.send({ success: true, data: rows })
-    } catch {
+    } catch (err) {
+      console.error('History fetch failed:', err)
       return reply.send({ success: true, data: [] })
+    }
+  })
+
+  // PATCH /estimate/:id/letter — saves pre-auth letter to an estimate
+  const LetterBodySchema = z.object({
+    letter: z.string().min(1),
+  })
+
+  app.patch('/estimate/:id/letter', {
+    preHandler: requireAuth(app),
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { letter } = LetterBodySchema.parse(req.body)
+    const jwtUser = req.user as any
+    const tablePrefix = await getTablePrefix(jwtUser.tenantId)
+    
+    if (!tablePrefix) return reply.code(404).send({ success: false, message: 'Tenant not found' })
+
+    const db = getDb() as any
+    try {
+      const cleanId = id.trim()
+      const dbPath = process.env.DATABASE_PATH || 'dentaliq.db'
+      
+      const { execSync } = require('child_process')
+      const path = require('path')
+      const fs = require('fs')
+      
+      // Try multiple paths to find the real root
+      const pathsToTry = [
+        path.join(__dirname, '../../../../', dbPath),
+        path.join(__dirname, '../../../', dbPath),
+        path.join(process.cwd(), dbPath),
+        path.join(process.cwd(), '..', dbPath)
+      ]
+      
+      let absDbPath = pathsToTry[0]
+      for (const p of pathsToTry) {
+        if (fs.existsSync(p)) {
+          absDbPath = p
+          break
+        }
+      }
+      
+      console.log(`[saveLetter] Using DB at: ${absDbPath}`)
+      
+      const escapedLetter = letter.replace(/'/g, "''")
+      const cmd = `sqlite3 "${absDbPath}" "UPDATE \\"${tablePrefix}_estimates\\" SET pre_auth_letter = '${escapedLetter}' WHERE id = '${cleanId}';"`
+      
+      execSync(cmd)
+      
+      return reply.send({ 
+        success: true, 
+        debug: { 
+          path: absDbPath,
+          id: cleanId,
+          table: `${tablePrefix}_estimates`
+        } 
+      })
+    } catch (err) {
+      console.error(`[saveLetter] Failsafe error:`, err)
+      return reply.code(500).send({ success: false, error: (err as any).message })
     }
   })
 }
@@ -108,22 +176,24 @@ async function persistEstimate(
   result: Awaited<ReturnType<typeof runEstimate>>,
 ) {
   const tablePrefix = await getTablePrefix(tenantId)
-  if (!tablePrefix) return
+  if (!tablePrefix) return null
 
-  // tablePrefix comes from our own DB so it is trusted; all other values are
-  // bound as parameters via drizzle's sql template tag (prevents injection).
   const db = getDb() as any
+  const id = createId()
+  
   try {
     await db.run(
       sql`INSERT INTO ${sql.raw(`"${tablePrefix}_estimates"`)}
         (id, patient_id, cdt_code, coverage_percent, patient_cost, insurer_pays, claim_risk, plain_explanation, created_by)
       VALUES
-        (${createId()}, ${patientId ?? null}, ${result.cdtCode},
+        (${id}, ${patientId ?? null}, ${result.cdtCode},
          ${result.coveragePercent}, ${result.patientCost}, ${result.insurerPays},
          ${result.claimRisk}, ${result.plainExplanation}, ${userId})`,
     )
-  } catch {
-    // Non-fatal — estimate is still returned even if persistence fails
+    return id
+  } catch (err) {
+    console.error('Persistence failed:', err)
+    return null
   }
 }
 

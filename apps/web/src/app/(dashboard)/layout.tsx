@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
+import { tenantsApi, type Tenant, patientsApi, estimateApi } from '@/lib/api'
+import { X, Send, Sparkles, MessageSquare, ChevronRight } from 'lucide-react'
 
 const NAV = [
   {
@@ -23,7 +25,6 @@ const NAV = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
       </svg>
     ),
-    badge: 'Phase 2',
   },
   {
     href: '/dashboard/claims',
@@ -33,7 +34,6 @@ const NAV = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     ),
-    badge: 'Phase 2',
   },
   {
     href: '/dashboard/patients',
@@ -43,7 +43,6 @@ const NAV = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     ),
-    badge: 'Phase 2',
   },
   {
     href: '/dashboard/settings',
@@ -58,75 +57,154 @@ const NAV = [
 ]
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  const { user, loading, clearSession } = useAuth()
+  const { user, loading, clearSession, accessToken } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  const [tenant, setTenant] = useState<Tenant | null>(null)
+
+  // AI Chat State
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([
+    { role: 'assistant', content: "Hello! I'm your DentalIQ Copilot. I have full context of your clinic's patients, claims, and estimates. How can I help you today?" }
+  ])
+
+  // Context State for AI
+  const [patients, setPatients] = useState<any[]>([])
+  const [history, setHistory] = useState<any[]>([])
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login')
   }, [loading, user, router])
 
+  useEffect(() => {
+    if (accessToken) {
+      tenantsApi.getTenant(accessToken).then(setTenant).catch(() => {})
+      
+      // Fetch data for AI context
+      patientsApi.getPatients(accessToken).then(setPatients).catch(() => {})
+      estimateApi.getHistory(accessToken).then(setHistory).catch(() => {})
+    }
+  }, [accessToken])
+
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || chatLoading) return
+    const userMsg = { role: 'user', content: chatInput }
+    setChatMessages(prev => [...prev, userMsg])
+    setChatInput('')
+    setChatLoading(true)
+
+    try {
+      // Build context string
+      const patientSummary = patients.slice(0, 10).map(p => `${p.first_name} ${p.last_name}`).join(', ')
+      const claimStats = `Total Estimates/Claims: ${history.length}, High Risk: ${history.filter(h => h.claim_risk === 'high').length}`
+
+      const res = await fetch('http://localhost:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'phi3', // Default model from setup.js
+          messages: [
+            { 
+              role: 'system', 
+              content: `You are the DentalIQ Copilot, an AI assistant for a dental clinic in Ontario, Canada.
+              
+              Clinic Context:
+              - Clinic Name: ${tenant?.name || 'Your Clinic'}
+              - Total Patients: ${patients.length}
+              - Recent Patients: ${patientSummary}
+              - Claims/Estimates Overview: ${claimStats}
+              
+              Be helpful, professional, and knowledgeable about Ontario dental billing (CDAnet), PHIPA compliance, and clinical efficiency. Keep responses concise.` 
+            },
+            ...chatMessages,
+            userMsg
+          ],
+          stream: false
+        })
+      })
+
+      const data = await res.json()
+      if (data.message) {
+        setChatMessages(prev => [...prev, data.message])
+      } else {
+        throw new Error('Invalid response')
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'I cannot reach the AI engine. Please ensure Ollama is running (`node setup.js`).' }])
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="h-6 w-6 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background-secondary)]">
+        <div className="h-6 w-6 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--color-background-secondary)', overflow: 'hidden', color: 'var(--color-text-primary)' }}>
       {/* Sidebar */}
-      <aside className="flex w-60 flex-col border-r border-slate-200 bg-white">
-        {/* Logo */}
-        <div className="flex h-14 items-center px-5 border-b border-slate-100">
-          <span className="text-lg font-bold tracking-tight text-slate-900">
-            Dental<span className="text-blue-600">IQ</span>
-          </span>
+      <aside style={{ width: 228, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', flexShrink: 0 }}>
+        {/* Logo + clinic name */}
+        <div style={{ padding: '0 16px', height: 60, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border-tertiary)', gap: 10, flexShrink: 0 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#fff', flexShrink: 0 }}>+</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              Dental<span style={{ color: 'var(--color-accent)' }}>IQ</span>
+            </div>
+            {tenant && (
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {tenant.name}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {NAV.map((item) => {
-            const active = pathname === item.href
+            const isActive = item.href === '/dashboard'
+              ? pathname === '/dashboard'
+              : pathname.startsWith(item.href)
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, fontSize: 14, fontWeight: isActive ? 600 : 400, textDecoration: 'none', transition: 'all 0.15s',
+                  background: isActive ? 'var(--color-accent-muted)' : 'transparent',
+                  color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                }}
               >
-                <span className={active ? 'text-blue-600' : 'text-slate-400'}>{item.icon}</span>
+                <span style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)', flexShrink: 0 }}>{item.icon}</span>
                 {item.label}
-                {item.badge && (
-                  <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                    {item.badge}
-                  </span>
-                )}
               </Link>
             )
           })}
         </nav>
 
         {/* User footer */}
-        <div className="border-t border-slate-100 p-3">
-          <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+        <div style={{ borderTop: '1px solid var(--color-border-tertiary)', padding: '10px 10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9 }}>
+            <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
               {user.name.charAt(0).toUpperCase()}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-xs font-semibold text-slate-900">{user.name}</p>
-              <p className="truncate text-xs text-slate-500">{user.role.replace('_', ' ')}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', textTransform: 'capitalize' }}>{user.role.replace('_', ' ')}</div>
             </div>
             <button
               onClick={clearSession}
               title="Sign out"
-              className="text-slate-400 hover:text-slate-600 transition-colors"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-border-primary)', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <svg style={{ width: 15, height: 15 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </button>
@@ -135,7 +213,147 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {children}
+
+        {/* Trial Ended / Suspended Overlay */}
+        {tenant?.status === 'suspended' && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '2rem'
+          }}>
+            <div style={{
+              maxWidth: 500, width: '100%',
+              background: 'var(--color-background-primary)',
+              borderRadius: 24, padding: '3rem',
+              textAlign: 'center',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+              border: '1px solid var(--color-border-secondary)'
+            }}>
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%',
+                background: 'rgba(15, 118, 110, 0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 2rem', color: 'var(--color-accent)'
+              }}>
+                <Sparkles size={40} />
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 800, marginBottom: '1rem', color: 'var(--color-text-primary)' }}>Free Trial Ended</h2>
+              <p style={{ fontSize: 16, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '2.5rem' }}>
+                We hope you enjoyed your time with DentalIQ! Your free trial has concluded. To continue using our AI-driven clinical suite and manage your clinic effectively, please contact our support team to start your subscription.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <a 
+                  href="mailto:support@dentaliq.dev"
+                  style={{
+                    background: 'var(--color-accent)', color: '#fff',
+                    padding: '14px 24px', borderRadius: 12,
+                    fontWeight: 600, textDecoration: 'none',
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  Contact Support to Activate
+                </a>
+                <button 
+                  onClick={clearSession}
+                  style={{
+                    background: 'transparent', color: 'var(--color-text-secondary)',
+                    padding: '12px', border: 'none', cursor: 'pointer',
+                    fontSize: 14, fontWeight: 500
+                  }}
+                >
+                  Sign out of {tenant?.name}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Chat Float */}
+        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+          {isChatOpen && (
+            <div style={{ width: 380, height: 500, background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, boxShadow: '0 20px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+              {/* Header */}
+              <div style={{ padding: '16px 20px', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Sparkles size={18} />
+                  <span style={{ fontWeight: 600, fontSize: 15 }}>DentalIQ Copilot</span>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}><X size={20} /></button>
+              </div>
+
+              {/* Messages */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--color-background-secondary)' }}>
+                {chatMessages.map((msg, i) => (
+                  <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+                    <div style={{
+                      padding: '10px 14px', borderRadius: 14, fontSize: 14, lineHeight: 1.5,
+                      background: msg.role === 'user' ? 'var(--color-accent)' : 'var(--color-background-primary)',
+                      color: msg.role === 'user' ? '#fff' : 'var(--color-text-primary)',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      border: msg.role === 'user' ? 'none' : '1px solid var(--color-border-tertiary)'
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div style={{ alignSelf: 'flex-start', background: 'var(--color-background-primary)', padding: '10px 14px', borderRadius: 14, border: '1px solid var(--color-border-tertiary)' }}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-secondary)', animation: 'pulse 1.5s infinite' }} />
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-secondary)', animation: 'pulse 1.5s infinite 0.2s' }} />
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-secondary)', animation: 'pulse 1.5s infinite 0.4s' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input */}
+              <div style={{ padding: '16px', borderTop: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', display: 'flex', gap: 8 }}>
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSendChat()}
+                  placeholder="Ask anything..."
+                  style={{ flex: 1, padding: '10px 16px', borderRadius: 20, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none' }}
+                />
+                <button
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim() || chatLoading}
+                  style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--color-accent)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: (!chatInput.trim() || chatLoading) ? 0.5 : 1 }}
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--color-accent)', color: '#fff', border: 'none', cursor: 'pointer', boxShadow: '0 8px 32px rgba(15, 118, 110, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
+          </button>
+        </div>
+      </main>
+
+      <style jsx global>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+      `}</style>
     </div>
   )
 }

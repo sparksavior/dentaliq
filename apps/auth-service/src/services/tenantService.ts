@@ -87,8 +87,25 @@ export class TenantService {
         insurer_pays REAL,
         claim_risk TEXT,
         plain_explanation TEXT,
+        pre_auth_letter TEXT,
         created_by TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `))
+
+    await db.run(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "${p}_clinic_locations" (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        operating_hours TEXT,
+        pms_type TEXT DEFAULT 'none',
+        pms_connected INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `))
   }

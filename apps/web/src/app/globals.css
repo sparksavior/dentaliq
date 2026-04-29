@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
-/* ── DentalIQ design tokens (used by App.jsx components) ── */
+/* ── DentalIQ design tokens ── */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
 
   --color-background-primary:   #ffffff;
   --color-background-secondary: #f8fafc;
@@ -12,22 +12,32 @@
   --color-border-primary:       #cbd5e1;
   --color-border-secondary:     #e2e8f0;
   --color-border-tertiary:      #f1f5f9;
+  
+  --color-card-bg:              #ffffff;
+  --color-input-bg:             #ffffff;
   --color-accent:               #0f766e;
+  --color-accent-hover:         #0d9488;
+  --color-accent-muted:         #f0fdfa;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
-    --foreground: #ededed;
+    --foreground: #f8fafc;
 
     --color-background-primary:   #0a0a0a;
     --color-background-secondary: #141414;
-    --color-text-primary:         #ededed;
-    --color-text-secondary:       #888888;
-    --color-border-primary:       #333333;
-    --color-border-secondary:     #2a2a2a;
-    --color-border-tertiary:      #1c1c1c;
+    --color-text-primary:         #f8fafc;
+    --color-text-secondary:       #94a3b8;
+    --color-border-primary:       #334155;
+    --color-border-secondary:     #1e293b;
+    --color-border-tertiary:      #0f172a;
+    
+    --color-card-bg:              #111111;
+    --color-input-bg:             #1a1a1a;
     --color-accent:               #14b8a6;
+    --color-accent-hover:         #2dd4bf;
+    --color-accent-muted:         #042f2e;
   }
 }
 
@@ -41,5 +51,31 @@
 body {
   background: var(--color-background-primary);
   color: var(--color-text-primary);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Custom scrollbar for dark mode */
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0a0a0a;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2a2a;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #333;
+  }
 }

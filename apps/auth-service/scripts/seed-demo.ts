@@ -98,7 +98,7 @@ async function main() {
   await db.run(sql.raw(`CREATE TABLE IF NOT EXISTS "${tablePrefix}_estimates" (
     id TEXT PRIMARY KEY, patient_id TEXT, cdt_code TEXT NOT NULL, insurance_plan_id TEXT,
     coverage_percent INTEGER, patient_cost REAL, insurer_pays REAL, claim_risk TEXT,
-    plain_explanation TEXT, created_by TEXT NOT NULL,
+    plain_explanation TEXT, pre_auth_letter TEXT, created_by TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`))
 

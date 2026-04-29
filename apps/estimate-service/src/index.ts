@@ -60,6 +60,8 @@ async function buildApp() {
     timestamp: new Date().toISOString(),
   }))
 
+  // Routes
+
   await app.register(estimateRoutes)
 
   return app
