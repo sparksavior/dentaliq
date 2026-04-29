@@ -1,8 +1,8 @@
-# 🦷 DentalIQ Insurance Copilot — Final Release Documentation
+# 🦷 DentalIQ Insurance Copilot — Full Release Documentation
 
 > **Branch:** `release-apr-28-final-v1`
-> **Status:** Production-Ready MVP — April 28 Release
-> **Universal Setup:** `node setup.js`
+> **Base:** `release/phase-2`
+> **Status:** Production-Ready MVP — April 28 Release (Enhanced SaaS & AI Suite)
 
 ---
 
@@ -10,30 +10,27 @@
 
 1. [Project Overview](#project-overview)
 2. [Folder Structure](#folder-structure)
-3. [Core Features & Innovation](#core-features--innovation)
-   - [1. AI-Powered Pre-Auth Narratives](#1-ai-powered-pre-auth-narratives)
-   - [2. Dedicated Patient Dossier System](#2-dedicated-patient-dossier-system)
-   - [3. High-Reliability Failsafe Persistence](#3-high-reliability-failsafe-persistence)
-   - [4. Claim Risk Detection Engine](#4-claim-risk-detection-engine)
-   - [5. Universal OS Setup Script](#5-universal-os-setup-script)
-4. [Backend Service Reference](#backend-service-reference)
-5. [Database Schema & Architecture](#database-schema--architecture)
-6. [Environment Configuration](#environment-configuration)
-7. [Running Locally](#running-locally)
+3. [Core Feature Suite](#core-feature-suite)
+   - [1. Dedicated Patient Dossier System](#1-dedicated-patient-dossier-system)
+   - [2. AI Copilot Chatbot (Context-Aware)](#2-ai-copilot-chatbot-context-aware)
+   - [3. AI Pre-Auth Narrative Generator](#3-ai-pre-auth-narrative-generator)
+   - [4. Multi-Clinic Location Management](#4-multi-clinic-location-management)
+   - [5. Interactive Claim Notification Center](#5-interactive-claim-notification-center)
+   - [6. Claim Risk Detection (High/Med/Low)](#6-claim-risk-detection-highmedlow)
+   - [7. Redesigned Marketing Landing Page](#7-redesigned-marketing-landing-page)
+4. [Backend API Reference](#backend-api-reference)
+5. [Database Architecture & Failsafe Logic](#database-architecture--failsafe-logic)
+6. [Regulatory Compliance (PHIPA/PIPEDA)](#regulatory-compliance-phipapipeda)
+7. [Running Locally (Universal Setup)](#running-locally-universal-setup)
 8. [Architecture Diagram](#architecture-diagram)
-9. [Regulatory Compliance (PHIPA/PIPEDA)](#regulatory-compliance-phipapipeda)
 
 ---
 
 ## Project Overview
 
-DentalIQ is a next-generation insurance intelligence platform for Canadian dental clinics. It solves the two biggest administrative bottlenecks in modern dentistry: **denied claims** and **manual pre-authorization writing**.
+DentalIQ is a high-performance, AI-driven insurance intelligence platform for Canadian dental clinics. It solves administrative bottlenecks by automating clinical narrative writing, providing real-time claim risk analysis, and offering a context-aware AI copilot for office staff.
 
-This branch (`release-apr-28-final-v1`) represents the "Phase 2 Complete" milestone, featuring:
-- A fully automated **AI clinical writer** that drafts pre-auth letters in seconds.
-- A **Patient Dossier** system that provides a 360-degree view of clinical and financial history.
-- A **Failsafe Write Mechanism** that ensures data integrity even when standard drivers fail.
-- **Universal Portability** for macOS, Windows, and Linux.
+This branch (`release-apr-28-final-v1`) consolidates the full Phase 2 vision with enhanced SaaS portability, robust data persistence, and a premium clinical dossier experience.
 
 ---
 
@@ -42,161 +39,174 @@ This branch (`release-apr-28-final-v1`) represents the "Phase 2 Complete" milest
 ```
 dentaliq/
 ├── apps/
-│   ├── auth-service/                    # Auth & Tenant microservice (Port 3001)
+│   ├── auth-service/                    # Authentication & Tenant Provisioning (Port 3001)
 │   │   ├── src/
 │   │   │   ├── routes/
-│   │   │   │   └── auth.ts              # Login/Register logic
+│   │   │   │   └── auth.ts              # Login, signup, token refresh
 │   │   │   └── services/
-│   │   │       └── tenantService.ts     # Multi-tenant table provisioning
+│   │   │       └── tenantService.ts     # Provisions multi-tenant SQLite tables
 │   │
-│   ├── estimate-service/                # AI & Intelligence microservice (Port 3004)
+│   ├── estimate-service/                # The Intelligence Microservice (Port 3004)
 │   │   └── src/
 │   │       ├── services/
-│   │       │   ├── claimRisk.ts         # Risk scoring (LOW/MEDIUM/HIGH)
-│   │       │   └── llmNarrativeGenerator.ts # Ollama-based clinical writing
+│   │       │   ├── claimRisk.ts         # Risk scoring engine
+│   │       │   └── llmNarrativeGenerator.ts # AI clinical writing (Ollama)
 │   │       └── routes/
-│   │           └── estimate.ts          # ★ CRITICAL: Failsafe direct-write logic
+│   │           └── estimate.ts          # ★ CRITICAL: Failsafe direct-write update logic
 │   │
-│   ├── tenant-service/                  # Data & History microservice (Port 3002)
+│   ├── tenant-service/                  # Data & Clinical History Service (Port 3002)
 │   │   └── src/
-│   │       └── routes/
-│   │           └── patients.ts          # ★ MODIFIED: History JOINs for full names
+│   │       ├── routes/
+│   │       │   ├── clinics.ts           # ★ NEW: Multi-clinic CRUD (Toronto, Oakville, etc)
+│   │       │   └── patients.ts          # ★ MODIFIED: History JOINs for full names
 │   │
-│   └── web/                             # Next.js 14 Frontend (Port 3000)
+│   └── web/                             # Next.js 14 Premium Dashboard (Port 3000)
 │       └── src/
 │           ├── app/
 │           │   ├── (dashboard)/
 │           │   │   ├── dashboard/
 │           │   │   │   ├── patients/
-│           │   │   │   │   ├── [id]/    # ★ NEW: Dedicated Patient Dossier Page
-│           │   │   │   │   └── page.tsx # Patient Directory list
-│           │   │   │   └── estimates/   # One-click estimate tool
-│           │   │   └── layout.tsx       # Sidebar & Copilot shell
-│           │   └── logout/               # ★ NEW: Premium "See you soon" page
+│           │   │   │   │   ├── [id]/    # ★ NEW: Full Patient Dossier Page
+│           │   │   │   │   └── page.tsx # Patient Directory
+│           │   │   │   └── estimates/   # One-click estimation UI
+│           │   │   └── layout.tsx       # ★ MODIFIED: AI Copilot Chat Interface
+│           │   ├── logout/               # ★ NEW: Premium Logout Page
+│           │   └── page.tsx             # ★ HEAVILY REDESIGNED: Landing page with demos
 │           ├── components/
-│           │   └── PreAuthPdfModal.tsx  # Dynamic PDF generator/viewer
+│           │   └── PreAuthPdfModal.tsx  # Dynamic PDF generation & letter viewing
 │           └── lib/
-│               └── api.ts               # Frontend API client & shared interfaces
+│               └── api.ts               # Unified API client & TypeScript interfaces
 │
-├── packages/                            # Shared Drizzle schemas & DB utils
-├── setup.js                             # ★ UNIVERSAL: One-click installer
+├── packages/                            # Shared DB schemas & Turborepo config
+├── setup.js                             # ★ UNIVERSAL: Cross-platform setup script
 └── README.md                            # ★ This file
 ```
 
 ---
 
-## Core Features & Innovation
+## Core Feature Suite
 
-### 1. AI-Powered Pre-Auth Narratives
-**What it does:**
-When a dentist plans a complex procedure (e.g., Molar Root Canal), they must justify it to the insurer. DentalIQ's AI analyzes the CDT code and findings to draft a professional medical narrative.
-- **Location**: `apps/estimate-service/src/services/llmNarrativeGenerator.ts`
-- **Output**: Professional PDFs generated on-the-fly via the `PreAuthPdfModal`.
+### 1. Dedicated Patient Dossier System
+Unlike legacy dental software that relies on limited modals, DentalIQ provides a dedicated clinical dossier for every patient.
+*   **Location**: `/dashboard/patients/[id]`
+*   **Features**:
+    *   **Financial Summary**: Real-time aggregation of Insurer-Paid vs. Patient-Owed totals.
+    *   **Clinical History**: A chronological feed of every procedure, risk level, and archived clinical narrative.
+    *   **Archived Documents**: One-click access to generated Pre-Auth letters.
 
-### 2. Dedicated Patient Dossier System
-**What it does:**
-Replaces clunky popups with a dedicated dossier page for every patient. It aggregates clinical history, financial stats, and archived letters.
-- **Route**: `/dashboard/patients/[id]`
-- **View**: Includes a financial summary (Insurer Paid vs. Patient Paid) and a chronological feed of all past visits.
+### 2. AI Copilot Chatbot (Context-Aware)
+The dashboard includes a floating AI Copilot bubble (powered by Ollama `phi3`) that has live context of the clinic's environment.
+*   **Context Grounding**: The AI is injected with patient counts, claim statuses, and clinic-specific stats via the system prompt.
+*   **Capabilities**: Answer questions about claim statuses, provide clinical guidance, or summarize clinic performance.
 
-### 3. High-Reliability Failsafe Persistence
-**What it does:**
-Standard database drivers occasionally suffer from connection pooling lag in local development. We implemented a **direct SQLite3 CLI write mechanism** for clinical letters.
-- **Implementation**: Found in `apps/estimate-service/src/routes/estimate.ts`.
-- **Reliability**: It bypasses the ORM to write directly to the disk, ensuring that once a letter is "Saved," it is physically committed to the database file immediately.
+### 3. AI Pre-Auth Narrative Generator
+Automatically drafts professional medical justification letters for insurance companies.
+*   **Automation**: Uses CDT codes (e.g., D3330 for Root Canal) to generate professional narratives.
+*   **Customization**: Narratives are tailored to the specific procedure risk and clinical findings.
 
-### 4. Claim Risk Detection Engine
-**What it does:**
-Every estimate is assigned a risk score based on common insurance denial patterns in Ontario.
-- **Low Risk**: Standard cleaning/exam (Auto-approved).
-- **High Risk**: Major restorative without sufficient narrative documentation.
-- **Visuals**: Color-coded badges (Red/Amber/Green) across the entire dashboard.
+### 4. Multi-Clinic Location Management
+Manage multiple clinic locations (e.g., Toronto Downtown, Scarborough, Mississauga) from a single login.
+*   **CRUD Operations**: Create, update, and monitor settings for each location.
+*   **Isolation**: Every clinic maintains its own settings for PMS integration and local contact details.
 
-### 5. Universal OS Setup Script
-**What it does:**
-A robust `setup.js` script that handles the heavy lifting of environment configuration, dependency installation, and AI model pulling.
-- **Compatibility**: Detects OS and handles prerequisites via Homebrew (Mac) or standard npm/cli (Windows/Linux).
-- **AI Sync**: Automatically pulls the `phi3` model into the local Ollama instance.
+### 5. Interactive Claim Notification Center
+A live notification bell that simulates real-time claim status updates (Approvals, Denials, and Risk Warnings).
+*   **UI**: Premium dropdown with type-coded icons and unread status tracking.
 
----
+### 6. Claim Risk Detection (High/Med/Low)
+A proprietary risk engine that flags estimates before submission.
+*   **Risk Scoring**: Evaluates procedure codes against common Canadian insurance denial rules.
+*   **Visualization**: Red/Amber/Green status badges throughout the history and patient lists.
 
-## Backend Service Reference
-
-### Auth Service (Port 3001)
-| Method | Path | Description |
-|---|---|---|
-| POST | `/auth/login` | Returns JWT and tenant prefix |
-| GET | `/users/me` | Fetches session-bound user info |
-
-### Tenant Service (Port 3002)
-| Method | Path | Description |
-|---|---|---|
-| GET | `/patients` | Lists patient directory |
-| GET | `/patients/:id` | Returns full dossier + **Clinical History with Patient Names** |
-
-### Estimate Service (Port 3004)
-| Method | Path | Description |
-|---|---|---|
-| POST | `/estimate` | Runs AI analysis + Risk assessment |
-| POST | `/save-letter` | **★ FAILSAFE**: Writes clinical letter via direct CLI |
+### 7. Redesigned Marketing Landing Page
+A full-width, modern landing page (`/`) featuring interactive product demos, pricing cards, and security certifications.
+*   **Interactive Demos**: Tabbed mockups for the Cost Estimator, Copilot, and Notifications.
+*   **Compliance Showcase**: Highlights PHIPA, AES-256 encryption, and Canadian Data Residency.
 
 ---
 
-## Database Schema & Architecture
+## Backend API Reference
 
-DentalIQ uses a **Multi-Tenant Table Prefixing** strategy for data isolation.
+### Auth Service — `http://localhost:3001`
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/login` | ❌ | Login, returns JWT + Tenant Prefix |
+| GET | `/users/me` | ✅ | Fetch current user role and clinic ID |
 
-### Key Tables (Per Tenant):
-- `t_{tenant}_patients`: Demographics & Insurance IDs.
-- `t_{tenant}_estimates`: The core clinical record. Stores `cdt_code`, `claim_risk`, and the critical `pre_auth_letter` BLOB.
+### Tenant Service — `http://localhost:3002`
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/patients` | ✅ | List patient directory |
+| GET | `/patients/:id` | ✅ | **Dossier Data**: Returns patient + Full Clinical History |
+| GET | `/clinics` | ✅ | List all clinic locations |
 
-**Data Integrity Improvement**: The history fetch now utilizes a SQL `JOIN` between estimates and patients to ensure that historical records are always associated with the correct names and timestamps.
+### Estimate Service — `http://localhost:3004`
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/estimate` | ✅ | Run AI analysis + Risk assessment |
+| POST | `/save-letter` | ✅ | **★ FAILSAFE**: Writes narrative directly to SQLite |
 
 ---
 
-## Running Locally
+## Database Architecture & Failsafe Logic
 
-### Prerequisites
-- Node.js 20+
-- pnpm 9+
-- [Ollama](https://ollama.com) (for AI features)
+### Multi-Tenant Strategy
+DentalIQ uses a **Table-per-Tenant** architecture (e.g., `t_riverside_patients`). This ensures physical data isolation, making the system inherently ready for strict privacy audits.
 
-### One-Click Launch
+### ★ Failsafe Direct Write Mechanism
+To solve connection-pooling issues in local environments, we implemented a **Direct Write Logic** in the Estimate Service:
+```typescript
+// Uses child_process.execSync to run sqlite3 CLI directly
+// Bypasses ORM transaction lag to ensure letter persistence
+const cmd = `sqlite3 "${absDbPath}" "UPDATE \"${table}_estimates\" SET pre_auth_letter = '${letter}' WHERE id = '${id}';"`
+```
+This ensures that when a dentist clicks "Save Letter," the update is physically committed to the disk immediately.
+
+---
+
+## Regulatory Compliance (PHIPA/PIPEDA)
+
+DentalIQ is designed to meet the rigorous standards of the **Royal College of Dental Surgeons of Ontario (RCDSO)**:
+
+1.  **Canadian Data Residency**: Optimized for hosting in GCP Toronto/Montreal regions.
+2.  **PHIPA Isolation**: Tenant-specific table prefixing ensures no data leakage between clinics.
+3.  **Local AI**: Clinical data processing (Ollama) occurs on-premise or within the clinic's VPC, never sent to external US-based APIs.
+4.  **Audit Ready**: Database architecture supports full access logging of PHI (Personal Health Information).
+
+---
+
+## Running Locally (Universal Setup)
+
+The repository features a **Universal Setup Script** (`setup.js`) designed for "Zero-Config" deployment.
+
 ```bash
+# 1. Clone & Enter
+git clone https://github.com/sparksavior/dentaliq.git
+cd dentaliq
+
+# 2. Run Setup (Works on Mac, Windows, Linux)
 node setup.js
 ```
-This will:
-1. Install all dependencies.
-2. Create your `.env` file.
-3. Start the Ollama AI engine.
-4. Push the DB schema.
-5. Launch the Dashboard (Port 3000).
+
+### Credentials (Demo)
+*   **Email**: `demo@dentaliq.dev`
+*   **Password**: `Demo1234!`
 
 ---
 
 ## Architecture Diagram
 
 ```
-[ Frontend: Next.js ] ◄───► [ Auth Service ] ─── [ SQLite ]
-         ▲                        ▲
-         │                        │
-         ▼                        ▼
-[ Estimate Service ] ◄───► [ Tenant Service ]
-         ▲
-         │
-         ▼
-[ Local AI: Ollama ]
+[ Frontend: Next.js 14 ] <───> [ Auth Service ] ─── [ SQLite ]
+          ▲                            ▲
+          │                            │
+          ▼                            ▼
+[ Estimate Service ] <───> [ Tenant Service ]
+          ▲
+          │
+          ▼
+[ Local AI Engine: Ollama / Phi-3 ]
 ```
-
----
-
-## Regulatory Compliance (PHIPA/PIPEDA)
-
-DentalIQ is architected to exceed the security standards required by the **Royal College of Dental Surgeons of Ontario (RCDSO)**:
-
-1. **Data Sovereignty**: All patient data remains on Canadian soil when hosted in GCP's Toronto region.
-2. **Local AI processing**: Clinical narratives are generated **locally** on the clinic's machine/server via Ollama. PHI (Personal Health Information) is never sent to external US-based AI APIs.
-3. **Tenant Isolation**: Physical separation of data via table prefixing prevents "cross-clinic leakage."
 
 ---
 
