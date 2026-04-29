@@ -33,6 +33,7 @@ export default function LoginPage() {
         return
       }
 
+      sessionStorage.setItem('diq_fresh_login', '1')
       setSession(result.accessToken, result.user)
       router.push('/dashboard')
     } catch (err) {

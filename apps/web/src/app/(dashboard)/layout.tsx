@@ -6,6 +6,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
 import { tenantsApi, type Tenant, patientsApi, estimateApi } from '@/lib/api'
 import { X, Send, Sparkles, MessageSquare, ChevronRight } from 'lucide-react'
+import { TourGuide } from '@/components/TourGuide'
+import { ClinicInsightPopup } from '@/components/ClinicInsightPopup'
 
 const NAV = [
   {
@@ -343,6 +345,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
       </main>
+
+      {/* Tour guide for new users */}
+      <TourGuide />
+
+      {/* AI clinic insight popup on login */}
+      <ClinicInsightPopup
+        patients={patients}
+        history={history}
+        clinicName={tenant?.name ?? user.name}
+        userName={user.name}
+      />
 
       <style jsx global>{`
         @keyframes slideIn {

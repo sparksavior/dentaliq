@@ -19,6 +19,7 @@ export interface NarrativeInput {
   cdtCode: string
   insurerName: string
   patientName?: string
+  patientAge?: number
   clinicalNotes?: string
   previousNarrative?: string
   revisionInstructions?: string
@@ -28,10 +29,13 @@ export async function generateNarrative(input: NarrativeInput): Promise<string> 
   const code = getCdtCode(input.cdtCode)
   if (!code) throw new Error(`Unknown CDT code: ${input.cdtCode}`)
 
-  const patient = input.patientName || 'the patient'
-  
+  const patientName = input.patientName || 'the patient'
+  const patientDescriptor = input.patientAge
+    ? `${patientName} (age ${input.patientAge})`
+    : patientName
+
   let prompt = ''
-  
+
   if (input.previousNarrative && input.revisionInstructions) {
     prompt = `
 You are revising a previously written pre-authorization dental narrative.
@@ -45,14 +49,14 @@ User Revision Instructions:
 ${input.revisionInstructions}
 """
 
-Please rewrite the narrative letter to incorporate these changes while maintaining a professional, formal tone. Ensure the patient name (${patient}) and procedure (${code.code} - ${code.description}) are still correctly mentioned.
+Please rewrite the narrative letter to incorporate these changes while maintaining a professional, formal tone. Ensure the patient name (${patientDescriptor}) and procedure (${code.code} - ${code.description}) are still correctly mentioned.
 `
   } else {
     prompt = `
 Please write a pre-authorization narrative for:
 Procedure: ${code.code} - ${code.description}
 Insurance: ${input.insurerName}
-Patient: ${patient}
+Patient: ${patientDescriptor}
 Clinical Notes to incorporate (if any): ${input.clinicalNotes || 'Tooth has extensive decay and fractures, standard restorative options are insufficient to restore form and function.'}
 `
   }
@@ -70,6 +74,6 @@ Clinical Notes to incorporate (if any): ${input.clinicalNotes || 'Tooth has exte
     return response.content.trim()
   } catch (err) {
     logger.error({ err }, 'Failed to generate narrative')
-    return `To the Claims Department,\n\nWe are submitting a pre-authorization request for procedure ${code.code} (${code.description}) for ${patient}. \n\nThis procedure is medically necessary due to extensive damage that cannot be resolved with basic restorative care. Please review the attached radiographs.\n\nSincerely,\nThe Dental Team`
+    return `To the Claims Department,\n\nWe are submitting a pre-authorization request for procedure ${code.code} (${code.description}) for ${patientDescriptor}. \n\nThis procedure is medically necessary due to extensive damage that cannot be resolved with basic restorative care. Please review the attached radiographs.\n\nSincerely,\nThe Dental Team`
   }
 }

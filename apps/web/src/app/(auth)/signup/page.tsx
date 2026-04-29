@@ -123,6 +123,8 @@ export default function SignupPage() {
         setSession(sessionToken, user)
       } catch { /* session already set */ }
     }
+    // Flag: show insight popup + trigger tour guide on first dashboard visit
+    sessionStorage.setItem('diq_fresh_login', '1')
     router.push('/dashboard')
   }
 

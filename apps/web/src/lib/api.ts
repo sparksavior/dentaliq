@@ -290,7 +290,7 @@ export const estimateApi = {
   getHistory: (token: string) =>
     estimateRequest<EstimateHistoryItem[]>('/estimate/history', token),
 
-  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; clinicalNotes?: string; previousNarrative?: string; revisionInstructions?: string }) =>
+  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; patientAge?: number; clinicalNotes?: string; previousNarrative?: string; revisionInstructions?: string }) =>
     estimateRequest<string>('/estimate/narrative', token, { method: 'POST', body: JSON.stringify(input) }),
 
   saveLetter: (token: string, id: string, letter: string) =>

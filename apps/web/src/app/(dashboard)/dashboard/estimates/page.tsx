@@ -155,11 +155,15 @@ export default function EstimatesPage() {
     const instructions = typeof revisionInstructions === 'string' ? revisionInstructions : undefined
 
     try {
-      const p = patients.find(p => p.id === selectedPatientId)
+      const p = patients.find(pt => pt.id === selectedPatientId)
+      const patientAge = p?.date_of_birth
+        ? Math.floor((Date.now() - new Date(p.date_of_birth).getTime()) / 31557600000)
+        : undefined
       const text = await estimateApi.generateNarrative(accessToken, {
-        cdtCode: result.cdtCode, 
+        cdtCode: result.cdtCode,
         insurerName: insurer,
         patientName: p ? `${p.first_name} ${p.last_name}` : undefined,
+        patientAge,
         previousNarrative: narrativeText || undefined,
         revisionInstructions: instructions
       })
