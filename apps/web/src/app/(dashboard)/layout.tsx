@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
-import { tenantsApi, type Tenant } from '@/lib/api'
+import { tenantsApi, type Tenant, patientsApi, estimateApi } from '@/lib/api'
+import { X, Send, Sparkles, MessageSquare, ChevronRight } from 'lucide-react'
 
 const NAV = [
   {
@@ -61,6 +62,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const [tenant, setTenant] = useState<Tenant | null>(null)
 
+  // AI Chat State
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([
+    { role: 'assistant', content: "Hello! I'm your DentalIQ Copilot. I have full context of your clinic's patients, claims, and estimates. How can I help you today?" }
+  ])
+
+  // Context State for AI
+  const [patients, setPatients] = useState<any[]>([])
+  const [history, setHistory] = useState<any[]>([])
+
   useEffect(() => {
     if (!loading && !user) router.replace('/login')
   }, [loading, user, router])
@@ -68,30 +81,85 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (accessToken) {
       tenantsApi.getTenant(accessToken).then(setTenant).catch(() => {})
+      
+      // Fetch data for AI context
+      patientsApi.getPatients(accessToken).then(setPatients).catch(() => {})
+      estimateApi.getHistory(accessToken).then(setHistory).catch(() => {})
     }
   }, [accessToken])
 
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || chatLoading) return
+    const userMsg = { role: 'user', content: chatInput }
+    setChatMessages(prev => [...prev, userMsg])
+    setChatInput('')
+    setChatLoading(true)
+
+    try {
+      // Build context string
+      const patientSummary = patients.slice(0, 10).map(p => `${p.first_name} ${p.last_name}`).join(', ')
+      const claimStats = `Total Estimates/Claims: ${history.length}, High Risk: ${history.filter(h => h.claim_risk === 'high').length}`
+
+      const res = await fetch('http://localhost:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'phi3', // Default model from setup.js
+          messages: [
+            { 
+              role: 'system', 
+              content: `You are the DentalIQ Copilot, an AI assistant for a dental clinic in Ontario, Canada.
+              
+              Clinic Context:
+              - Clinic Name: ${tenant?.name || 'Your Clinic'}
+              - Total Patients: ${patients.length}
+              - Recent Patients: ${patientSummary}
+              - Claims/Estimates Overview: ${claimStats}
+              
+              Be helpful, professional, and knowledgeable about Ontario dental billing (CDAnet), PHIPA compliance, and clinical efficiency. Keep responses concise.` 
+            },
+            ...chatMessages,
+            userMsg
+          ],
+          stream: false
+        })
+      })
+
+      const data = await res.json()
+      if (data.message) {
+        setChatMessages(prev => [...prev, data.message])
+      } else {
+        throw new Error('Invalid response')
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'I cannot reach the AI engine. Please ensure Ollama is running (`node setup.js`).' }])
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="h-6 w-6 rounded-full border-2 border-teal-600 border-t-transparent animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background-secondary)]">
+        <div className="h-6 w-6 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#f8fafc', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--color-background-secondary)', overflow: 'hidden', color: 'var(--color-text-primary)' }}>
       {/* Sidebar */}
-      <aside style={{ width: 228, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e2e8f0', background: '#fff', flexShrink: 0 }}>
+      <aside style={{ width: 228, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', flexShrink: 0 }}>
         {/* Logo + clinic name */}
-        <div style={{ padding: '0 16px', height: 60, display: 'flex', alignItems: 'center', borderBottom: '1px solid #f1f5f9', gap: 10, flexShrink: 0 }}>
+        <div style={{ padding: '0 16px', height: 60, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border-tertiary)', gap: 10, flexShrink: 0 }}>
           <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#fff', flexShrink: 0 }}>+</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-              Dental<span style={{ color: '#0f766e' }}>IQ</span>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              Dental<span style={{ color: 'var(--color-accent)' }}>IQ</span>
             </div>
             {tenant && (
-              <div style={{ fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {tenant.name}
               </div>
             )}
@@ -110,13 +178,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 href={item.href}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, fontSize: 14, fontWeight: isActive ? 600 : 400, textDecoration: 'none', transition: 'all 0.15s',
-                  background: isActive ? '#f0fdfa' : 'transparent',
-                  color: isActive ? '#0f766e' : '#475569',
+                  background: isActive ? 'var(--color-accent-muted)' : 'transparent',
+                  color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)',
                 }}
-                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#f8fafc' }}
-                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
               >
-                <span style={{ color: isActive ? '#0f766e' : '#94a3b8', flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)', flexShrink: 0 }}>{item.icon}</span>
                 {item.label}
               </Link>
             )
@@ -124,21 +190,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* User footer */}
-        <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 10px' }}>
+        <div style={{ borderTop: '1px solid var(--color-border-tertiary)', padding: '10px 10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9 }}>
             <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
               {user.name.charAt(0).toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
-              <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'capitalize' }}>{user.role.replace('_', ' ')}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', textTransform: 'capitalize' }}>{user.role.replace('_', ' ')}</div>
             </div>
             <button
               onClick={clearSession}
               title="Sign out"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#64748b'}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#cbd5e1'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-border-primary)', padding: 4, borderRadius: 6, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
             >
               <svg style={{ width: 15, height: 15 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -149,7 +213,89 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main style={{ flex: 1, overflowY: 'auto' }}>{children}</main>
+      <main style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        {children}
+
+        {/* AI Chat Float */}
+        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+          {isChatOpen && (
+            <div style={{ width: 380, height: 500, background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, boxShadow: '0 20px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+              {/* Header */}
+              <div style={{ padding: '16px 20px', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Sparkles size={18} />
+                  <span style={{ fontWeight: 600, fontSize: 15 }}>DentalIQ Copilot</span>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', padding: 4 }}><X size={20} /></button>
+              </div>
+
+              {/* Messages */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--color-background-secondary)' }}>
+                {chatMessages.map((msg, i) => (
+                  <div key={i} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+                    <div style={{
+                      padding: '10px 14px', borderRadius: 14, fontSize: 14, lineHeight: 1.5,
+                      background: msg.role === 'user' ? 'var(--color-accent)' : 'var(--color-background-primary)',
+                      color: msg.role === 'user' ? '#fff' : 'var(--color-text-primary)',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      border: msg.role === 'user' ? 'none' : '1px solid var(--color-border-tertiary)'
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div style={{ alignSelf: 'flex-start', background: 'var(--color-background-primary)', padding: '10px 14px', borderRadius: 14, border: '1px solid var(--color-border-tertiary)' }}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-secondary)', animation: 'pulse 1.5s infinite' }} />
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-secondary)', animation: 'pulse 1.5s infinite 0.2s' }} />
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-text-secondary)', animation: 'pulse 1.5s infinite 0.4s' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input */}
+              <div style={{ padding: '16px', borderTop: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', display: 'flex', gap: 8 }}>
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSendChat()}
+                  placeholder="Ask anything..."
+                  style={{ flex: 1, padding: '10px 16px', borderRadius: 20, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 14, outline: 'none' }}
+                />
+                <button
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim() || chatLoading}
+                  style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--color-accent)', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: (!chatInput.trim() || chatLoading) ? 0.5 : 1 }}
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--color-accent)', color: '#fff', border: 'none', cursor: 'pointer', boxShadow: '0 8px 32px rgba(15, 118, 110, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
+          </button>
+        </div>
+      </main>
+
+      <style jsx global>{`
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+      `}</style>
     </div>
   )
 }

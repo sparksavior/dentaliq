@@ -49,6 +49,8 @@ async function buildApp() {
     timestamp: new Date().toISOString(),
   }))
 
+  // Register routes
+
   await app.register(tenantRoutes, { prefix: '/tenants' })
   await app.register(patientsRoutes, { prefix: '/patients' })
   await app.register(insurancePlansRoutes, { prefix: '/insurance-plans' })

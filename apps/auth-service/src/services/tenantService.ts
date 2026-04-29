@@ -87,6 +87,7 @@ export class TenantService {
         insurer_pays REAL,
         claim_risk TEXT,
         plain_explanation TEXT,
+        pre_auth_letter TEXT,
         created_by TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )

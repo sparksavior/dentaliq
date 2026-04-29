@@ -95,12 +95,12 @@ export default function LoginPage() {
       </div>
 
       {/* Right panel — form */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem', background: 'var(--color-background-primary)' }}>
         <div style={{ width: '100%', maxWidth: 400 }}>
-          <h2 style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.02em' }}>
+          <h2 style={{ fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, letterSpacing: '-0.02em' }}>
             {requiresMfa ? 'Two-factor authentication' : 'Welcome back'}
           </h2>
-          <p style={{ fontSize: 14, color: '#64748b', marginBottom: '2rem' }}>
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '2rem' }}>
             {requiresMfa
               ? 'Enter the 6-digit code from your authenticator app.'
               : 'Sign in to your DentalIQ account.'}
@@ -116,7 +116,7 @@ export default function LoginPage() {
             {!requiresMfa ? (
               <>
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Email address</label>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>Email address</label>
                   <input
                     type="email"
                     required
@@ -124,14 +124,14 @@ export default function LoginPage() {
                     value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                     placeholder="you@yourclinic.com"
-                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#fff', transition: 'border-color 0.15s' }}
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 10, fontSize: 14, color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', background: 'var(--color-input-bg)', transition: 'border-color 0.15s' }}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
 
                 <div style={{ marginBottom: 8 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Password</label>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>Password</label>
                   <input
                     type="password"
                     required
@@ -139,18 +139,18 @@ export default function LoginPage() {
                     value={form.password}
                     onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                     placeholder="••••••••"
-                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, color: '#0f172a', outline: 'none', boxSizing: 'border-box', background: '#fff', transition: 'border-color 0.15s' }}
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 10, fontSize: 14, color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', background: 'var(--color-input-bg)', transition: 'border-color 0.15s' }}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                   <div style={{ textAlign: 'right', marginTop: 6 }}>
-                    <Link href="/forgot-password" style={{ fontSize: 12, color: '#0f766e', textDecoration: 'none' }}>Forgot password?</Link>
+                    <Link href="/forgot-password" style={{ fontSize: 12, color: 'var(--color-accent)', textDecoration: 'none' }}>Forgot password?</Link>
                   </div>
                 </div>
               </>
             ) : (
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Authenticator code</label>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>Authenticator code</label>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -161,9 +161,9 @@ export default function LoginPage() {
                   value={form.totpCode}
                   onChange={(e) => setForm((f) => ({ ...f, totpCode: e.target.value }))}
                   placeholder="000000"
-                  style={{ width: '100%', padding: '14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 24, color: '#0f172a', outline: 'none', boxSizing: 'border-box', textAlign: 'center', letterSpacing: '0.3em', fontFamily: 'monospace', transition: 'border-color 0.15s' }}
-                  onFocus={e => e.target.style.borderColor = '#0f766e'}
-                  onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  style={{ width: '100%', padding: '14px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 10, fontSize: 24, color: 'var(--color-text-primary)', outline: 'none', boxSizing: 'border-box', textAlign: 'center', letterSpacing: '0.3em', fontFamily: 'monospace', background: 'var(--color-input-bg)', transition: 'border-color 0.15s' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                 />
               </div>
             )}
@@ -173,7 +173,7 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 width: '100%', marginTop: 8, padding: '12px', borderRadius: 10, border: 'none',
-                background: loading ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)',
+                background: loading ? 'var(--color-text-secondary)' : 'linear-gradient(135deg, #0f766e, #0d9488)',
                 color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s', letterSpacing: '-0.01em',
               }}
@@ -183,23 +183,24 @@ export default function LoginPage() {
           </form>
 
           {!requiresMfa && (
-            <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: 14, color: '#64748b' }}>
+            <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: 14, color: 'var(--color-text-secondary)' }}>
               New to DentalIQ?{' '}
-              <Link href="/signup" style={{ color: '#0f766e', fontWeight: 600, textDecoration: 'none' }}>
+              <Link href="/signup" style={{ color: 'var(--color-accent)', fontWeight: 600, textDecoration: 'none' }}>
                 Create an account
               </Link>
             </p>
           )}
 
-          <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'center', gap: 20 }}>
+          <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--color-border-tertiary)', display: 'flex', justifyContent: 'center', gap: 20 }}>
             {['PHIPA Compliant', 'SOC 2 Ready', 'Canadian Data'].map(badge => (
-              <div key={badge} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#94a3b8' }}>
-                <span style={{ color: '#0f766e' }}>✓</span> {badge}
+              <div key={badge} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                <span style={{ color: 'var(--color-accent)' }}>✓</span> {badge}
               </div>
             ))}
           </div>
         </div>
       </div>
+
     </div>
   )
 }

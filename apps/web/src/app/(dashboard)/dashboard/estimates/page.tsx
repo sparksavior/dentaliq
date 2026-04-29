@@ -1,10 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { FileText } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
-import { estimateApi, patientsApi, type EstimateResult, type CdtCodeSummary, type Patient, type EstimateHistoryItem } from '@/lib/api'
+import { estimateApi, patientsApi, tenantsApi, type Tenant, type EstimateResult, type CdtCodeSummary, type Patient, type EstimateHistoryItem } from '@/lib/api'
+import PreAuthPdfModal from '@/components/PreAuthPdfModal'
 
 const FALLBACK_CDT: CdtCodeSummary[] = [
+// ... (rest of CDT codes)
   { code: 'D1110', description: 'Prophylaxis (adult)',              category: 'preventive', typicalFee: 115,  requiresPreAuth: false },
   { code: 'D1120', description: 'Prophylaxis (child)',              category: 'preventive', typicalFee: 80,   requiresPreAuth: false },
   { code: 'D2393', description: 'Composite resin — 3 surfaces',    category: 'basic',      typicalFee: 248,  requiresPreAuth: false },
@@ -18,9 +21,9 @@ const FALLBACK_CDT: CdtCodeSummary[] = [
 const INSURERS = ['Sun Life Financial', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Desjardins', 'OTIP/RAEO', 'Empire Life']
 
 const riskStyle = {
-  low:    { bg: '#d1fae5', text: '#065f46', label: 'Low Risk' },
-  medium: { bg: '#fef3c7', text: '#92400e', label: 'Medium Risk' },
-  high:   { bg: '#fee2e2', text: '#991b1b', label: 'High Risk' },
+  low:    { bg: 'rgba(16, 185, 129, 0.1)', text: '#10b981', label: 'Low Risk' },
+  medium: { bg: 'rgba(245, 158, 11, 0.1)', text: '#f59e0b', label: 'Medium Risk' },
+  high:   { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444', label: 'High Risk' },
 }
 
 function SearchableSelect({ options, value, onChange, placeholder }: {
@@ -48,21 +51,17 @@ function SearchableSelect({ options, value, onChange, placeholder }: {
             if (e.key === 'Enter') e.preventDefault()
           }
         }}
-        style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, color: '#0f172a', background: '#fff', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-        onMouseEnter={e => (e.target as HTMLInputElement).style.borderColor = '#0f766e'}
-        onMouseLeave={e => { if (document.activeElement !== e.target) (e.target as HTMLInputElement).style.borderColor = '#e2e8f0' }}
+        style={{ width: '100%', padding: '10px 14px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 10, fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-background-primary)', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
       />
       {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginTop: 4, zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, maxHeight: 220, overflowY: 'auto', background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 10, marginTop: 4, zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
           {filtered.length === 0
-            ? <div style={{ padding: '10px 14px', fontSize: 13, color: '#94a3b8' }}>No matches</div>
+            ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--color-text-secondary)' }}>No matches</div>
             : filtered.map(o => (
               <div key={o.value}
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => { onChange(o.value); setOpen(false) }}
-                style={{ padding: '10px 14px', fontSize: 14, cursor: 'pointer', background: value === o.value ? '#f0fdfa' : '#fff', color: '#0f172a', borderBottom: '1px solid #f8fafc' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f8fafc'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = value === o.value ? '#f0fdfa' : '#fff'}
+                style={{ padding: '10px 14px', fontSize: 14, cursor: 'pointer', background: value === o.value ? 'var(--color-accent-muted)' : 'transparent', color: 'var(--color-text-primary)', borderBottom: '1px solid var(--color-border-tertiary)' }}
               >
                 {o.label}
               </div>
@@ -88,6 +87,7 @@ export default function EstimatesPage() {
   const { accessToken } = useAuth()
   const [cdtCodes, setCdtCodes] = useState<CdtCodeSummary[]>(FALLBACK_CDT)
   const [patients, setPatients] = useState<Patient[]>([])
+  const [tenant, setTenant] = useState<Tenant | null>(null)
   const [history, setHistory] = useState<EstimateHistoryItem[]>([])
   const [liveMode, setLiveMode] = useState(false)
 
@@ -97,20 +97,23 @@ export default function EstimatesPage() {
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [narrativeText, setNarrativeText] = useState<string | null>(null)
   const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const [showPdfModal, setShowPdfModal] = useState(false)
   const [estimating, setEstimating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     if (!accessToken) return
-    const [codes, pts, hist] = await Promise.all([
+    const [codes, pts, hist, t] = await Promise.all([
       estimateApi.getCodes(accessToken).catch(() => null),
       patientsApi.getPatients(accessToken).catch(() => [] as Patient[]),
       estimateApi.getHistory(accessToken).catch(() => [] as EstimateHistoryItem[]),
+      tenantsApi.getTenant(accessToken).catch(() => null),
     ])
     if (codes) { setCdtCodes(codes); setLiveMode(true) }
     setPatients(pts)
     setHistory(hist)
+    setTenant(t)
   }, [accessToken])
 
   useEffect(() => { load() }, [load])
@@ -136,7 +139,6 @@ export default function EstimatesPage() {
       }
       const data = await estimateApi.runEstimate(accessToken, { cdtCode: cdt, insurerName: insurer, patientId: selectedPatientId || undefined, patientAge: age })
       setResult(data)
-      // Refresh history after new estimate
       estimateApi.getHistory(accessToken).then(setHistory).catch(() => {})
     } catch (err: any) {
       setError(err.message ?? 'Estimate failed')
@@ -145,16 +147,24 @@ export default function EstimatesPage() {
     }
   }
 
-  const generateNarrative = async () => {
+  const generateNarrative = async (revisionInstructions?: string | any) => {
     if (!accessToken || !result) return
     setNarrativeLoading(true)
+    
+    // Ensure we don't pass the React Event object as instructions
+    const instructions = typeof revisionInstructions === 'string' ? revisionInstructions : undefined
+
     try {
       const p = patients.find(p => p.id === selectedPatientId)
       const text = await estimateApi.generateNarrative(accessToken, {
-        cdtCode: result.cdtCode, insurerName: insurer,
+        cdtCode: result.cdtCode, 
+        insurerName: insurer,
         patientName: p ? `${p.first_name} ${p.last_name}` : undefined,
+        previousNarrative: narrativeText || undefined,
+        revisionInstructions: instructions
       })
       setNarrativeText(text)
+      setShowPdfModal(true)
     } catch (err: any) {
       setError('Failed to generate narrative: ' + (err.message ?? 'Unknown error'))
     } finally {
@@ -169,14 +179,33 @@ export default function EstimatesPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const rs = result ? (riskStyle[result.claimRisk] ?? riskStyle.low) : null
+  const rs = result ? (riskStyle[result.claimRisk as keyof typeof riskStyle] ?? riskStyle.low) : null
+
+  const patientObj = patients.find(p => p.id === selectedPatientId)
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto', color: 'var(--color-text-primary)' }}>
+      {/* PDF Modal */}
+      {showPdfModal && narrativeText && (
+        <PreAuthPdfModal
+          narrative={narrativeText}
+          clinicName={tenant?.name || 'Your Clinic'}
+          insurerName={insurer}
+          patientName={patientObj ? `${patientObj.first_name} ${patientObj.last_name}` : undefined}
+          onClose={() => setShowPdfModal(false)}
+          onRevise={async (instr) => { await generateNarrative(instr) }}
+          onSave={async () => {
+            if (!accessToken || !result || result.id === 'static' || !narrativeText) return
+            console.log('Saving letter for estimate:', result.id, 'Length:', narrativeText.length)
+            await estimateApi.saveLetter(accessToken, result.id, narrativeText)
+            alert('Letter saved to patient profile!')
+          }}
+        />
+      )}
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.03em', marginBottom: 4 }}>Cost Estimator</h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.03em', marginBottom: 4 }}>Cost Estimator</h1>
+        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
           {liveMode ? `${cdtCodes.length} CDT codes loaded · AI-powered explanations` : 'Estimate service offline — using fallback rules'}
         </p>
       </div>
@@ -184,11 +213,11 @@ export default function EstimatesPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {/* Left: Estimator */}
         <div>
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: '1.2rem' }}>Run an estimate</h2>
+          <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', marginBottom: 16 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '1.2rem' }}>Run an estimate</h2>
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 5 }}>Patient <span style={{ fontWeight: 400 }}>(optional)</span></label>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Patient <span style={{ fontWeight: 400 }}>(optional)</span></label>
               <SearchableSelect
                 options={[{ label: '— No patient selected —', value: '' }, ...patients.map(p => ({ label: `${p.first_name} ${p.last_name}`, value: p.id }))]}
                 value={selectedPatientId}
@@ -198,7 +227,7 @@ export default function EstimatesPage() {
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 5 }}>CDT procedure code</label>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>CDT procedure code</label>
               <SearchableSelect
                 options={cdtCodes.map(c => ({ label: `${c.code} — ${c.description}`, value: c.code }))}
                 value={cdt}
@@ -208,7 +237,7 @@ export default function EstimatesPage() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#64748b', display: 'block', marginBottom: 5 }}>Insurance provider</label>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Insurance provider</label>
               <SearchableSelect
                 options={INSURERS.map(ins => ({ label: ins, value: ins }))}
                 value={insurer}
@@ -218,13 +247,13 @@ export default function EstimatesPage() {
             </div>
 
             {error && (
-              <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, fontSize: 13, color: '#dc2626' }}>{error}</div>
+              <div style={{ marginBottom: 12, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #fecaca', borderRadius: 10, fontSize: 13, color: '#ef4444' }}>{error}</div>
             )}
 
             <button
               onClick={runEstimate}
               disabled={estimating}
-              style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: estimating ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: estimating ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
+              style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: estimating ? 'var(--color-text-secondary)' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: estimating ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
             >
               {estimating ? 'Calculating…' : 'Run estimate →'}
             </button>
@@ -232,15 +261,15 @@ export default function EstimatesPage() {
 
           {/* Result card */}
           {result && rs && (
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: '1rem' }}>
-                <div style={{ background: '#f0fdfa', borderRadius: 10, padding: '12px' }}>
-                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Coverage</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, color: '#0f766e' }}>{result.coveragePercent}%</div>
+                <div style={{ background: 'var(--color-accent-muted)', borderRadius: 10, padding: '12px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-accent)', marginBottom: 4 }}>Coverage</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--color-accent)' }}>{result.coveragePercent}%</div>
                 </div>
-                <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px' }}>
-                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Patient pays</div>
-                  <div style={{ fontSize: 26, fontWeight: 700, color: '#0f172a' }}>${result.patientCost.toLocaleString()}</div>
+                <div style={{ background: 'var(--color-background-secondary)', borderRadius: 10, padding: '12px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4 }}>Patient pays</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)' }}>${result.patientCost.toLocaleString()}</div>
                 </div>
                 <div style={{ background: rs.bg, borderRadius: 10, padding: '12px' }}>
                   <div style={{ fontSize: 11, color: rs.text, marginBottom: 4 }}>Claim risk</div>
@@ -248,31 +277,31 @@ export default function EstimatesPage() {
                 </div>
               </div>
 
-              <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px', marginBottom: result.riskReasons.length > 0 ? '0.8rem' : 0 }}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, fontWeight: 500 }}>Plain-language explanation</div>
-                <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.6 }}>{result.plainExplanation}</div>
+              <div style={{ background: 'var(--color-background-secondary)', borderRadius: 10, padding: '12px', marginBottom: result.riskReasons.length > 0 ? '0.8rem' : 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 4, fontWeight: 500 }}>Plain-language explanation</div>
+                <div style={{ fontSize: 14, color: 'var(--color-text-primary)', lineHeight: 1.6 }}>{result.plainExplanation}</div>
               </div>
 
               {result.riskReasons.length > 0 && (
-                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px', marginBottom: '1rem' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>Claim risk checklist</div>
+                <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 10, padding: '12px', marginBottom: '1rem' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#f59e0b', marginBottom: 8 }}>Claim risk checklist</div>
                   {result.riskReasons.map((r, i) => (
-                    <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 4, display: 'flex', gap: 6 }}>
-                      <span style={{ color: '#d97706', flexShrink: 0 }}>⚠</span> {r}
+                    <div key={i} style={{ fontSize: 13, color: 'var(--color-text-primary)', marginBottom: 4, display: 'flex', gap: 6 }}>
+                      <span style={{ color: '#f59e0b', flexShrink: 0 }}>⚠</span> {r}
                     </div>
                   ))}
                 </div>
               )}
 
               {/* Pre-auth section */}
-              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+              <div style={{ borderTop: '1px solid var(--color-border-tertiary)', paddingTop: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: narrativeText ? 10 : 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Pre-authorization letter</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>Pre-authorization letter</div>
                   {!narrativeText && (
                     <button
                       onClick={generateNarrative}
                       disabled={narrativeLoading}
-                      style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#0f172a', fontSize: 13, fontWeight: 500, cursor: narrativeLoading ? 'not-allowed' : 'pointer' }}
+                      style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 500, cursor: narrativeLoading ? 'not-allowed' : 'pointer' }}
                     >
                       {narrativeLoading ? 'Generating…' : '✨ Draft with AI'}
                     </button>
@@ -283,11 +312,14 @@ export default function EstimatesPage() {
                     <textarea
                       value={narrativeText}
                       onChange={e => setNarrativeText(e.target.value)}
-                      style={{ width: '100%', height: 180, padding: '12px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#0f172a', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.55, outline: 'none', boxSizing: 'border-box' }}
+                      style={{ width: '100%', height: 180, padding: '12px', borderRadius: 10, border: '1px solid var(--color-border-secondary)', background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.55, outline: 'none', boxSizing: 'border-box' }}
                     />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                      <button onClick={() => setNarrativeText(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontSize: 13, cursor: 'pointer' }}>Discard</button>
-                      <button onClick={copyNarrative} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: copied ? '#059669' : '#0f766e', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                      <button onClick={() => setShowPdfModal(true)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <FileText size={14} /> View PDF
+                      </button>
+                      <button onClick={() => setNarrativeText(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 13, cursor: 'pointer' }}>Discard</button>
+                      <button onClick={copyNarrative} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: copied ? '#10b981' : 'var(--color-accent)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s' }}>
                         {copied ? '✓ Copied!' : 'Copy to Clipboard'}
                       </button>
                     </div>
@@ -299,42 +331,39 @@ export default function EstimatesPage() {
         </div>
 
         {/* Right: History */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: '1rem' }}>Estimate history</h2>
+        <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '1rem' }}>Estimate history</h2>
 
           {history.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem 0' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No estimates yet</div>
-              <div style={{ fontSize: 13, color: '#64748b' }}>Run your first estimate using the form on the left.</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>No estimates yet</div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>Run your first estimate using the form on the left.</div>
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Code</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coverage</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Patient</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Risk</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>When</th>
+                  <tr style={{ borderBottom: '1px solid var(--color-border-secondary)' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Code</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coverage</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Patient</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Risk</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>When</th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((item) => {
-                    const style = riskStyle[item.claim_risk] ?? riskStyle.low
+                    const style = riskStyle[item.claim_risk as keyof typeof riskStyle] ?? riskStyle.low
                     return (
-                      <tr key={item.id} style={{ borderBottom: '1px solid #f8fafc' }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#fafafa'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                      >
-                        <td style={{ padding: '10px 10px', fontWeight: 600, color: '#0f172a' }}>{item.cdt_code}</td>
-                        <td style={{ padding: '10px 10px', textAlign: 'right', color: '#0f766e', fontWeight: 600 }}>{item.coverage_percent}%</td>
-                        <td style={{ padding: '10px 10px', textAlign: 'right', color: '#0f172a' }}>${(item.patient_cost || 0).toLocaleString('en-CA', { maximumFractionDigits: 0 })}</td>
+                      <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border-tertiary)' }}>
+                        <td style={{ padding: '10px 10px', fontWeight: 600, color: 'var(--color-text-primary)' }}>{item.cdt_code}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', color: 'var(--color-accent)', fontWeight: 600 }}>{item.coverage_percent}%</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', color: 'var(--color-text-primary)' }}>${(item.patient_cost || 0).toLocaleString('en-CA', { maximumFractionDigits: 0 })}</td>
                         <td style={{ padding: '10px 10px', textAlign: 'center' }}>
                           <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: style.bg, color: style.text, fontWeight: 500, textTransform: 'capitalize' }}>{item.claim_risk}</span>
                         </td>
-                        <td style={{ padding: '10px 10px', textAlign: 'right', color: '#94a3b8' }}>{timeAgo(item.created_at)}</td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', color: 'var(--color-text-secondary)' }}>{timeAgo(item.created_at)}</td>
                       </tr>
                     )
                   })}

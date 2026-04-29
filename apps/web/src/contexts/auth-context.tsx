@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY)
     authApi.logout().catch(() => null)
     setState({ user: null, accessToken: null, loading: false })
+    window.location.href = '/logout'
   }, [])
 
   // Restore session from localStorage on mount

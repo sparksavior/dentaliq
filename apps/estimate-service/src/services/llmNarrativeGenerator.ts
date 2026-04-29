@@ -20,6 +20,8 @@ export interface NarrativeInput {
   insurerName: string
   patientName?: string
   clinicalNotes?: string
+  previousNarrative?: string
+  revisionInstructions?: string
 }
 
 export async function generateNarrative(input: NarrativeInput): Promise<string> {
@@ -28,13 +30,32 @@ export async function generateNarrative(input: NarrativeInput): Promise<string> 
 
   const patient = input.patientName || 'the patient'
   
-  const prompt = `
+  let prompt = ''
+  
+  if (input.previousNarrative && input.revisionInstructions) {
+    prompt = `
+You are revising a previously written pre-authorization dental narrative.
+Original Narrative:
+"""
+${input.previousNarrative}
+"""
+
+User Revision Instructions:
+"""
+${input.revisionInstructions}
+"""
+
+Please rewrite the narrative letter to incorporate these changes while maintaining a professional, formal tone. Ensure the patient name (${patient}) and procedure (${code.code} - ${code.description}) are still correctly mentioned.
+`
+  } else {
+    prompt = `
 Please write a pre-authorization narrative for:
 Procedure: ${code.code} - ${code.description}
 Insurance: ${input.insurerName}
 Patient: ${patient}
 Clinical Notes to incorporate (if any): ${input.clinicalNotes || 'Tooth has extensive decay and fractures, standard restorative options are insufficient to restore form and function.'}
 `
+  }
 
   try {
     const llm = await getLLMWithFallback()

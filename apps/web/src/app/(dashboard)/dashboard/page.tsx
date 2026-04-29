@@ -16,20 +16,20 @@ function timeAgo(dateStr: string): string {
 }
 
 const riskStyle = {
-  low:    { bg: '#d1fae5', text: '#065f46', dot: '#059669' },
-  medium: { bg: '#fef3c7', text: '#92400e', dot: '#d97706' },
-  high:   { bg: '#fee2e2', text: '#991b1b', dot: '#dc2626' },
+  low:    { bg: 'rgba(16, 185, 129, 0.1)', text: '#10b981', dot: '#10b981' },
+  medium: { bg: 'rgba(245, 158, 11, 0.1)', text: '#f59e0b', dot: '#f59e0b' },
+  high:   { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444', dot: '#ef4444' },
 }
 
-function StatCard({ label, value, sub, color = '#0f766e', icon }: { label: string; value: string; sub?: string; color?: string; icon: string }) {
+function StatCard({ label, value, sub, color = 'var(--color-accent)', icon }: { label: string; value: string; sub?: string; color?: string; icon: string }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.2rem 1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+    <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.2rem 1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}>{label}</div>
-        <div style={{ width: 36, height: 36, borderRadius: 9, background: `${color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{icon}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)' }}>{label}</div>
+        <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--color-accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{icon}</div>
       </div>
-      <div style={{ fontSize: 28, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.03em', marginBottom: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: '#94a3b8' }}>{sub}</div>}
+      <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.03em', marginBottom: 2 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{sub}</div>}
     </div>
   )
 }
@@ -68,24 +68,24 @@ export default function OverviewPage() {
   const recent = history.slice(0, 8)
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto', color: 'var(--color-text-primary)' }}>
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.03em', marginBottom: 4 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.03em', marginBottom: 4 }}>
           Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {user?.name?.split(' ')[0]}
         </h1>
-        <p style={{ fontSize: 14, color: '#64748b' }}>Here's what's happening at your clinic today.</p>
+        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Here's what's happening at your clinic today.</p>
       </div>
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: '2rem' }}>
         {loading ? (
           Array(4).fill(0).map((_, i) => (
-            <div key={i} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.2rem 1.4rem', height: 110, animation: 'pulse 1.5s ease-in-out infinite' }} />
+            <div key={i} style={{ background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.2rem 1.4rem', height: 110, animation: 'pulse 1.5s ease-in-out infinite' }} />
           ))
         ) : (
           <>
-            <StatCard label="Total Patients" value={patients.length.toString()} sub="in your clinic" icon="👥" color="#0f766e" />
+            <StatCard label="Total Patients" value={patients.length.toString()} sub="in your clinic" icon="👥" color="var(--color-accent)" />
             <StatCard label="Estimates This Month" value={thisMonth.length.toString()} sub="cost estimates run" icon="📊" color="#0e7490" />
             <StatCard label="Revenue Recovered" value={`$${revenueRecovered.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`} sub="insurer payments this month" icon="💰" color="#059669" />
             <StatCard label="High-Risk Claims" value={highRiskCount.toString()} sub="need attention" icon="⚠️" color="#dc2626" />
@@ -96,8 +96,8 @@ export default function OverviewPage() {
       {/* Quick actions + activity */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
         {/* Quick actions */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: '1rem' }}>Quick actions</h2>
+        <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '1rem' }}>Quick actions</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
               { href: '/dashboard/estimates', icon: '⚡', label: 'Run an estimate', desc: 'Check coverage instantly' },
@@ -105,58 +105,55 @@ export default function OverviewPage() {
               { href: '/dashboard/claims', icon: '🛡', label: 'Review claims', desc: 'Check risk flags' },
               { href: '/dashboard/settings', icon: '⚙️', label: 'Settings', desc: 'Clinic & integrations' },
             ].map(a => (
-              <Link key={a.href} href={a.href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, border: '1px solid #f1f5f9', textDecoration: 'none', background: '#fafafa', transition: 'all 0.15s' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f0fdfa'; (e.currentTarget as HTMLElement).style.borderColor = '#99f6e4' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fafafa'; (e.currentTarget as HTMLElement).style.borderColor = '#f1f5f9' }}
-              >
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>{a.icon}</div>
+              <Link key={a.href} href={a.href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--color-border-tertiary)', textDecoration: 'none', background: 'var(--color-background-secondary)', transition: 'all 0.15s' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--color-accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>{a.icon}</div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 1 }}>{a.label}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{a.desc}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 1 }}>{a.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{a.desc}</div>
                 </div>
-                <div style={{ marginLeft: 'auto', color: '#cbd5e1', fontSize: 14 }}>›</div>
+                <div style={{ marginLeft: 'auto', color: 'var(--color-text-secondary)', fontSize: 14 }}>›</div>
               </Link>
             ))}
           </div>
         </div>
 
         {/* Recent activity */}
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Recent activity</h2>
-            <Link href="/dashboard/estimates" style={{ fontSize: 12, color: '#0f766e', textDecoration: 'none', fontWeight: 500 }}>View all →</Link>
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>Recent activity</h2>
+            <Link href="/dashboard/estimates" style={{ fontSize: 12, color: 'var(--color-accent)', textDecoration: 'none', fontWeight: 500 }}>View all →</Link>
           </div>
 
           {loading ? (
             Array(5).fill(0).map((_, i) => (
-              <div key={i} style={{ height: 52, borderRadius: 8, marginBottom: 8, background: 'linear-gradient(90deg, #f8fafc 25%, #f1f5f9 50%, #f8fafc 75%)', backgroundSize: '200% 100%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+              <div key={i} style={{ height: 52, borderRadius: 8, marginBottom: 8, background: 'var(--color-background-secondary)', backgroundSize: '200% 100%', animation: 'pulse 1.5s ease-in-out infinite' }} />
             ))
           ) : recent.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem 0' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>No activity yet</div>
-              <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>Run your first insurance estimate to get started.</div>
-              <Link href="/dashboard/estimates" style={{ display: 'inline-block', padding: '9px 20px', background: '#0f766e', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>No activity yet</div>
+              <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 16 }}>Run your first insurance estimate to get started.</div>
+              <Link href="/dashboard/estimates" style={{ display: 'inline-block', padding: '9px 20px', background: 'var(--color-accent)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
                 Run first estimate →
               </Link>
             </div>
           ) : (
             <div>
               {recent.map((item) => {
-                const rs = riskStyle[item.claim_risk] ?? riskStyle.low
+                const rs = riskStyle[item.claim_risk as keyof typeof riskStyle] ?? riskStyle.low
                 return (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f8fafc' }}>
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: rs.dot, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{item.cdt_code}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{item.cdt_code}</span>
                         <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 20, background: rs.bg, color: rs.text, fontWeight: 500 }}>{item.claim_risk}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.coverage_percent}% covered · Patient pays ${(item.patient_cost || 0).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </div>
                     </div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{timeAgo(item.created_at)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', flexShrink: 0 }}>{timeAgo(item.created_at)}</div>
                   </div>
                 )
               })}
@@ -178,7 +175,7 @@ export default function OverviewPage() {
         </div>
       )}
 
-      <style>{`
+      <style jsx>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }

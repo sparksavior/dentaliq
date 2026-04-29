@@ -96,6 +96,37 @@ export async function patientsRoutes(app: FastifyInstance) {
     }
   })
 
+  // GET /patients/:id — get patient detail with history
+  app.get('/:id', {
+    preHandler: requireAuth(app),
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    console.log(`[GET /patients/:id] Fetching data for patient: ${id}`)
+    const jwtUser = req.user as any
+    const tablePrefix = await getTablePrefix(jwtUser.tenantId)
+    if (!tablePrefix) return reply.code(400).send({ success: false, error: 'Tenant schema not found' })
+
+    const db = getDb() as any
+    try {
+      const pResult = await db.run(sql.raw(`SELECT * FROM "${tablePrefix}_patients" WHERE id = '${id}' LIMIT 1`))
+      const patient = pResult?.rows?.[0] || pResult?.[0]
+      if (!patient) return reply.code(404).send({ success: false, error: 'Patient not found' })
+
+      const hResult = await db.run(sql.raw(`
+        SELECT * FROM "${tablePrefix}_estimates" 
+        WHERE patient_id = '${id}' 
+        ORDER BY created_at DESC
+      `))
+      const history = hResult?.rows || hResult || []
+      console.log(`[GET /patients/:id] History rows for ${id}:`, history)
+
+      return reply.send({ success: true, data: { ...patient, history } })
+    } catch (err) {
+      req.log.error(err)
+      return reply.code(500).send({ success: false, error: 'Database error' })
+    }
+  })
+
   // DELETE /patients/:id
   app.delete('/:id', {
     preHandler: requireAuth(app),

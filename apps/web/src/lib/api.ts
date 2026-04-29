@@ -101,6 +101,9 @@ export interface EstimateHistoryItem {
   insurer_pays: number
   claim_risk: 'low' | 'medium' | 'high'
   plain_explanation: string
+  pre_auth_letter: string | null
+  first_name?: string | null
+  last_name?: string | null
   created_by: string
   created_at: string
 }
@@ -248,6 +251,9 @@ export const patientsApi = {
 
   deletePatient: (token: string, id: string) =>
     tenantRequest<{ success: true }>(`/patients/${id}`, token, { method: 'DELETE' }),
+
+  getPatient: (token: string, id: string) =>
+    tenantRequest<Patient & { history: EstimateHistoryItem[] }>(`/patients/${id}`, token),
 }
 
 export const insurancePlansApi = {
@@ -284,6 +290,9 @@ export const estimateApi = {
   getHistory: (token: string) =>
     estimateRequest<EstimateHistoryItem[]>('/estimate/history', token),
 
-  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; clinicalNotes?: string }) =>
+  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; clinicalNotes?: string; previousNarrative?: string; revisionInstructions?: string }) =>
     estimateRequest<string>('/estimate/narrative', token, { method: 'POST', body: JSON.stringify(input) }),
+
+  saveLetter: (token: string, id: string, letter: string) =>
+    estimateRequest<{ success: true }>(`/estimate/${id}/letter`, token, { method: 'PATCH', body: JSON.stringify({ letter }) }),
 }

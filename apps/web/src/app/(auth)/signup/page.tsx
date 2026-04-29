@@ -127,15 +127,15 @@ export default function SignupPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontFamily: 'system-ui' }}>
       {/* Top nav */}
-      <div style={{ borderBottom: '1px solid #e2e8f0', background: '#fff', padding: '0 2rem', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ borderBottom: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', padding: '0 2rem', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: '#fff' }}>+</div>
-          <span style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.03em' }}>DentalIQ</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.03em' }}>DentalIQ</span>
         </div>
-        <a href="/login" style={{ fontSize: 14, color: '#64748b', textDecoration: 'none' }}>
-          Already have an account? <span style={{ color: '#0f766e', fontWeight: 600 }}>Sign in</span>
+        <a href="/login" style={{ fontSize: 14, color: 'var(--color-text-secondary)', textDecoration: 'none' }}>
+          Already have an account? <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>Sign in</span>
         </a>
       </div>
 
@@ -147,18 +147,18 @@ export default function SignupPage() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600,
-                  background: i < step ? '#0f766e' : i === step ? 'linear-gradient(135deg, #0f766e, #0d9488)' : '#fff',
-                  color: i <= step ? '#fff' : '#94a3b8',
-                  border: i > step ? '2px solid #e2e8f0' : 'none',
+                  background: i < step ? 'var(--color-accent)' : i === step ? 'linear-gradient(135deg, #0f766e, #0d9488)' : 'var(--color-background-primary)',
+                  color: i <= step ? '#fff' : 'var(--color-text-secondary)',
+                  border: i > step ? '2px solid var(--color-border-secondary)' : 'none',
                   boxShadow: i === step ? '0 0 0 4px rgba(15,118,110,0.15)' : 'none',
                   transition: 'all 0.3s',
                 }}>
                   {i < step ? '✓' : i + 1}
                 </div>
-                <span style={{ fontSize: 11, fontWeight: i === step ? 600 : 400, color: i === step ? '#0f766e' : i < step ? '#64748b' : '#94a3b8', whiteSpace: 'nowrap' }}>{name}</span>
+                <span style={{ fontSize: 11, fontWeight: i === step ? 600 : 400, color: i === step ? 'var(--color-accent)' : i < step ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>{name}</span>
               </div>
               {i < STEP_NAMES.length - 1 && (
-                <div style={{ flex: 1, height: 2, background: i < step ? '#0f766e' : '#e2e8f0', marginBottom: 18, transition: 'background 0.3s' }} />
+                <div style={{ flex: 1, height: 2, background: i < step ? 'var(--color-accent)' : 'var(--color-border-secondary)', marginBottom: 18, transition: 'background 0.3s' }} />
               )}
             </div>
           ))}
@@ -173,13 +173,13 @@ export default function SignupPage() {
         {/* Step 0: Account details */}
         {step === 0 && (
           <form onSubmit={handleRegister}>
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 4, letterSpacing: '-0.03em' }}>Create your account</h2>
-              <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>Start your 14-day free trial — no credit card required.</p>
+            <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 4, letterSpacing: '-0.03em' }}>Create your account</h2>
+              <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>Start your 14-day free trial — no credit card required.</p>
 
               {/* Plan selector */}
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 8 }}>Choose your plan</label>
+                <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 8 }}>Choose your plan</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {PLANS.map((p) => (
                     <button
@@ -187,97 +187,98 @@ export default function SignupPage() {
                       onClick={() => setPlan(p.id as any)}
                       style={{
                         padding: '12px 8px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', position: 'relative',
-                        border: plan === p.id ? `2px solid ${p.color}` : '1.5px solid #e2e8f0',
-                        background: plan === p.id ? `${p.color}08` : '#fff',
+                        border: plan === p.id ? `2px solid var(--color-accent)` : '1.5px solid var(--color-border-secondary)',
+                        background: plan === p.id ? 'var(--color-accent-muted)' : 'var(--color-background-primary)',
                         transition: 'all 0.2s',
                       }}
                     >
                       {p.popular && (
-                        <div style={{ position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)', background: p.color, color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                        <div style={{ position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)', background: 'var(--color-accent)', color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
                           POPULAR
                         </div>
                       )}
-                      <div style={{ fontSize: 14, fontWeight: 600, color: plan === p.id ? p.color : '#0f172a', marginBottom: 2 }}>{p.name}</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: plan === p.id ? p.color : '#0f172a', marginBottom: 2 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: plan === p.id ? 'var(--color-accent)' : 'var(--color-text-primary)', marginBottom: 2 }}>{p.name}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: plan === p.id ? 'var(--color-accent)' : 'var(--color-text-primary)', marginBottom: 2 }}>
                         {p.price ? `$${p.price}` : 'Custom'}
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>{p.desc}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{p.desc}</div>
                     </button>
                   ))}
                 </div>
-                <div style={{ marginTop: 10, padding: '10px 14px', background: '#f0fdfa', borderRadius: 8, border: '1px solid #99f6e4' }}>
-                  <div style={{ fontSize: 12, color: '#0f766e', fontWeight: 500, marginBottom: 4 }}>{selectedPlan.name} includes:</div>
+                <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--color-accent-muted)', borderRadius: 8, border: '1px solid var(--color-accent)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--color-accent)', fontWeight: 500, marginBottom: 4 }}>{selectedPlan.name} includes:</div>
                   {selectedPlan.features.map(f => (
-                    <div key={f} style={{ fontSize: 12, color: '#0f766e', marginBottom: 2 }}>✓ {f}</div>
+                    <div key={f} style={{ fontSize: 12, color: 'var(--color-accent)', marginBottom: 2 }}>✓ {f}</div>
                   ))}
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 0 }}>
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Full name</label>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Full name</label>
                   <input
-                    style={inputStyle} placeholder="Dr. Sarah Chen" value={form.name} onChange={set('name')} required
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{...inputStyle, background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)'}} placeholder="Dr. Sarah Chen" value={form.name} onChange={set('name')} required
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Clinic name</label>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Clinic name</label>
                   <input
-                    style={inputStyle} placeholder="Lakeview Dental Group" value={form.clinic} onChange={set('clinic')} required
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{...inputStyle, background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)'}} placeholder="Lakeview Dental Group" value={form.clinic} onChange={set('clinic')} required
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Work email</label>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Work email</label>
                   <input
-                    style={inputStyle} type="email" placeholder="you@yourclinic.ca" value={form.email} onChange={set('email')} required
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{...inputStyle, background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)'}} type="email" placeholder="you@yourclinic.ca" value={form.email} onChange={set('email')} required
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Phone <span style={{ color: '#94a3b8', fontWeight: 400 }}>(optional)</span></label>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Phone <span style={{ color: 'var(--color-text-secondary)', fontWeight: 400 }}>(optional)</span></label>
                   <input
-                    style={inputStyle} placeholder="+1 (416) 555-0100" value={form.phone} onChange={set('phone')}
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{...inputStyle, background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)'}} placeholder="+1 (416) 555-0100" value={form.phone} onChange={set('phone')}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Password</label>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Password</label>
                   <input
-                    style={inputStyle} type="password" placeholder="Min. 8 characters" value={form.password} onChange={set('password')} required
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{...inputStyle, background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)'}} type="password" placeholder="Min. 8 characters" value={form.password} onChange={set('password')} required
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 6 }}>Confirm password</label>
+                  <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 6 }}>Confirm password</label>
                   <input
-                    style={inputStyle} type="password" placeholder="••••••••" value={form.confirm} onChange={set('confirm')} required
-                    onFocus={e => e.target.style.borderColor = '#0f766e'}
-                    onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                    style={{...inputStyle, background: 'var(--color-input-bg)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)'}} type="password" placeholder="••••••••" value={form.confirm} onChange={set('confirm')} required
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                   />
                 </div>
               </div>
             </div>
 
-            <div style={{ marginTop: 12, padding: '10px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+            <div style={{ marginTop: 12, padding: '10px 16px', background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 10, fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
               By continuing you agree to our Terms of Service and Privacy Policy. Health data is stored exclusively on Canadian infrastructure (AWS ca-central-1) and is PHIPA-compliant.
             </div>
 
             <button
               type="submit"
               disabled={loading || !form.name || !form.clinic || !form.email || !form.password}
-              style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 10, border: 'none', background: (loading || !form.name || !form.clinic || !form.email || !form.password) ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', letterSpacing: '-0.01em' }}
+              style={{ width: '100%', marginTop: 12, padding: '13px', borderRadius: 10, border: 'none', background: (loading || !form.name || !form.clinic || !form.email || !form.password) ? 'var(--color-text-secondary)' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', letterSpacing: '-0.01em' }}
             >
               {loading ? 'Creating account…' : 'Continue →'}
             </button>
           </form>
         )}
+
 
         {/* Step 1: Email verify */}
         {step === 1 && (
