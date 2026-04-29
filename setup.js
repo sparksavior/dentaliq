@@ -322,6 +322,7 @@ async function main() {
   console.log('  │  Auth API     → http://localhost:3001     │')
   console.log('  │  Tenant API   → http://localhost:3002     │')
   console.log('  │  Estimate API → http://localhost:3004     │')
+  console.log('  │  Admin Portal → http://localhost:3005     │')
   console.log('  │  Ollama LLM   → http://localhost:11434    │')
   if (hasDocker) {
     console.log('  │  Mailpit      → http://localhost:8025     │')

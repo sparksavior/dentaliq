@@ -18,6 +18,7 @@
    - [5. Interactive Claim Notification Center](#5-interactive-claim-notification-center)
    - [6. Claim Risk Detection (High/Med/Low)](#6-claim-risk-detection-highmedlow)
    - [7. Redesigned Marketing Landing Page](#7-redesigned-marketing-landing-page)
+   - [8. Admin Portal & Clinic Management (SaaS)](#8-admin-portal--clinic-management-saas)
 4. [Backend API Reference](#backend-api-reference)
 5. [Database Architecture & Failsafe Logic](#database-architecture--failsafe-logic)
 6. [Regulatory Compliance (PHIPA/PIPEDA)](#regulatory-compliance-phipapipeda)
@@ -77,6 +78,11 @@ dentaliq/
 │           └── lib/
 │               └── api.ts               # Unified API client & TypeScript interfaces
 │
+│   ├── admin/                           # ★ NEW: SaaS Admin Portal (Port 3005)
+│   │   └── src/app/
+│   │       ├── page.tsx                 # Clinic Registry & Status Overview
+│   │       └── [id]/page.tsx            # Clinic-level Billing & Kill-switch
+│
 ├── packages/                            # Shared DB schemas & Turborepo config
 ├── setup.js                             # ★ UNIVERSAL: Cross-platform setup script
 └── README.md                            # ★ This file
@@ -123,6 +129,14 @@ A full-width, modern landing page (`/`) featuring interactive product demos, pri
 *   **Interactive Demos**: Tabbed mockups for the Cost Estimator, Copilot, and Notifications.
 *   **Compliance Showcase**: Highlights PHIPA, AES-256 encryption, and Canadian Data Residency.
 
+### 8. Admin Portal & Clinic Management (SaaS)
+A high-fidelity administrative interface for managing the entire DentalIQ ecosystem.
+*   **Location**: `http://localhost:3005`
+*   **Features**:
+    *   **Clinic Registry**: Monitor all registered clinics, their plans, and trial expiration dates.
+    *   **Billing Management**: Manually adjust billing cycles and plan tiers (Starter/Pro/Enterprise).
+    *   **Trial Kill-switch**: Instantly suspend clinic access. Suspended clinics are met with a non-closable "Free Trial Ended" overlay.
+
 ---
 
 ## Backend API Reference
@@ -132,6 +146,8 @@ A full-width, modern landing page (`/`) featuring interactive product demos, pri
 |---|---|---|---|
 | POST | `/auth/login` | ❌ | Login, returns JWT + Tenant Prefix |
 | GET | `/users/me` | ✅ | Fetch current user role and clinic ID |
+| GET | `/admin/tenants` | ✅ (Admin) | List all registered clinics |
+| PATCH | `/admin/tenants/:id` | ✅ (Admin) | Update clinic plan, status, or billing |
 
 ### Tenant Service — `http://localhost:3002`
 | Method | Path | Auth | Description |
@@ -188,9 +204,13 @@ cd dentaliq
 node setup.js
 ```
 
-### Credentials (Demo)
+### Credentials (Demo Admin)
+*   **Email**: `admin@dentaliq.dev`
+*   **Password**: `AdminPassword123!`
+
+### Credentials (Clinic User)
 *   **Email**: `demo@dentaliq.dev`
-*   **Password**: `Demo1234!`
+*   **Password**: `AdminPassword123!`
 
 ---
 

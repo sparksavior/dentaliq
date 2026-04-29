@@ -13,6 +13,7 @@ export const tenants = sqliteTable('tenants', {
   pmsApiKey: text('pms_api_key'),
   stripeCustomerId: text('stripe_customer_id'),
   trialEndsAt: text('trial_ends_at'),
+  billingDate: text('billing_date'),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 })

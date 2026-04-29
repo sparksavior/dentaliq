@@ -12,6 +12,7 @@ import { sql } from 'drizzle-orm'
 import { authRoutes } from './routes/auth'
 import { mfaRoutes } from './routes/mfa'
 import { userRoutes } from './routes/users'
+import { adminRoutes } from './routes/admin'
 import { errorHandler } from './middleware/errorHandler'
 
 // ─────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ async function initDb() {
       pms_api_key TEXT,
       stripe_customer_id TEXT,
       trial_ends_at TEXT,
+      billing_date TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -133,6 +135,7 @@ async function buildApp() {
   await app.register(authRoutes, { prefix: '/auth' })
   await app.register(mfaRoutes,  { prefix: '/auth/mfa' })
   await app.register(userRoutes, { prefix: '/users' })
+  await app.register(adminRoutes, { prefix: '/admin' })
 
   return app
 }

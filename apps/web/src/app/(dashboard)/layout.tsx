@@ -216,6 +216,64 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <main style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
         {children}
 
+        {/* Trial Ended / Suspended Overlay */}
+        {tenant?.status === 'suspended' && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '2rem'
+          }}>
+            <div style={{
+              maxWidth: 500, width: '100%',
+              background: 'var(--color-background-primary)',
+              borderRadius: 24, padding: '3rem',
+              textAlign: 'center',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+              border: '1px solid var(--color-border-secondary)'
+            }}>
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%',
+                background: 'rgba(15, 118, 110, 0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 2rem', color: 'var(--color-accent)'
+              }}>
+                <Sparkles size={40} />
+              </div>
+              <h2 style={{ fontSize: 28, fontWeight: 800, marginBottom: '1rem', color: 'var(--color-text-primary)' }}>Free Trial Ended</h2>
+              <p style={{ fontSize: 16, color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '2.5rem' }}>
+                We hope you enjoyed your time with DentalIQ! Your free trial has concluded. To continue using our AI-driven clinical suite and manage your clinic effectively, please contact our support team to start your subscription.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <a 
+                  href="mailto:support@dentaliq.dev"
+                  style={{
+                    background: 'var(--color-accent)', color: '#fff',
+                    padding: '14px 24px', borderRadius: 12,
+                    fontWeight: 600, textDecoration: 'none',
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  Contact Support to Activate
+                </a>
+                <button 
+                  onClick={clearSession}
+                  style={{
+                    background: 'transparent', color: 'var(--color-text-secondary)',
+                    padding: '12px', border: 'none', cursor: 'pointer',
+                    fontSize: 14, fontWeight: 500
+                  }}
+                >
+                  Sign out of {tenant?.name}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* AI Chat Float */}
         <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
           {isChatOpen && (

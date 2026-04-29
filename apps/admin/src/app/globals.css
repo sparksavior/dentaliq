@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* ── DentalIQ design tokens ── */
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+
+  --color-background-primary:   #ffffff;
+  --color-background-secondary: #f8fafc;
+  --color-text-primary:         #0f172a;
+  --color-text-secondary:       #64748b;
+  --color-border-primary:       #cbd5e1;
+  --color-border-secondary:     #e2e8f0;
+  --color-border-tertiary:      #f1f5f9;
+  
+  --color-card-bg:              #ffffff;
+  --color-input-bg:             #ffffff;
+  --color-accent:               #0f766e;
+  --color-accent-hover:         #0d9488;
+  --color-accent-muted:         #f0fdfa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #111111;
+    --foreground: #f8fafc;
+
+    --color-background-primary:   #111111;
+    --color-background-secondary: #1a1a1a;
+    --color-text-primary:         #f8fafc;
+    --color-text-secondary:       #94a3b8;
+    --color-border-primary:       #334155;
+    --color-border-secondary:     #1e293b;
+    --color-border-tertiary:      #0f172a;
+    
+    --color-card-bg:              #111111;
+    --color-input-bg:             #1a1a1a;
+    --color-accent:               #14b8a6;
+    --color-accent-hover:         #2dd4bf;
+    --color-accent-muted:         #042f2e;
+  }
+}
+
+body {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  font-family: sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
