@@ -27,11 +27,11 @@ export async function insurancePlansRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      const rows = await db.all(sql.raw(`
+      const rows = await (db as any).all(sql.raw(`
         SELECT * FROM "${tablePrefix}_insurance_plans"
         ORDER BY created_at ASC
       `))
-      return reply.send({ success: true, data: rows ?? [] })
+      return reply.send({ success: true, data: rows })
     } catch {
       return reply.send({ success: true, data: [] })
     }
@@ -50,7 +50,7 @@ export async function insurancePlansRoutes(app: FastifyInstance) {
     const db = getDb() as any
     const newId = createId()
     try {
-      await db.run(
+      await (db as any).run(
         sql`INSERT INTO ${sql.raw(`"${tablePrefix}_insurance_plans"`)}
           (id, insurer_name, plan_name, group_number, annual_max,
            preventive_coverage, basic_coverage, major_coverage, ortho_coverage)
@@ -79,7 +79,7 @@ export async function insurancePlansRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      await db.run(
+      await (db as any).run(
         sql`UPDATE ${sql.raw(`"${tablePrefix}_insurance_plans"`)} SET
           insurer_name         = COALESCE(${body.insurerName ?? null},         insurer_name),
           plan_name            = COALESCE(${body.planName ?? null},             plan_name),
@@ -110,7 +110,7 @@ export async function insurancePlansRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      await db.run(sql`DELETE FROM ${sql.raw(`"${tablePrefix}_insurance_plans"`)} WHERE id = ${id}`)
+      await (db as any).run(sql`DELETE FROM ${sql.raw(`"${tablePrefix}_insurance_plans"`)} WHERE id = ${id}`)
       return reply.send({ success: true })
     } catch (err) {
       req.log.error(err)

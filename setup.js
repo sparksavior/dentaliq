@@ -18,6 +18,8 @@ const { execSync, spawn } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
+const isWin = process.platform === 'win32'
+
 // ── Helpers ──────────────────────────────────────────────
 
 const ROOT = __dirname
@@ -50,7 +52,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const hasCmd = (cmd) => {
   try {
-    execSync(`command -v ${cmd}`, { stdio: 'pipe' })
+    const check = isWin ? `where ${cmd}` : `command -v ${cmd}`
+    execSync(check, { stdio: 'pipe' })
     return true
   } catch {
     return false
@@ -136,6 +139,8 @@ async function main() {
   log(`pnpm ${pnpmV}`)
 
   // Docker (optional but recommended)
+  // Detect whether the system uses legacy 'docker-compose' or modern 'docker compose'
+  const dockerComposeCmd = hasCmd('docker-compose') ? 'docker-compose' : 'docker compose'
   let hasDocker = hasCmd('docker')
   if (hasDocker) {
     const dockerRunning = runQuiet('docker info') !== null
@@ -154,9 +159,22 @@ async function main() {
     if (hasBrew) {
       info('Installing Ollama via Homebrew...')
       run('brew install ollama')
+    } else if (isWin) {
+      info('Installing Ollama for Windows...')
+      try {
+        // Use PowerShell to download and run the installer silently
+        const installerPath = path.join(ROOT, 'OllamaSetup.exe')
+        run(`powershell -Command "Invoke-WebRequest -Uri https://ollama.com/download/OllamaSetup.exe -OutFile '${installerPath}'"`)
+        info('Running Ollama installer (this may take a minute)...')
+        run(`"${installerPath}" /silent`)
+        fs.unlinkSync(installerPath)
+        log('Ollama installed successfully')
+      } catch (e) {
+        warn(`Automatic Ollama installation failed: ${e.message}`)
+        warn('Please install it manually from https://ollama.com')
+      }
     } else {
       warn('Ollama not found. Please install it from https://ollama.com to use AI features.')
-      // Don't exit, we can run without it (with fallbacks)
     }
   } else {
     log('Ollama found')
@@ -171,10 +189,21 @@ async function main() {
   const envExamplePath = path.join(ROOT, '.env.example')
 
   if (!fs.existsSync(envPath)) {
-    fs.copyFileSync(envExamplePath, envPath)
-    log('Created .env from .env.example')
+    let content = fs.readFileSync(envExamplePath, 'utf-8')
+    // Ensure all dev ports are allowed in CORS
+    content = content.replace('ALLOWED_ORIGINS=http://localhost:3000', 'ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3005')
+    fs.writeFileSync(envPath, content)
+    log('Created .env from .env.example (with multi-port CORS)')
   } else {
-    log('.env already exists — keeping it')
+    // Failsafe: add 3005 if missing
+    let content = fs.readFileSync(envPath, 'utf-8')
+    if (content.includes('ALLOWED_ORIGINS=http://localhost:3000') && !content.includes('3005')) {
+      content = content.replace('ALLOWED_ORIGINS=http://localhost:3000', 'ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3005')
+      fs.writeFileSync(envPath, content)
+      log('Updated .env with port 3005 for Admin Portal')
+    } else {
+      log('.env already exists')
+    }
   }
 
   // Read .env to determine config
@@ -211,7 +240,7 @@ async function main() {
 
   if (hasDocker) {
     try {
-      run('docker-compose up -d postgres redis mailpit')
+      run(`${dockerComposeCmd} up -d postgres redis mailpit`)
       log('Docker services started (postgres, redis, mailpit)')
       info('Postgres  → localhost:5432')
       info('Redis     → localhost:6379')
@@ -249,6 +278,7 @@ async function main() {
     const ollamaProc = spawn('ollama', ['serve'], {
       detached: true,
       stdio: 'ignore',
+      shell: isWin,
       cwd: ROOT,
     })
     ollamaProc.unref()
@@ -288,6 +318,19 @@ async function main() {
   // 6. Database schema
   // ──────────────────────────────────────────────────────
   header('6 · Database schema')
+
+  // Failsafe: Ensure drizzle dialect is sqlite (fix common setup issue)
+  try {
+    const drizzleConfPath = path.join(ROOT, 'packages/db/drizzle.config.ts')
+    if (fs.existsSync(drizzleConfPath)) {
+      let content = fs.readFileSync(drizzleConfPath, 'utf-8')
+      if (content.includes("dialect: 'turso'")) {
+        content = content.replace("dialect: 'turso'", "dialect: 'sqlite'")
+        fs.writeFileSync(drizzleConfPath, content)
+        log('Fixed Drizzle dialect (turso -> sqlite)')
+      }
+    }
+  } catch { /* skip if fails */ }
 
   try {
     run('pnpm db:push')
@@ -337,6 +380,7 @@ async function main() {
   // Run pnpm dev in the foreground so Ctrl+C stops everything
   const devProc = spawn('pnpm', ['dev'], {
     stdio: 'inherit',
+    shell: isWin,
     cwd: ROOT,
   })
 

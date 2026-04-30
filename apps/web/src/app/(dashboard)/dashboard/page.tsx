@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
-import { estimateApi, patientsApi, type EstimateHistoryItem, type Patient } from '@/lib/api'
+import { useClinic } from '@/contexts/clinic-context'
+import { estimateApi, patientsApi, tenantsApi, type EstimateHistoryItem, type Patient, type Tenant } from '@/lib/api'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -143,24 +144,28 @@ export default function OverviewPage() {
   const { user, accessToken } = useAuth()
   const [history, setHistory] = useState<EstimateHistoryItem[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
+  const [tenant, setTenant] = useState<Tenant | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const { selectedClinicId } = useClinic()
   const loadData = useCallback(async () => {
     if (!accessToken) return
     setLoading(true)
     try {
-      const [hist, pts] = await Promise.all([
+      const [hist, pts, t] = await Promise.all([
         estimateApi.getHistory(accessToken).catch(() => [] as EstimateHistoryItem[]),
         patientsApi.getPatients(accessToken).catch(() => [] as Patient[]),
+        tenantsApi.getTenant(accessToken).catch(() => null),
       ])
       setHistory(hist)
       setPatients(pts)
+      setTenant(t)
     } finally {
       setLoading(false)
     }
-  }, [accessToken])
+  }, [accessToken, selectedClinicId])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { loadData() }, [loadData, selectedClinicId])
 
   const now = new Date()
   const thisMonth = history.filter(h => {
@@ -192,8 +197,10 @@ export default function OverviewPage() {
         </p>
       </div>
 
-      {/* AI Insight strip */}
-      <AiInsightStrip patients={patients} history={history} loading={loading} />
+      {/* AI Insight strip — Pro/Enterprise only */}
+      {tenant?.plan !== 'starter' && (
+        <AiInsightStrip patients={patients} history={history} loading={loading} />
+      )}
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: '2rem' }}>

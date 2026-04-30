@@ -1,14 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAuth, requireRole } from '../middleware/requireAuth'
-import { getDb, users } from '@dentaliq/db'
+import { getDb, users, tenants } from '@dentaliq/db'
 import { eq, and } from 'drizzle-orm'
 
-// ─────────────────────────────────────────────────────────
-// User Routes
-// GET  /users/me          → current user profile
-// GET  /users             → list users in tenant (admin only)
-// PATCH /users/:id/role   → change user role (admin only)
-// ─────────────────────────────────────────────────────────
+// ... (existing comments)
 
 export async function userRoutes(app: FastifyInstance) {
   const db = getDb()
@@ -29,8 +24,11 @@ export async function userRoutes(app: FastifyInstance) {
         emailVerified: users.emailVerified,
         lastLoginAt: users.lastLoginAt,
         createdAt: users.createdAt,
+        plan: tenants.plan,
+        status: tenants.status,
       })
       .from(users)
+      .innerJoin(tenants, eq(users.tenantId, tenants.id))
       .where(eq(users.id, me.sub))
       .limit(1)
 

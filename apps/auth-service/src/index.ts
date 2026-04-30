@@ -13,11 +13,13 @@ import { authRoutes } from './routes/auth'
 import { mfaRoutes } from './routes/mfa'
 import { userRoutes } from './routes/users'
 import { adminRoutes } from './routes/admin'
+import { supportRoutes } from './routes/support'
 import { errorHandler } from './middleware/errorHandler'
 
 // ─────────────────────────────────────────────────────────
 // DentalIQ — Auth Service  (port 3001)
 // Pure JS stack — no Docker, no native modules
+// Last update: 2026-04-30 01:28
 // ─────────────────────────────────────────────────────────
 
 const logger = createLogger('auth-service')
@@ -93,6 +95,21 @@ async function initDb() {
     )
   `))
 
+  await db.run(sql.raw(`
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      clinic_name TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      user_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `))
+
   logger.info('✓ Database tables ready (SQLite)')
 }
 
@@ -136,8 +153,26 @@ async function buildApp() {
   await app.register(mfaRoutes,  { prefix: '/auth/mfa' })
   await app.register(userRoutes, { prefix: '/users' })
   await app.register(adminRoutes, { prefix: '/admin' })
+  await app.register(supportRoutes, { prefix: '/support' })
 
   return app
+}
+
+async function runTrialExpiryCheck() {
+  const db = getDb() as any
+  const now = new Date().toISOString()
+  try {
+    const result = await db.run(sql.raw(`
+      UPDATE tenants 
+      SET status = 'suspended' 
+      WHERE status = 'trial' AND trial_ends_at < '${now}'
+    `))
+    if (result.rowsAffected > 0) {
+      logger.info(`[TrialExpiry] Suspended ${result.rowsAffected} clinics due to expired trials.`)
+    }
+  } catch (err) {
+    logger.error({ err }, 'Failed to run trial expiry check')
+  }
 }
 
 async function main() {
@@ -162,6 +197,10 @@ async function main() {
     logger.fatal({ err }, 'Failed to start')
     process.exit(1)
   }
+
+  // Run trial expiry check on startup and then every hour
+  runTrialExpiryCheck()
+  setInterval(runTrialExpiryCheck, 60 * 60 * 1000)
 
   const shutdown = async () => {
     logger.info('Shutting down...')

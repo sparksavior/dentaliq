@@ -12,6 +12,7 @@ const PatientBodySchema = z.object({
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   insuranceProvider: z.string().optional(),
+  clinicId: z.string().optional(),
 })
 
 export async function patientsRoutes(app: FastifyInstance) {
@@ -24,12 +25,20 @@ export async function patientsRoutes(app: FastifyInstance) {
     if (!tablePrefix) return reply.code(400).send({ success: false, error: 'Tenant schema not found' })
 
     const db = getDb() as any
+    const clinicId = req.headers['x-clinic-id'] as string
+
+    // Migrate: add clinic_id column for tenants provisioned before this feature
     try {
-      const result = await db.run(sql.raw(`
+      await (db as any).run(sql.raw(`ALTER TABLE "${tablePrefix}_patients" ADD COLUMN clinic_id TEXT`))
+    } catch { /* column already exists */ }
+
+    try {
+      const whereClause = clinicId ? `WHERE clinic_id = '${clinicId}'` : ''
+      const rows = await (db as any).all(sql.raw(`
         SELECT * FROM "${tablePrefix}_patients"
+        ${whereClause}
         ORDER BY created_at DESC
       `))
-      const rows = result?.rows || result || []
       return reply.send({ success: true, data: rows })
     } catch (err) {
       req.log.error(err)
@@ -49,14 +58,20 @@ export async function patientsRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     const newId = createId()
-    
+    const clinicId = req.headers['x-clinic-id'] as string
+
+    // Migrate: add clinic_id column for tenants provisioned before this feature
     try {
-      await db.run(
+      await (db as any).run(sql.raw(`ALTER TABLE "${tablePrefix}_patients" ADD COLUMN clinic_id TEXT`))
+    } catch { /* column already exists */ }
+
+    try {
+      await (db as any).run(
         sql`INSERT INTO ${sql.raw(`"${tablePrefix}_patients"`)}
-          (id, first_name, last_name, date_of_birth, phone, email, insurance_plan_id)
+          (id, first_name, last_name, date_of_birth, phone, email, insurance_plan_id, clinic_id)
         VALUES
           (${newId}, ${body.firstName}, ${body.lastName}, ${body.dateOfBirth ?? null},
-           ${body.phone ?? null}, ${body.email ?? null}, ${body.insuranceProvider ?? null})`
+           ${body.phone ?? null}, ${body.email ?? null}, ${body.insuranceProvider ?? null}, ${clinicId ?? null})`
       )
       return reply.code(201).send({ success: true, data: { id: newId, ...body } })
     } catch (err) {
@@ -78,7 +93,7 @@ export async function patientsRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      await db.run(
+      await (db as any).run(
         sql`UPDATE ${sql.raw(`"${tablePrefix}_patients"`)} SET
           first_name   = COALESCE(${body.firstName ?? null}, first_name),
           last_name    = COALESCE(${body.lastName ?? null}, last_name),
@@ -86,6 +101,7 @@ export async function patientsRoutes(app: FastifyInstance) {
           phone        = COALESCE(${body.phone ?? null}, phone),
           email        = COALESCE(${body.email ?? null}, email),
           insurance_plan_id = COALESCE(${body.insuranceProvider ?? null}, insurance_plan_id),
+          clinic_id    = COALESCE(${body.clinicId ?? null}, clinic_id),
           updated_at   = ${new Date().toISOString()}
         WHERE id = ${id}`
       )
@@ -108,16 +124,15 @@ export async function patientsRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      const pResult = await db.run(sql.raw(`SELECT * FROM "${tablePrefix}_patients" WHERE id = '${id}' LIMIT 1`))
-      const patient = pResult?.rows?.[0] || pResult?.[0]
+      const pResult = await (db as any).all(sql.raw(`SELECT * FROM "${tablePrefix}_patients" WHERE id = '${id}' LIMIT 1`))
+      const patient = pResult?.[0]
       if (!patient) return reply.code(404).send({ success: false, error: 'Patient not found' })
 
-      const hResult = await db.run(sql.raw(`
+      const history = await (db as any).all(sql.raw(`
         SELECT * FROM "${tablePrefix}_estimates" 
         WHERE patient_id = '${id}' 
         ORDER BY created_at DESC
       `))
-      const history = hResult?.rows || hResult || []
       console.log(`[GET /patients/:id] History rows for ${id}:`, history)
 
       return reply.send({ success: true, data: { ...patient, history } })
@@ -139,7 +154,7 @@ export async function patientsRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      await db.run(sql`DELETE FROM ${sql.raw(`"${tablePrefix}_patients"`)} WHERE id = ${id}`)
+      await (db as any).run(sql`DELETE FROM ${sql.raw(`"${tablePrefix}_patients"`)} WHERE id = ${id}`)
       return reply.send({ success: true })
     } catch (err) {
       req.log.error(err)

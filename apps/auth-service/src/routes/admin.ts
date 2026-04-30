@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { getDb, tenants } from '@dentaliq/db'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { requireAuth } from '../middleware/requireAuth'
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -23,11 +23,11 @@ export async function adminRoutes(app: FastifyInstance) {
   app.patch('/tenants/:id', async (req: any, reply) => {
     const { id } = req.params
     const { plan, status, billingDate, trialEndsAt } = req.body
-    
+
     const db = getDb()
     await db
       .update(tenants)
-      .set({ 
+      .set({
         plan: plan || undefined,
         status: status || undefined,
         billingDate: billingDate || undefined,
@@ -37,5 +37,25 @@ export async function adminRoutes(app: FastifyInstance) {
       .where(eq(tenants.id, id))
 
     return { success: true }
+  })
+
+  // GET /admin/tickets — list all support tickets
+  app.get('/tickets', async (_req, reply) => {
+    const db = getDb() as any
+    const rows = await db.all(sql.raw(`
+      SELECT * FROM support_tickets ORDER BY created_at DESC
+    `))
+    return reply.send({ success: true, data: rows ?? [] })
+  })
+
+  // PATCH /admin/tickets/:id — update ticket status
+  app.patch('/tickets/:id', async (req: any, reply) => {
+    const { id } = req.params
+    const { status } = req.body
+    const db = getDb() as any
+    await db.run(sql.raw(`
+      UPDATE support_tickets SET status = '${status}', updated_at = datetime('now') WHERE id = '${id}'
+    `))
+    return reply.send({ success: true })
   })
 }

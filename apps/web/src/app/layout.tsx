@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { AuthProvider } from '@/contexts/auth-context'
+import { ClinicProvider } from '@/contexts/clinic-context'
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
@@ -15,7 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="h-full">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ClinicProvider>
+            {children}
+          </ClinicProvider>
+        </AuthProvider>
       </body>
     </html>
   )

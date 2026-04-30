@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { FileText, Clock, Shield, Calendar, History, Phone, Mail, User, ChevronRight, Search, Plus, Filter, MoreHorizontal, Edit, Trash } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
+import { useClinic } from '@/contexts/clinic-context'
 import { patientsApi, tenantsApi, type Patient, type CreatePatientInput, type Tenant } from '@/lib/api'
+
+interface ClinicLocation { id: string; name: string; status: string }
 
 const INSURERS = ['Sun Life Financial', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Desjardins', 'OTIP/RAEO', 'Empire Life']
 
@@ -38,33 +41,41 @@ export default function PatientsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [clinics, setClinics] = useState<ClinicLocation[]>([])
 
+  const { selectedClinicId } = useClinic()
   const load = useCallback(async () => {
     if (!accessToken) return
     setLoading(true)
     try {
-      const [pts, t] = await Promise.all([
+      const [pts, t, cls] = await Promise.all([
         patientsApi.getPatients(accessToken),
-        tenantsApi.getTenant(accessToken).catch(() => null)
+        tenantsApi.getTenant(accessToken).catch(() => null),
+        tenantsApi.getClinics(accessToken).catch(() => [] as ClinicLocation[]),
       ])
       setPatients(pts)
       setTenant(t)
+      setClinics(cls)
     } finally {
       setLoading(false)
     }
-  }, [accessToken])
+  }, [accessToken, selectedClinicId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, selectedClinicId])
 
 
   const openAdd = () => {
-    setEditingId(null); setForm(emptyForm); setError(''); setShowModal(true)
+    setEditingId(null)
+    setForm({ ...emptyForm, clinicId: selectedClinicId ?? undefined })
+    setError('')
+    setShowModal(true)
   }
 
   const openEdit = (p: Patient) => {
     setEditingId(p.id)
-    setForm({ firstName: p.first_name, lastName: p.last_name, dateOfBirth: p.date_of_birth ?? '', phone: p.phone ?? '', email: p.email ?? '', insuranceProvider: p.insurance_plan_id ?? '' })
-    setError(''); setShowModal(true)
+    setForm({ firstName: p.first_name, lastName: p.last_name, dateOfBirth: p.date_of_birth ?? '', phone: p.phone ?? '', email: p.email ?? '', insuranceProvider: p.insurance_plan_id ?? '', clinicId: (p as any).clinic_id ?? undefined })
+    setError('')
+    setShowModal(true)
   }
 
   const save = async () => {
@@ -251,6 +262,17 @@ export default function PatientsPage() {
                   {INSURERS.map(ins => <option key={ins} value={ins}>{ins}</option>)}
                 </select>
               </div>
+              {tenant?.plan !== 'starter' && clinics.length > 1 && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>
+                    Clinic location {editingId ? <span style={{ color: '#0e7490' }}>(transfer patient)</span> : ''}
+                  </label>
+                  <select style={{ ...inp, cursor: 'pointer' }} value={form.clinicId ?? ''} onChange={e => setForm(f => ({ ...f, clinicId: e.target.value || undefined }))}>
+                    <option value="">— Select clinic —</option>
+                    {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
