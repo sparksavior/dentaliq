@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { FileText } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
+import { useClinic } from '@/contexts/clinic-context'
 import { estimateApi, tenantsApi, type Tenant, type EstimateHistoryItem } from '@/lib/api'
 import PreAuthPdfModal from '@/components/PreAuthPdfModal'
 
@@ -37,6 +38,7 @@ export default function ClaimsPage() {
   const [insurer, setInsurer] = useState('Sun Life Financial')
   const [copied, setCopied] = useState(false)
 
+  const { selectedClinicId } = useClinic()
   const load = useCallback(async () => {
     if (!accessToken) return
     setLoading(true)
@@ -50,9 +52,9 @@ export default function ClaimsPage() {
     } finally {
       setLoading(false)
     }
-  }, [accessToken])
+  }, [accessToken, selectedClinicId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, selectedClinicId])
 
   const counts = {
     all: history.length,
@@ -213,12 +215,18 @@ export default function ClaimsPage() {
                     <td style={{ padding: '12px 14px', color: 'var(--color-text-secondary)', fontSize: 12, whiteSpace: 'nowrap' }}>{timeAgo(item.created_at)}</td>
                     <td style={{ padding: '12px 14px', textAlign: 'right' }}>
                       {(item.claim_risk === 'high' || item.claim_risk === 'medium') && (
-                        <button
-                          onClick={() => openPreAuth(item)}
-                          style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        >
-                          ✨ Pre-auth
-                        </button>
+                        tenant?.plan === 'starter' ? (
+                          <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 20, background: 'rgba(14,116,144,0.08)', color: '#0e7490', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                            Pro only
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => openPreAuth(item)}
+                            style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                          >
+                            ✨ Pre-auth
+                          </button>
+                        )
                       )}
                     </td>
                   </tr>

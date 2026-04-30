@@ -25,6 +25,11 @@
 7. [Running Locally (Universal Setup)](#running-locally-universal-setup)
 8. [Architecture Diagram](#architecture-diagram)
 
+**New in this commit:**
+- [9. AI Clinic Insight Popup (Login)](#9-ai-clinic-insight-popup-login)
+- [10. New User Tour Guide](#10-new-user-tour-guide)
+- [11. AI-Enhanced Overview Dashboard](#11-ai-enhanced-overview-dashboard)
+
 ---
 
 ## Project Overview
@@ -137,6 +142,28 @@ A high-fidelity administrative interface for managing the entire DentalIQ ecosys
     *   **Billing Management**: Manually adjust billing cycles and plan tiers (Starter/Pro/Enterprise).
     *   **Trial Kill-switch**: Instantly suspend clinic access. Suspended clinics are met with a non-closable "Free Trial Ended" overlay.
 
+### 9. AI Clinic Insight Popup (Login)
+Every time a user logs in (or completes signup), a modal popup appears before they reach the dashboard.
+*   **Location**: `apps/web/src/components/ClinicInsightPopup.tsx`
+*   **Trigger**: `sessionStorage` flag `diq_fresh_login` set by both `login/page.tsx` and `signup/page.tsx`
+*   **AI**: Calls Ollama `phi3` with live clinic stats (patient count, monthly estimates, revenue, risk flags) to generate a 2–3 sentence personalised summary.
+*   **Fallback**: If Ollama is unavailable, a template-based summary is shown instead — popup always appears.
+*   **Stats tiles**: Patients · This Month's estimates · Revenue (CAD) · High-Risk claims count.
+
+### 10. New User Tour Guide
+First-time users are shown an 8-step guided tour of the dashboard on their first login.
+*   **Location**: `apps/web/src/components/TourGuide.tsx`
+*   **Trigger**: Checks `localStorage` for `diq_tour_seen`. Shown once; never again after completion or dismissal.
+*   **Steps**: Welcome → Overview → Estimates → Claims → Patients → Settings → AI Copilot → Get Started.
+*   **UX**: Sidebar steps show a directional arrow aligned to the relevant nav item. Progress dots animate at the top. Back / Next / End tour controls.
+
+### 11. AI-Enhanced Overview Dashboard
+The overview page now surfaces actionable AI insights alongside richer stat card sub-labels.
+*   **AI Insight Strip**: A teal banner above the stat cards calls Ollama for a single focused sentence about the clinic right now (top procedure code, revenue, risk flags, most recent patient name). Has a ↻ refresh button.
+*   **Stat sub-labels**: Month-over-month estimate delta, per-estimate revenue average, specific patient count wording.
+*   **Recent Activity**: Now shows patient full name inline for each estimate row (e.g. `D2750 · Jane Smith · high`).
+*   **Narrative fix**: `patientAge` now threads through the full stack (frontend → API → estimate-service route → `llmNarrativeGenerator`) so pre-auth letters correctly reference e.g. `Jane Smith (age 34)`.
+
 ---
 
 ## Backend API Reference
@@ -206,11 +233,11 @@ node setup.js
 
 ### Credentials (Demo Admin)
 *   **Email**: `admin@dentaliq.dev`
-*   **Password**: `AdminPassword123!`
+*   **Password**: `Demo1234!`
 
 ### Credentials (Clinic User)
 *   **Email**: `demo@dentaliq.dev`
-*   **Password**: `AdminPassword123!`
+*   **Password**: `Demo1234!`
 
 ---
 

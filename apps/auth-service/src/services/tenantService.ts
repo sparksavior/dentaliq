@@ -2,6 +2,7 @@ import { getDb, tenants } from '@dentaliq/db'
 import { createLogger } from '@dentaliq/logger'
 import type { PlanTier } from '@dentaliq/types'
 import { eq, sql } from 'drizzle-orm'
+import { createId } from '@paralleldrive/cuid2'
 
 const logger = createLogger('tenant-service')
 
@@ -37,13 +38,13 @@ export class TenantService {
     const tenant = result[0]
 
     // Create per-tenant tables (prefixed, async for libsql)
-    await this.createTenantTables(tablePrefix)
+    await this.createTenantTables(tablePrefix, name)
 
     logger.info({ tenantId: tenant.id, tablePrefix, plan }, 'Tenant provisioned')
     return tenant
   }
 
-  private async createTenantTables(p: string) {
+  private async createTenantTables(p: string, clinicName: string = 'Main Location') {
     const db = this.db as any
 
     await db.run(sql.raw(`
@@ -56,6 +57,7 @@ export class TenantService {
         phone TEXT,
         email TEXT,
         insurance_plan_id TEXT,
+        clinic_id TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
@@ -88,6 +90,7 @@ export class TenantService {
         claim_risk TEXT,
         plain_explanation TEXT,
         pre_auth_letter TEXT,
+        clinic_id TEXT,
         created_by TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
@@ -107,6 +110,14 @@ export class TenantService {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
+    `))
+
+    // Seed initial clinic location with the actual clinic name
+    const clinicId = createId()
+    const safeClinicName = clinicName.replace(/'/g, "''")
+    await db.run(sql.raw(`
+      INSERT INTO "${p}_clinic_locations" (id, name, status)
+      VALUES ('${clinicId}', '${safeClinicName}', 'active')
     `))
   }
 

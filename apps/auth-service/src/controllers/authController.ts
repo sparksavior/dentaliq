@@ -38,52 +38,60 @@ export class AuthController {
   // ── Register ──────────────────────────────────────────────
   async register(input: RegisterInput) {
     const { name, email, password, clinicName, plan } = input
+    logger.info({ email, clinicName, plan }, 'Starting registration...')
 
-    const existing = await this.db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email.toLowerCase()))
-      .limit(1)
+    try {
+      const existing = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()))
+        .limit(1)
 
-    if (existing.length > 0) {
-      const err = new Error('An account with this email already exists')
-      ;(err as any).statusCode = 409
-      throw err
-    }
+      if (existing.length > 0) {
+        logger.warn({ email }, 'Registration failed — email exists')
+        const err = new Error('An account with this email already exists')
+        ;(err as any).statusCode = 409
+        throw err
+      }
 
-    const passwordHash = await bcrypt.hash(password, 12)
-    const emailVerifyToken = createId()
+      const passwordHash = await bcrypt.hash(password, 12)
+      const emailVerifyToken = createId()
 
-    // SQLite doesn't support nested transactions — provision sequentially
-    const tenant = await this.tenantService.provision({
-      name: clinicName,
-      plan: plan as any,
-    })
-
-    const [user] = await this.db
-      .insert(users)
-      .values({
-        tenantId: tenant.id,
-        email: email.toLowerCase(),
-        name,
-        passwordHash,
-        role: 'admin' as UserRole,
-        emailVerifyToken,
+      logger.info({ clinicName }, 'Provisioning tenant...')
+      const tenant = await this.tenantService.provision({
+        name: clinicName,
+        plan: plan as any,
       })
-      .returning()
 
-    // Send email (non-blocking)
-    this.emailService
-      .sendVerificationEmail(user.email, user.name, emailVerifyToken)
-      .catch((err) => logger.error({ err }, 'Email failed'))
+      logger.info({ tenantId: tenant.id }, 'Inserting user...')
+      const [user] = await this.db
+        .insert(users)
+        .values({
+          tenantId: tenant.id,
+          email: email.toLowerCase(),
+          name,
+          passwordHash,
+          role: 'admin' as UserRole,
+          emailVerifyToken,
+        })
+        .returning()
 
-    logger.info({ userId: user.id, tenantId: tenant.id }, 'User registered')
+      // Send email (non-blocking)
+      this.emailService
+        .sendVerificationEmail(user.email, user.name, emailVerifyToken)
+        .catch((err) => logger.error({ err }, 'Email failed'))
 
-    return {
-      userId: user.id,
-      tenantId: tenant.id,
-      email: user.email,
-      message: 'Account created! Check your email (or terminal in dev mode) for a verification link.',
+      logger.info({ userId: user.id, tenantId: tenant.id }, 'User registered successfully')
+
+      return {
+        userId: user.id,
+        tenantId: tenant.id,
+        email: user.email,
+        message: 'Account created! Check your email (or terminal in dev mode) for a verification link.',
+      }
+    } catch (err: any) {
+      logger.error({ err, email }, 'Registration process failed')
+      throw err
     }
   }
 

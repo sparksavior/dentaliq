@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { Building2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { tenantsApi, insurancePlansApi, type Tenant, type InsurancePlan, type CreateInsurancePlanInput } from '@/lib/api'
 
@@ -64,17 +65,26 @@ export default function SettingsPage() {
   const [savingPlan, setSavingPlan] = useState(false)
   const [planError, setPlanError] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  
+  // Clinic locations
+  const [clinics, setClinics] = useState<any[]>([])
+  const [showClinicModal, setShowClinicModal] = useState(false)
+  const [clinicForm, setClinicForm] = useState({ name: '', address: '', phone: '', email: '' })
+  const [savingClinicLoc, setSavingClinicLoc] = useState(false)
+  const [clinicLocError, setClinicLocError] = useState('')
 
   const load = useCallback(async () => {
     if (!accessToken) return
     setLoading(true)
     try {
-      const [t, ps] = await Promise.all([
+      const [t, ps, cls] = await Promise.all([
         tenantsApi.getTenant(accessToken).catch(() => null),
         insurancePlansApi.getPlans(accessToken).catch(() => [] as InsurancePlan[]),
+        tenantsApi.getClinics(accessToken).catch(() => [] as any[]),
       ])
       if (t) { setTenant(t); setClinicName(t.name) }
       setPlans(ps)
+      setClinics(cls)
     } finally {
       setLoading(false)
     }
@@ -170,6 +180,22 @@ export default function SettingsPage() {
     } catch { /* noop */ }
   }
 
+  const saveClinicLocation = async () => {
+    if (!accessToken) return
+    if (!clinicForm.name.trim()) { setClinicLocError('Name is required'); return }
+    setSavingClinicLoc(true); setClinicLocError('')
+    try {
+      await tenantsApi.createClinic(accessToken, clinicForm)
+      setShowClinicModal(false)
+      setClinicForm({ name: '', address: '', phone: '', email: '' })
+      await load()
+    } catch (err: any) {
+      setClinicLocError(err.message ?? 'Failed to add clinic')
+    } finally {
+      setSavingClinicLoc(false)
+    }
+  }
+
   const inp: React.CSSProperties = { width: '100%', padding: '10px 12px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 9, fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-input-bg)', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui', transition: 'border-color 0.15s' }
 
   if (loading) {
@@ -234,6 +260,43 @@ export default function SettingsPage() {
         {clinicMsg && (
           <div style={{ marginTop: 8, fontSize: 13, color: clinicMsg.startsWith('Error') ? '#ef4444' : '#10b981', fontWeight: 500 }}>{clinicMsg}</div>
         )}
+      </Section>
+
+      {/* Clinic locations */}
+      <Section title="Clinic Locations" desc="Manage multiple office locations. Data for patients and estimates will be scoped by location.">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {clinics.map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-secondary)', borderRadius: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-accent-muted)', color: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Building2 size={16} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>{c.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{c.address || 'No address set'}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, background: c.status === 'active' ? 'rgba(16, 185, 129, 0.1)' : 'var(--color-border-secondary)', color: c.status === 'active' ? '#10b981' : 'var(--color-text-secondary)', padding: '3px 10px', borderRadius: 20, fontWeight: 600, textTransform: 'uppercase' }}>
+                {c.status}
+              </div>
+            </div>
+          ))}
+
+          {tenant?.plan !== 'starter' && clinics.length < (tenant?.plan === 'pro' ? 3 : 999) && (
+            <button
+              onClick={() => setShowClinicModal(true)}
+              style={{ width: '100%', padding: '12px', border: '1.5px dashed var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', borderRadius: 12, fontSize: 14, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+            >
+              <span>+ Add new location</span>
+            </button>
+          )}
+          
+          {tenant?.plan === 'starter' && (
+            <div style={{ padding: '10px 14px', background: 'rgba(14, 116, 144, 0.05)', borderRadius: 10, fontSize: 13, color: '#0e7490', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>💡 Upgrade to Pro to add up to 3 locations.</span>
+            </div>
+          )}
+        </div>
       </Section>
 
       {/* PMS integration */}
@@ -463,6 +526,65 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      {/* Clinic location modal */}
+      <ClinicModal
+        open={showClinicModal}
+        onClose={() => setShowClinicModal(false)}
+        onSave={saveClinicLocation}
+        form={clinicForm}
+        setForm={setClinicForm}
+        loading={savingClinicLoc}
+        error={clinicLocError}
+        inp={inp}
+      />
+    </div>
+  )
+}
+
+function ClinicModal({ open, onClose, onSave, form, setForm, loading, error, inp }: any) {
+  if (!open) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)' }} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: 'var(--color-background-primary)', borderRadius: 16, padding: '2rem', width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.4)', border: '1px solid var(--color-border-secondary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)' }}>Add Clinic Location</h2>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        </div>
+
+        {error && <div style={{ marginBottom: 14, padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #fecaca', borderRadius: 9, fontSize: 13, color: '#ef4444' }}>{error}</div>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: '2rem' }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Clinic Name <span style={{ color: '#ef4444' }}>*</span></label>
+            <input style={inp} placeholder="e.g. West End Dental" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Address</label>
+            <input style={inp} placeholder="123 Main St..." value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Phone</label>
+              <input style={inp} placeholder="555-0123" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Email</label>
+              <input style={inp} placeholder="office@..." value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 9, border: '1.5px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+          <button
+            onClick={onSave}
+            disabled={loading}
+            style={{ padding: '9px 22px', borderRadius: 9, border: 'none', background: loading ? 'var(--color-background-secondary)' : 'var(--color-accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}
+          >
+            {loading ? 'Adding…' : 'Add Location'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

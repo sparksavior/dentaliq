@@ -25,6 +25,8 @@ export interface AuthUser {
   role: 'admin' | 'dentist' | 'front_desk'
   tenantId: string
   mfaEnabled: boolean
+  plan?: 'starter' | 'pro' | 'enterprise'
+  status?: 'trial' | 'active' | 'suspended'
 }
 
 export interface AuthTokens {
@@ -66,6 +68,7 @@ export interface CreatePatientInput {
   phone?: string
   email?: string
   insuranceProvider?: string
+  clinicId?: string
 }
 
 export interface InsurancePlan {
@@ -152,11 +155,14 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const clinicId = typeof window !== 'undefined' ? localStorage.getItem('diq_selected_clinic') : null
+
   const res = await fetch(`${baseUrl}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(clinicId && { 'x-clinic-id': clinicId }),
       ...options.headers,
     },
   })
@@ -238,6 +244,12 @@ export const tenantsApi = {
 
   disconnectPms: (token: string) =>
     tenantRequest<Tenant>('/tenants/me/pms', token, { method: 'DELETE' }),
+
+  getClinics: (token: string) =>
+    tenantRequest<any[]>('/clinics', token),
+
+  createClinic: (token: string, data: { name: string; address?: string; phone?: string; email?: string }) =>
+    tenantRequest<any>('/clinics', token, { method: 'POST', body: JSON.stringify(data) }),
 }
 
 export const patientsApi = {
@@ -276,6 +288,20 @@ export const insurancePlansApi = {
     tenantRequest<{ success: true }>(`/insurance-plans/${id}`, token, { method: 'DELETE' }),
 }
 
+export interface SupportTicketInput {
+  subject: string
+  description: string
+}
+
+export const supportApi = {
+  createTicket: (token: string, data: SupportTicketInput) =>
+    authRequest<{ id: string }>('/support/tickets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+}
+
 export const estimateApi = {
   runEstimate: (token: string, input: EstimateRequest) =>
     estimateRequest<EstimateResult>(
@@ -290,7 +316,7 @@ export const estimateApi = {
   getHistory: (token: string) =>
     estimateRequest<EstimateHistoryItem[]>('/estimate/history', token),
 
-  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; clinicalNotes?: string; previousNarrative?: string; revisionInstructions?: string }) =>
+  generateNarrative: (token: string, input: { cdtCode: string; insurerName: string; patientName?: string; patientAge?: number; clinicalNotes?: string; previousNarrative?: string; revisionInstructions?: string }) =>
     estimateRequest<string>('/estimate/narrative', token, { method: 'POST', body: JSON.stringify(input) }),
 
   saveLetter: (token: string, id: string, letter: string) =>

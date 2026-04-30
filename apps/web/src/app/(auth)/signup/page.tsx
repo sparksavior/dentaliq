@@ -2,10 +2,10 @@
 
 import { useState, useRef, type FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { authApi, ApiError } from '@/lib/api'
+import { authApi, tenantsApi, ApiError } from '@/lib/api'
 import { useAuth } from '@/contexts/auth-context'
 
-const STEP_NAMES = ['Account', 'Verify', 'Connect', 'Security', 'Done']
+const STEP_NAMES = ['Account', 'Verify', 'Clinics', 'Connect', 'Security', 'Done']
 
 const PLANS = [
   { id: 'starter',    name: 'Starter',    price: 199,  desc: '1 clinic location',    features: ['Cost estimator', 'Claim risk checks', 'Basic analytics'], color: '#0f766e' },
@@ -37,6 +37,7 @@ export default function SignupPage() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [mfaData, setMfaData] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null)
   const [mfaCode, setMfaCode] = useState('')
+  const [extraClinics, setExtraClinics] = useState<string[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -73,6 +74,24 @@ export default function SignupPage() {
     setStep(2)
   }
 
+  async function handleSaveClinics() {
+    if (!sessionToken) { setStep(3); return }
+    setLoading(true)
+    setError('')
+    try {
+      for (const name of extraClinics) {
+        if (name.trim()) {
+          await tenantsApi.createClinic(sessionToken, { name: name.trim() })
+        }
+      }
+      setStep(3)
+    } catch (err: any) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save additional locations')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function connectPms() {
     setPmsStatus('connecting')
     setPmsProgress(0)
@@ -85,6 +104,11 @@ export default function SignupPage() {
         setPmsStatus('connected')
       }
     }, 280)
+  }
+
+  function skipPms() {
+    loadMfa()
+    setStep(4)
   }
 
   async function loadMfa() {
@@ -101,8 +125,8 @@ export default function SignupPage() {
   }
 
   async function enableMfa() {
-    if (!sessionToken || !mfaData) { setStep(4); return }
-    if (!mfaCode || mfaCode.length !== 6) { setStep(4); return }
+    if (!sessionToken || !mfaData) { setStep(5); return }
+    if (!mfaCode || mfaCode.length !== 6) { setStep(5); return }
     setLoading(true)
     try {
       await fetch(`${process.env.NEXT_PUBLIC_AUTH_URL ?? 'http://localhost:3001'}/auth/mfa/verify`, {
@@ -112,7 +136,7 @@ export default function SignupPage() {
         body: JSON.stringify({ code: mfaCode, secret: mfaData.secret }),
       })
     } catch { /* non-blocking */ }
-    setStep(4)
+    setStep(5)
     setLoading(false)
   }
 
@@ -123,6 +147,8 @@ export default function SignupPage() {
         setSession(sessionToken, user)
       } catch { /* session already set */ }
     }
+    // Flag: show insight popup + trigger tour guide on first dashboard visit
+    sessionStorage.setItem('diq_fresh_login', '1')
     router.push('/dashboard')
   }
 
@@ -319,45 +345,100 @@ export default function SignupPage() {
           </div>
         )}
 
-        {/* Step 2: Connect PMS */}
+        {/* Step 2: Clinics */}
         {step === 2 && (
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>Connect your PMS</h2>
-            <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>Automatically syncs patients, procedures, and insurance plans.</p>
+          <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, letterSpacing: '-0.03em' }}>Clinic locations</h2>
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>
+              {plan === 'starter' ? 'The Starter plan includes 1 clinic location.' : `Your ${plan} plan allows up to ${plan === 'pro' ? '3' : 'unlimited'} locations.`}
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: '2rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)' }}>Primary location</label>
+                <input style={{...inputStyle, background: 'var(--color-background-secondary)', border: '1.5px solid var(--color-border-secondary)', color: 'var(--color-text-primary)'}} value={form.clinic} disabled />
+              </div>
+
+              {extraClinics.map((name, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)' }}>Location #{i + 2}</label>
+                    <button type="button" onClick={() => setExtraClinics(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 12, cursor: 'pointer' }}>Remove</button>
+                  </div>
+                  <input 
+                    style={{...inputStyle, background: 'var(--color-background-primary)', border: '1.5px solid var(--color-border-secondary)', color: 'var(--color-text-primary)'}} 
+                    placeholder="e.g. Downtown Office" 
+                    value={name} 
+                    onChange={e => {
+                      const next = [...extraClinics]
+                      next[i] = e.target.value
+                      setExtraClinics(next)
+                    }} 
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
+                  />
+                </div>
+              ))}
+
+              {plan !== 'starter' && (extraClinics.length + 1 < (plan === 'pro' ? 3 : 999)) && (
+                <button 
+                  type="button"
+                  onClick={() => setExtraClinics(prev => [...prev, ''])}
+                  style={{ padding: '10px', borderRadius: 10, border: '1.5px dashed var(--color-border-secondary)', background: 'none', color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  <span>+ Add another location</span>
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={handleSaveClinics}
+              style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Continue →
+            </button>
+          </div>
+        )}
+
+        {/* Step 3: Connect PMS */}
+        {step === 3 && (
+          <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, letterSpacing: '-0.03em' }}>Connect your PMS</h2>
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>Automatically syncs patients, procedures, and insurance plans.</p>
 
             {pmsStatus === 'idle' && (
               <>
                 {/* Open Dental card */}
-                <div style={{ border: '1.5px solid #0f766e', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem', background: '#f0fdfa' }}>
+                <div style={{ border: '1.5px solid var(--color-accent)', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem', background: 'var(--color-accent-muted)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 10, background: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🦷</div>
+                    <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🦷</div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Open Dental</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>v24.x · REST API</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)' }}>Open Dental</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>v24.x · REST API</div>
                     </div>
-                    <div style={{ fontSize: 11, background: '#d1fae5', color: '#065f46', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>Supported</div>
+                    <div style={{ fontSize: 11, background: 'rgba(5, 150, 105, 0.2)', color: '#059669', padding: '3px 10px', borderRadius: 20, fontWeight: 500 }}>Supported</div>
                   </div>
-                  <div style={{ fontSize: 13, color: '#475569', marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
                     Syncs: patients, procedures, insurance plans, appointment history
                   </div>
                   <button
                     onClick={connectPms}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: '#0f766e', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: 'var(--color-accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Connect Open Dental →
                   </button>
                 </div>
 
                 {['Dentrix G7+', 'ClearDent'].map((name) => (
-                  <div key={name} style={{ border: '1px dashed #e2e8f0', borderRadius: 12, padding: '1rem', marginBottom: '0.8rem', opacity: 0.6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: 14, fontWeight: 500, color: '#0f172a' }}>{name}</div>
-                    <div style={{ fontSize: 12, background: '#f1f5f9', color: '#64748b', padding: '3px 10px', borderRadius: 20 }}>Coming soon</div>
+                  <div key={name} style={{ border: '1px dashed var(--color-border-secondary)', borderRadius: 12, padding: '1rem', marginBottom: '0.8rem', opacity: 0.6, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)' }}>{name}</div>
+                    <div style={{ fontSize: 12, background: 'var(--color-background-secondary)', color: 'var(--color-text-secondary)', padding: '3px 10px', borderRadius: 20 }}>Coming soon</div>
                   </div>
                 ))}
 
                 <button
-                  onClick={() => { setStep(3); loadMfa() }}
-                  style={{ width: '100%', marginTop: 8, padding: '11px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#64748b', fontSize: 14, cursor: 'pointer' }}
+                  onClick={skipPms}
+                  style={{ width: '100%', marginTop: 8, padding: '11px', borderRadius: 10, border: '1.5px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer' }}
                 >
                   Skip for now — connect manually later
                 </button>
@@ -366,18 +447,18 @@ export default function SignupPage() {
 
             {pmsStatus === 'connecting' && (
               <div>
-                <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, marginBottom: '1.5rem', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pmsProgress}%`, background: 'linear-gradient(90deg, #0f766e, #0d9488)', borderRadius: 3, transition: 'width 0.3s' }} />
+                <div style={{ height: 6, background: 'var(--color-background-secondary)', borderRadius: 3, marginBottom: '1.5rem', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pmsProgress}%`, background: 'var(--color-accent)', borderRadius: 3, transition: 'width 0.3s' }} />
                 </div>
                 {['Provisioning your workspace', 'Configuring Open Dental bridge', 'Loading insurance rule engine', 'Enabling AI copilot'].map((s, i) => {
                   const done = Math.floor(pmsProgress / 25)
                   const isActive = i === done
                   return (
                     <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, opacity: i < done ? 1 : isActive ? 1 : 0.35, transition: 'opacity 0.3s' }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: i < done ? '#0f766e' : isActive ? '#fef3c7' : '#f1f5f9', color: i < done ? '#fff' : isActive ? '#92400e' : '#94a3b8', transition: 'all 0.3s' }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: i < done ? 'var(--color-accent)' : isActive ? 'var(--color-accent-muted)' : 'var(--color-background-secondary)', color: i < done ? '#fff' : isActive ? 'var(--color-accent)' : 'var(--color-text-secondary)', transition: 'all 0.3s' }}>
                         {i < done ? '✓' : isActive ? '…' : i + 1}
                       </div>
-                      <span style={{ fontSize: 14, color: i < done ? '#0f766e' : '#0f172a' }}>{s}</span>
+                      <span style={{ fontSize: 14, color: i < done ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{s}</span>
                     </div>
                   )
                 })}
@@ -386,15 +467,15 @@ export default function SignupPage() {
 
             {pmsStatus === 'connected' && (
               <div>
-                <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: 12, padding: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ background: 'rgba(5, 150, 105, 0.1)', border: '1px solid #059669', borderRadius: 12, padding: '1.2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>✓</div>
                   <div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#065f46' }}>Open Dental connected!</div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: '#059669' }}>Open Dental connected!</div>
                     <div style={{ fontSize: 13, color: '#047857' }}>Full patient sync available in production.</div>
                   </div>
                 </div>
                 <button
-                  onClick={() => { setStep(3); loadMfa() }}
+                  onClick={() => { setStep(4); loadMfa() }}
                   style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
                 >
                   Continue to security setup →
@@ -404,21 +485,21 @@ export default function SignupPage() {
           </div>
         )}
 
-        {/* Step 3: MFA */}
-        {step === 3 && (
-          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: '1.2rem' }}>🔐</div>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>Security setup</h2>
-            <p style={{ fontSize: 14, color: '#64748b', marginBottom: '1.5rem' }}>PHIPA requires appropriate access controls for patient health information.</p>
+        {/* Step 4: MFA */}
+        {step === 4 && (
+          <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(15, 118, 110, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, marginBottom: '1.2rem' }}>🔐</div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, letterSpacing: '-0.03em' }}>Security setup</h2>
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>PHIPA requires appropriate access controls for patient health information.</p>
 
             {mfaData ? (
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>Scan with Google Authenticator or Authy</div>
+              <div style={{ border: '1px solid var(--color-border-secondary)', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8 }}>Scan with Google Authenticator or Authy</div>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-                  <img src={mfaData.qrCodeDataUrl} alt="TOTP QR code" style={{ width: 160, height: 160, borderRadius: 12, border: '1px solid #e2e8f0' }} />
+                  <img src={mfaData.qrCodeDataUrl} alt="TOTP QR code" style={{ width: 160, height: 160, borderRadius: 12, border: '1px solid var(--color-border-secondary)' }} />
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center', marginBottom: 14 }}>
-                  Or enter manually: <code style={{ fontFamily: 'monospace', background: '#f8fafc', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{mfaData.secret}</code>
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'center', marginBottom: 14 }}>
+                  Or enter manually: <code style={{ fontFamily: 'monospace', background: 'var(--color-background-secondary)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{mfaData.secret}</code>
                 </div>
                 <input
                   value={mfaCode}
@@ -426,15 +507,15 @@ export default function SignupPage() {
                   placeholder="Enter 6-digit code to confirm"
                   maxLength={6}
                   inputMode="numeric"
-                  style={{ ...inputStyle, textAlign: 'center', letterSpacing: '0.3em', fontSize: 22, fontFamily: 'monospace' }}
-                  onFocus={e => e.target.style.borderColor = '#0f766e'}
-                  onBlur={e => e.target.style.borderColor = '#e2e8f0'}
+                  style={{ ...inputStyle, textAlign: 'center', letterSpacing: '0.3em', fontSize: 22, fontFamily: 'monospace', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', border: '1.5px solid var(--color-border-secondary)' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
                 />
               </div>
             ) : (
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem', background: '#f8fafc' }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>Two-factor authentication</div>
-                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+              <div style={{ border: '1px solid var(--color-border-secondary)', borderRadius: 12, padding: '1.2rem', marginBottom: '1rem', background: 'var(--color-background-secondary)' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>Two-factor authentication</div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
                   Protect access to patient data with an authenticator app. You can enable this later in Settings.
                 </div>
               </div>
@@ -443,48 +524,48 @@ export default function SignupPage() {
             <button
               onClick={enableMfa}
               disabled={loading}
-              style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: loading ? '#94a3b8' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}
+              style={{ width: '100%', padding: '13px', borderRadius: 10, border: 'none', background: loading ? 'var(--color-border-primary)' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}
             >
               {loading ? 'Enabling…' : mfaData && mfaCode.length === 6 ? 'Enable MFA & continue →' : 'Skip for now →'}
             </button>
           </div>
         )}
 
-        {/* Step 4: Done */}
-        {step === 4 && (
+        {/* Step 5: Done */}
+        {step === 5 && (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: '2.5rem 2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 12 }}>
+            <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, padding: '2.5rem 2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: 12 }}>
               <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, margin: '0 auto 1.5rem', boxShadow: '0 4px 20px rgba(15,118,110,0.3)' }}>✓</div>
 
-              <h2 style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', marginBottom: 6, letterSpacing: '-0.03em' }}>You're all set!</h2>
-              <p style={{ fontSize: 15, color: '#64748b', marginBottom: '2rem', lineHeight: 1.6 }}>
+              <h2 style={{ fontSize: 26, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, letterSpacing: '-0.03em' }}>You're all set!</h2>
+              <p style={{ fontSize: 15, color: 'var(--color-text-secondary)', marginBottom: '2rem', lineHeight: 1.6 }}>
                 {form.clinic || 'Your clinic'} is live on DentalIQ. The AI copilot is ready.
               </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '2rem', textAlign: 'left' }}>
                 {[
                   ['Account', 'Created ✓'],
-                  ['Clinic', form.clinic || 'Ready ✓'],
+                  ['Locations', `${extraClinics.length + 1} Ready ✓`],
                   ['Plan', `${selectedPlan.name} — 14-day trial`],
-                  ['AI Copilot', 'Active ✓'],
+                  ['AI Copilot', plan === 'starter' ? 'Inactive' : 'Active ✓'],
                 ].map(([l, v]) => (
-                  <div key={l} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 13, color: '#64748b' }}>{l}</span>
-                    <span style={{ fontSize: 13, color: '#059669', fontWeight: 600 }}>{v}</span>
+                  <div key={l} style={{ background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-secondary)', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>{l}</span>
+                    <span style={{ fontSize: 13, color: plan === 'starter' && l === 'AI Copilot' ? 'var(--color-text-secondary)' : '#059669', fontWeight: 600 }}>{v}</span>
                   </div>
                 ))}
               </div>
 
-              <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 10, padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'left' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f766e', marginBottom: 6 }}>Quick start checklist</div>
+              <div style={{ background: 'var(--color-accent-muted)', border: '1px solid var(--color-accent)', borderRadius: 10, padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'left' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-accent)', marginBottom: 6 }}>Quick start checklist</div>
                 {[
                   'Run your first insurance estimate',
                   'Add your first patient',
                   'Connect your PMS (Settings → Integrations)',
                   'Set up 2FA for PHIPA compliance',
                 ].map((item, i) => (
-                  <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 13, color: '#047857' }}>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#99f6e4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, flexShrink: 0 }}>{i + 1}</div>
+                  <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 13, color: 'var(--color-accent)' }}>
+                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--color-accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, flexShrink: 0, border: '1px solid var(--color-accent)' }}>{i + 1}</div>
                     {item}
                   </div>
                 ))}

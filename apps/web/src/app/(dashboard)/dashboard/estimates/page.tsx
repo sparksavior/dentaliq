@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { FileText } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
+import { useClinic } from '@/contexts/clinic-context'
 import { estimateApi, patientsApi, tenantsApi, type Tenant, type EstimateResult, type CdtCodeSummary, type Patient, type EstimateHistoryItem } from '@/lib/api'
 import PreAuthPdfModal from '@/components/PreAuthPdfModal'
 
@@ -102,6 +103,7 @@ export default function EstimatesPage() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  const { selectedClinicId } = useClinic()
   const load = useCallback(async () => {
     if (!accessToken) return
     const [codes, pts, hist, t] = await Promise.all([
@@ -114,9 +116,9 @@ export default function EstimatesPage() {
     setPatients(pts)
     setHistory(hist)
     setTenant(t)
-  }, [accessToken])
+  }, [accessToken, selectedClinicId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, selectedClinicId])
 
   const runEstimate = async () => {
     setEstimating(true); setResult(null); setError(null); setNarrativeText(null)
@@ -155,11 +157,15 @@ export default function EstimatesPage() {
     const instructions = typeof revisionInstructions === 'string' ? revisionInstructions : undefined
 
     try {
-      const p = patients.find(p => p.id === selectedPatientId)
+      const p = patients.find(pt => pt.id === selectedPatientId)
+      const patientAge = p?.date_of_birth
+        ? Math.floor((Date.now() - new Date(p.date_of_birth).getTime()) / 31557600000)
+        : undefined
       const text = await estimateApi.generateNarrative(accessToken, {
-        cdtCode: result.cdtCode, 
+        cdtCode: result.cdtCode,
         insurerName: insurer,
         patientName: p ? `${p.first_name} ${p.last_name}` : undefined,
+        patientAge,
         previousNarrative: narrativeText || undefined,
         revisionInstructions: instructions
       })
@@ -298,13 +304,19 @@ export default function EstimatesPage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: narrativeText ? 10 : 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>Pre-authorization letter</div>
                   {!narrativeText && (
-                    <button
-                      onClick={generateNarrative}
-                      disabled={narrativeLoading}
-                      style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 500, cursor: narrativeLoading ? 'not-allowed' : 'pointer' }}
-                    >
-                      {narrativeLoading ? 'Generating…' : '✨ Draft with AI'}
-                    </button>
+                    tenant?.plan === 'starter' ? (
+                      <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 20, background: 'rgba(14,116,144,0.08)', color: '#0e7490', fontWeight: 500 }}>
+                        Pro feature — upgrade to use AI
+                      </span>
+                    ) : (
+                      <button
+                        onClick={generateNarrative}
+                        disabled={narrativeLoading}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-secondary)', color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 500, cursor: narrativeLoading ? 'not-allowed' : 'pointer' }}
+                      >
+                        {narrativeLoading ? 'Generating…' : '✨ Draft with AI'}
+                      </button>
+                    )
                   )}
                 </div>
                 {narrativeText && (

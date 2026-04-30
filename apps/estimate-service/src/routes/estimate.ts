@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { createId } from '@paralleldrive/cuid2'
-import { getDb } from '@dentaliq/db'
-import { sql } from 'drizzle-orm'
+import { getDb, tenants } from '@dentaliq/db'
+import { sql, eq } from 'drizzle-orm'
 import { runEstimate } from '../services/rulesEngine'
 import { requireAuth } from '../middleware/requireAuth'
 
@@ -35,7 +35,7 @@ export async function estimateRoutes(app: FastifyInstance) {
     })
 
     // Persist estimate to per-tenant table
-    const id = await persistEstimate(jwtUser.tenantId, jwtUser.sub, body.patientId, result)
+    const id = await persistEstimate(jwtUser.tenantId, jwtUser.sub, body.patientId, result, req.headers['x-clinic-id'] as string)
 
     return reply.code(201).send({ success: true, data: { ...result, id } })
   })
@@ -45,6 +45,7 @@ export async function estimateRoutes(app: FastifyInstance) {
     cdtCode: z.string(),
     insurerName: z.string(),
     patientName: z.string().optional(),
+    patientAge: z.number().int().min(0).max(120).optional(),
     clinicalNotes: z.string().optional(),
     previousNarrative: z.string().optional(),
     revisionInstructions: z.string().optional(),
@@ -53,6 +54,14 @@ export async function estimateRoutes(app: FastifyInstance) {
   app.post('/estimate/narrative', {
     preHandler: requireAuth(app),
   }, async (req, reply) => {
+    const jwtUser = req.user as any
+    // Narrative generation is a Pro/Enterprise-only feature
+    const db = getDb()
+    const tenantRows = await db.select({ plan: tenants.plan }).from(tenants).where(eq(tenants.id, jwtUser.tenantId)).limit(1)
+    if (tenantRows[0]?.plan === 'starter') {
+      return reply.code(403).send({ success: false, error: 'AI pre-authorization letters require a Pro plan. Please upgrade.' })
+    }
+
     const body = NarrativeBodySchema.parse(req.body)
     const { generateNarrative } = await import('../services/llmNarrativeGenerator')
     
@@ -60,6 +69,7 @@ export async function estimateRoutes(app: FastifyInstance) {
       cdtCode: body.cdtCode,
       insurerName: body.insurerName,
       patientName: body.patientName,
+      patientAge: body.patientAge,
       clinicalNotes: body.clinicalNotes,
       previousNarrative: body.previousNarrative,
       revisionInstructions: body.revisionInstructions,
@@ -92,11 +102,15 @@ export async function estimateRoutes(app: FastifyInstance) {
     if (!tablePrefix) return reply.send({ success: true, data: [] })
 
     const db = getDb() as any
+    const clinicId = req.headers['x-clinic-id'] as string
+
     try {
-      const rows = await db.all(sql.raw(`
+      const whereClause = clinicId ? `WHERE e.clinic_id = '${clinicId}'` : ''
+      const rows = await (db as any).all(sql.raw(`
         SELECT e.*, p.first_name, p.last_name 
         FROM "${tablePrefix}_estimates" e
         LEFT JOIN "${tablePrefix}_patients" p ON e.patient_id = p.id
+        ${whereClause}
         ORDER BY e.created_at DESC
         LIMIT 50
       `))
@@ -125,39 +139,15 @@ export async function estimateRoutes(app: FastifyInstance) {
     const db = getDb() as any
     try {
       const cleanId = id.trim()
-      const dbPath = process.env.DATABASE_PATH || 'dentaliq.db'
-      
-      const { execSync } = require('child_process')
-      const path = require('path')
-      const fs = require('fs')
-      
-      // Try multiple paths to find the real root
-      const pathsToTry = [
-        path.join(__dirname, '../../../../', dbPath),
-        path.join(__dirname, '../../../', dbPath),
-        path.join(process.cwd(), dbPath),
-        path.join(process.cwd(), '..', dbPath)
-      ]
-      
-      let absDbPath = pathsToTry[0]
-      for (const p of pathsToTry) {
-        if (fs.existsSync(p)) {
-          absDbPath = p
-          break
-        }
-      }
-      
-      console.log(`[saveLetter] Using DB at: ${absDbPath}`)
-      
-      const escapedLetter = letter.replace(/'/g, "''")
-      const cmd = `sqlite3 "${absDbPath}" "UPDATE \\"${tablePrefix}_estimates\\" SET pre_auth_letter = '${escapedLetter}' WHERE id = '${cleanId}';"`
-      
-      execSync(cmd)
+      await (db as any).run(
+        sql`UPDATE ${sql.raw(`"${tablePrefix}_estimates"`)} 
+            SET pre_auth_letter = ${letter} 
+            WHERE id = ${cleanId}`
+      )
       
       return reply.send({ 
         success: true, 
         debug: { 
-          path: absDbPath,
           id: cleanId,
           table: `${tablePrefix}_estimates`
         } 
@@ -174,21 +164,27 @@ async function persistEstimate(
   userId: string,
   patientId: string | undefined,
   result: Awaited<ReturnType<typeof runEstimate>>,
+  clinicId: string | null = null,
 ) {
   const tablePrefix = await getTablePrefix(tenantId)
   if (!tablePrefix) return null
 
   const db = getDb() as any
   const id = createId()
-  
+
+  // Migrate: add clinic_id column for tenants provisioned before this feature
   try {
-    await db.run(
+    await (db as any).run(sql.raw(`ALTER TABLE "${tablePrefix}_estimates" ADD COLUMN clinic_id TEXT`))
+  } catch { /* column already exists */ }
+
+  try {
+    await (db as any).run(
       sql`INSERT INTO ${sql.raw(`"${tablePrefix}_estimates"`)}
-        (id, patient_id, cdt_code, coverage_percent, patient_cost, insurer_pays, claim_risk, plain_explanation, created_by)
+        (id, patient_id, cdt_code, coverage_percent, patient_cost, insurer_pays, claim_risk, plain_explanation, created_by, clinic_id)
       VALUES
         (${id}, ${patientId ?? null}, ${result.cdtCode},
          ${result.coveragePercent}, ${result.patientCost}, ${result.insurerPays},
-         ${result.claimRisk}, ${result.plainExplanation}, ${userId})`,
+         ${result.claimRisk}, ${result.plainExplanation}, ${userId}, ${clinicId})`,
     )
     return id
   } catch (err) {

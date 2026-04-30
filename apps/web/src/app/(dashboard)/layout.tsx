@@ -4,8 +4,11 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/auth-context'
+import { useClinic } from '@/contexts/clinic-context'
 import { tenantsApi, type Tenant, patientsApi, estimateApi } from '@/lib/api'
-import { X, Send, Sparkles, MessageSquare, ChevronRight } from 'lucide-react'
+import { X, Send, Sparkles, MessageSquare, ChevronRight, Building2, ChevronDown } from 'lucide-react'
+import { TourGuide } from '@/components/TourGuide'
+import { ClinicInsightPopup } from '@/components/ClinicInsightPopup'
 
 const NAV = [
   {
@@ -54,10 +57,20 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: '/dashboard/support',
+    label: 'Support',
+    icon: (
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
 ]
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, loading, clearSession, accessToken } = useAuth()
+  const { selectedClinicId, setSelectedClinicId } = useClinic()
   const router = useRouter()
   const pathname = usePathname()
   const [tenant, setTenant] = useState<Tenant | null>(null)
@@ -73,6 +86,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   // Context State for AI
   const [patients, setPatients] = useState<any[]>([])
   const [history, setHistory] = useState<any[]>([])
+  const [clinics, setClinics] = useState<any[]>([])
+  const [isClinicMenuOpen, setIsClinicMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login')
@@ -81,12 +96,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (accessToken) {
       tenantsApi.getTenant(accessToken).then(setTenant).catch(() => {})
-      
-      // Fetch data for AI context
+      tenantsApi.getClinics(accessToken).then(data => {
+        setClinics(data)
+        if (data.length > 0 && !selectedClinicId) {
+          setSelectedClinicId(data[0].id)
+        }
+      }).catch(() => {})
+    }
+  }, [accessToken])
+
+  useEffect(() => {
+    if (accessToken) {
+      // Re-fetch data for AI context when clinic changes
       patientsApi.getPatients(accessToken).then(setPatients).catch(() => {})
       estimateApi.getHistory(accessToken).then(setHistory).catch(() => {})
     }
-  }, [accessToken])
+  }, [accessToken, selectedClinicId])
 
 
   const handleSendChat = async () => {
@@ -154,17 +179,71 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Logo + clinic name */}
         <div style={{ padding: '0 16px', height: 60, display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border-tertiary)', gap: 10, flexShrink: 0 }}>
           <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #0f766e, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: '#fff', flexShrink: 0 }}>+</div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
               Dental<span style={{ color: 'var(--color-accent)' }}>IQ</span>
             </div>
-            {tenant && (
-              <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {tenant.name}
+          </div>
+        </div>
+
+        {/* Clinic Switcher */}
+        {tenant?.plan === 'starter' ? (
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-secondary)' }}>
+              <Building2 size={16} color="var(--color-accent)" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Location</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {clinics[0]?.name || tenant?.name || 'My Clinic'}
+                </div>
+              </div>
+            </div>
+            <Link href="/dashboard/settings" style={{ display: 'block', marginTop: 8, fontSize: 11, color: 'var(--color-accent)', textDecoration: 'none', fontWeight: 500 }}>
+              Upgrade to Pro for multi-clinic →
+            </Link>
+          </div>
+        ) : (
+          <div style={{ padding: '12px 16px', position: 'relative' }}>
+            <button 
+              onClick={() => setIsClinicMenuOpen(!isClinicMenuOpen)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-secondary)', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <Building2 size={16} color="var(--color-accent)" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Clinic</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {clinics.find(c => c.id === selectedClinicId)?.name || 'Select Clinic'}
+                </div>
+              </div>
+              <ChevronDown size={14} color="var(--color-text-secondary)" />
+            </button>
+
+            {isClinicMenuOpen && (
+              <div style={{ position: 'absolute', top: '100%', left: 16, right: 16, zIndex: 1000, background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 12, marginTop: 4, boxShadow: '0 10px 25px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                {clinics.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setSelectedClinicId(c.id); setIsClinicMenuOpen(false) }}
+                    style={{ width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, border: 'none', background: selectedClinicId === c.id ? 'var(--color-accent-muted)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s' }}
+                  >
+                    <Building2 size={14} color={selectedClinicId === c.id ? 'var(--color-accent)' : 'var(--color-text-secondary)'} />
+                    <span style={{ fontSize: 13, fontWeight: selectedClinicId === c.id ? 600 : 400, color: selectedClinicId === c.id ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{c.name}</span>
+                  </button>
+                ))}
+                {tenant?.plan !== 'starter' && clinics.length < (tenant?.plan === 'pro' ? 3 : 999) && (
+                  <Link
+                    href="/dashboard/settings?tab=clinics"
+                    style={{ width: '100%', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid var(--color-border-tertiary)', background: 'transparent', cursor: 'pointer', textDecoration: 'none', color: 'var(--color-accent)' }}
+                    onClick={() => setIsClinicMenuOpen(false)}
+                  >
+                    <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>Add Location</span>
+                  </Link>
+                )}
               </div>
             )}
           </div>
-        </div>
+        )}
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -275,8 +354,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}
 
         {/* AI Chat Float */}
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
-          {isChatOpen && (
+        {tenant?.plan !== 'starter' && (
+          <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+            {isChatOpen && (
             <div style={{ width: 380, height: 500, background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 16, boxShadow: '0 20px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
               {/* Header */}
               <div style={{ padding: '16px 20px', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -342,7 +422,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
           </button>
         </div>
+        )}
       </main>
+
+      {/* Tour guide for new users */}
+      <TourGuide />
+
+      {/* AI clinic insight popup on login */}
+      <ClinicInsightPopup
+        patients={patients}
+        history={history}
+        clinicName={tenant?.name ?? user.name}
+        userName={user.name}
+      />
 
       <style jsx global>{`
         @keyframes slideIn {

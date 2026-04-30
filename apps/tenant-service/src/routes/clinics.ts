@@ -27,7 +27,7 @@ export async function clinicsRoutes(app: FastifyInstance) {
 
     // Ensure table exists (for older tenants before schema migration)
     const db = getDb() as any
-    await db.run(sql.raw(`
+    await (db as any).run(sql.raw(`
       CREATE TABLE IF NOT EXISTS "${tablePrefix}_clinic_locations" (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -44,8 +44,7 @@ export async function clinicsRoutes(app: FastifyInstance) {
     `))
 
     try {
-      const result = await db.run(sql.raw(`SELECT * FROM "${tablePrefix}_clinic_locations" ORDER BY created_at ASC`))
-      const rows = result?.rows || result || []
+      const rows = await (db as any).all(sql.raw(`SELECT * FROM "${tablePrefix}_clinic_locations" ORDER BY created_at ASC`))
       return reply.send({ success: true, data: rows })
     } catch (err) {
       req.log.error(err)
@@ -62,10 +61,25 @@ export async function clinicsRoutes(app: FastifyInstance) {
     const tablePrefix = await getTablePrefix(jwtUser.tenantId)
     if (!tablePrefix) return reply.code(400).send({ success: false, error: 'Tenant not found' })
 
-    const db = getDb() as any
+    const db = getDb()
+    const rawDb = db as any
+
+    // Tier limit enforcement
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, jwtUser.tenantId)).limit(1)
+    if (tenant) {
+      const existingRows = await (rawDb).all(sql.raw(`SELECT id FROM "${tablePrefix}_clinic_locations"`))
+      const count = Array.isArray(existingRows) ? existingRows.length : 0
+      if (tenant.plan === 'starter' && count >= 1) {
+        return reply.code(403).send({ success: false, error: 'Starter plan is limited to 1 location' })
+      }
+      if (tenant.plan === 'pro' && count >= 3) {
+        return reply.code(403).send({ success: false, error: 'Pro plan is limited to 3 locations' })
+      }
+    }
+
     const newId = createId()
     try {
-      await db.run(sql.raw(`
+      await (db as any).run(sql.raw(`
         INSERT INTO "${tablePrefix}_clinic_locations"
           (id, name, address, phone, email, status, operating_hours, pms_type)
         VALUES
@@ -102,7 +116,7 @@ export async function clinicsRoutes(app: FastifyInstance) {
     ].filter(Boolean).join(', ')
 
     try {
-      await db.run(sql.raw(`UPDATE "${tablePrefix}_clinic_locations" SET ${setClauses} WHERE id = '${id}'`))
+      await (db as any).run(sql.raw(`UPDATE "${tablePrefix}_clinic_locations" SET ${setClauses} WHERE id = '${id}'`))
       return reply.send({ success: true })
     } catch (err) {
       req.log.error(err)
@@ -121,7 +135,7 @@ export async function clinicsRoutes(app: FastifyInstance) {
 
     const db = getDb() as any
     try {
-      await db.run(sql.raw(`DELETE FROM "${tablePrefix}_clinic_locations" WHERE id = '${id}'`))
+      await (db as any).run(sql.raw(`DELETE FROM "${tablePrefix}_clinic_locations" WHERE id = '${id}'`))
       return reply.send({ success: true })
     } catch (err) {
       req.log.error(err)

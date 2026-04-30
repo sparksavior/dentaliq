@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { Sparkles } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
-import { estimateApi, patientsApi, type EstimateHistoryItem, type Patient } from '@/lib/api'
+import { useClinic } from '@/contexts/clinic-context'
+import { estimateApi, patientsApi, tenantsApi, type EstimateHistoryItem, type Patient, type Tenant } from '@/lib/api'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -21,7 +23,7 @@ const riskStyle = {
   high:   { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444', dot: '#ef4444' },
 }
 
-function StatCard({ label, value, sub, color = 'var(--color-accent)', icon }: { label: string; value: string; sub?: string; color?: string; icon: string }) {
+function StatCard({ label, value, sub, icon }: { label: string; value: string; sub?: string; icon: string }) {
   return (
     <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, padding: '1.2rem 1.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -34,28 +36,136 @@ function StatCard({ label, value, sub, color = 'var(--color-accent)', icon }: { 
   )
 }
 
+function AiInsightStrip({ patients, history, loading }: { patients: Patient[]; history: EstimateHistoryItem[]; loading: boolean }) {
+  const [insight, setInsight] = useState<string | null>(null)
+  const [insightLoading, setInsightLoading] = useState(false)
+
+  const generate = useCallback(async () => {
+    if (loading) return
+    setInsightLoading(true)
+
+    const now = new Date()
+    const thisMonth = history.filter(h => {
+      const d = new Date(h.created_at)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    })
+    const highRisk = history.filter(h => h.claim_risk === 'high').length
+    const revenue = thisMonth.reduce((sum, h) => sum + (h.insurer_pays || 0), 0)
+    const recentPatient = history.find(h => h.first_name)
+
+    // Find the most common CDT code this month
+    const codeCounts: Record<string, number> = {}
+    thisMonth.forEach(h => { codeCounts[h.cdt_code] = (codeCounts[h.cdt_code] || 0) + 1 })
+    const topCode = Object.entries(codeCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+
+    const fallback = () => {
+      if (history.length === 0) {
+        return 'No estimates yet — run your first insurance estimate to start tracking coverage and revenue recovery.'
+      }
+      if (highRisk > 0) {
+        return `${highRisk} high-risk claim${highRisk !== 1 ? 's' : ''} need${highRisk === 1 ? 's' : ''} attention this period. Review them in Claims to avoid denial.`
+      }
+      if (revenue > 0) {
+        return `Your clinic has recovered $${Math.round(revenue).toLocaleString()} from insurers this month across ${thisMonth.length} estimate${thisMonth.length !== 1 ? 's' : ''}.`
+      }
+      return `${patients.length} patient${patients.length !== 1 ? 's' : ''} on file. Run estimates to track coverage and revenue recovery.`
+    }
+
+    try {
+      const prompt = `You are a dental clinic AI assistant. In ONE concise sentence (max 22 words), give the single most actionable insight for this clinic right now. Be specific with numbers. No preamble.
+
+Patients: ${patients.length}
+Estimates this month: ${thisMonth.length}
+Revenue this month: $${Math.round(revenue).toLocaleString()} CAD
+High-risk claims: ${highRisk}
+Most common procedure this month: ${topCode || 'none yet'}
+Most recent patient: ${recentPatient ? `${recentPatient.first_name} ${recentPatient.last_name}` : 'none yet'}`
+
+      const res = await fetch('http://localhost:11434/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'phi3', prompt, stream: false }),
+        signal: AbortSignal.timeout(10000),
+      })
+      const data = await res.json()
+      setInsight(data.response?.trim() || fallback())
+    } catch {
+      setInsight(fallback())
+    } finally {
+      setInsightLoading(false)
+    }
+  }, [loading, history, patients])
+
+  useEffect(() => {
+    if (!loading) generate()
+  }, [loading, generate])
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      background: 'linear-gradient(135deg, rgba(15,118,110,0.06), rgba(13,148,136,0.04))',
+      border: '1px solid rgba(15,118,110,0.18)',
+      borderRadius: 12, padding: '12px 16px', marginBottom: '1.5rem',
+    }}>
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Sparkles size={16} color="#fff" />
+      </div>
+
+      {insightLoading || loading ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[0, 0.15, 0.3].map((delay, i) => (
+              <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)', opacity: 0.6, animation: `aiPulse 1.2s ease-in-out ${delay}s infinite` }} />
+            ))}
+          </div>
+          <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>AI is analyzing your clinic data…</span>
+        </div>
+      ) : (
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-accent)', marginRight: 6 }}>AI Insight</span>
+          <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{insight}</span>
+        </div>
+      )}
+
+      {!insightLoading && !loading && (
+        <button
+          onClick={generate}
+          title="Refresh insight"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', padding: 4, borderRadius: 6, fontSize: 14, opacity: 0.6, flexShrink: 0 }}
+        >
+          ↻
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function OverviewPage() {
   const { user, accessToken } = useAuth()
   const [history, setHistory] = useState<EstimateHistoryItem[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
+  const [tenant, setTenant] = useState<Tenant | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const { selectedClinicId } = useClinic()
   const loadData = useCallback(async () => {
     if (!accessToken) return
     setLoading(true)
     try {
-      const [hist, pts] = await Promise.all([
+      const [hist, pts, t] = await Promise.all([
         estimateApi.getHistory(accessToken).catch(() => [] as EstimateHistoryItem[]),
         patientsApi.getPatients(accessToken).catch(() => [] as Patient[]),
+        tenantsApi.getTenant(accessToken).catch(() => null),
       ])
       setHistory(hist)
       setPatients(pts)
+      setTenant(t)
     } finally {
       setLoading(false)
     }
-  }, [accessToken])
+  }, [accessToken, selectedClinicId])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { loadData() }, [loadData, selectedClinicId])
 
   const now = new Date()
   const thisMonth = history.filter(h => {
@@ -67,15 +177,30 @@ export default function OverviewPage() {
   const highRiskCount = history.filter(h => h.claim_risk === 'high').length
   const recent = history.slice(0, 8)
 
+  // Build contextual sub-labels
+  const lastMonthEstimates = history.filter(h => {
+    const d = new Date(h.created_at)
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    return d.getMonth() === lastMonth.getMonth() && d.getFullYear() === lastMonth.getFullYear()
+  }).length
+  const monthDelta = thisMonth.length - lastMonthEstimates
+
   return (
     <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto', color: 'var(--color-text-primary)' }}>
       {/* Header */}
-      <div style={{ marginBottom: '2rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.03em', marginBottom: 4 }}>
-          Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {user?.name?.split(' ')[0]}
+          Good {now.getHours() < 12 ? 'morning' : now.getHours() < 17 ? 'afternoon' : 'evening'}, {user?.name?.split(' ')[0]}
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>Here's what's happening at your clinic today.</p>
+        <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>
+          {now.toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
       </div>
+
+      {/* AI Insight strip — Pro/Enterprise only */}
+      {tenant?.plan !== 'starter' && (
+        <AiInsightStrip patients={patients} history={history} loading={loading} />
+      )}
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: '2rem' }}>
@@ -85,10 +210,30 @@ export default function OverviewPage() {
           ))
         ) : (
           <>
-            <StatCard label="Total Patients" value={patients.length.toString()} sub="in your clinic" icon="👥" color="var(--color-accent)" />
-            <StatCard label="Estimates This Month" value={thisMonth.length.toString()} sub="cost estimates run" icon="📊" color="#0e7490" />
-            <StatCard label="Revenue Recovered" value={`$${revenueRecovered.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`} sub="insurer payments this month" icon="💰" color="#059669" />
-            <StatCard label="High-Risk Claims" value={highRiskCount.toString()} sub="need attention" icon="⚠️" color="#dc2626" />
+            <StatCard
+              label="Total Patients"
+              value={patients.length.toString()}
+              sub={patients.length === 0 ? 'Add your first patient' : `${patients.length} registered patient${patients.length !== 1 ? 's' : ''}`}
+              icon="👥"
+            />
+            <StatCard
+              label="Estimates This Month"
+              value={thisMonth.length.toString()}
+              sub={monthDelta > 0 ? `+${monthDelta} vs last month` : monthDelta < 0 ? `${monthDelta} vs last month` : 'Same as last month'}
+              icon="📊"
+            />
+            <StatCard
+              label="Revenue Recovered"
+              value={`$${revenueRecovered.toLocaleString('en-CA', { maximumFractionDigits: 0 })}`}
+              sub={thisMonth.length > 0 ? `avg $${Math.round(revenueRecovered / thisMonth.length).toLocaleString()} per estimate` : 'insurer payments this month'}
+              icon="💰"
+            />
+            <StatCard
+              label="High-Risk Claims"
+              value={highRiskCount.toString()}
+              sub={highRiskCount === 0 ? 'No high-risk flags' : `${highRiskCount} claim${highRiskCount !== 1 ? 's' : ''} need attention`}
+              icon="⚠️"
+            />
           </>
         )}
       </div>
@@ -126,7 +271,7 @@ export default function OverviewPage() {
 
           {loading ? (
             Array(5).fill(0).map((_, i) => (
-              <div key={i} style={{ height: 52, borderRadius: 8, marginBottom: 8, background: 'var(--color-background-secondary)', backgroundSize: '200% 100%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+              <div key={i} style={{ height: 52, borderRadius: 8, marginBottom: 8, background: 'var(--color-background-secondary)', animation: 'pulse 1.5s ease-in-out infinite' }} />
             ))
           ) : recent.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem 0' }}>
@@ -141,16 +286,22 @@ export default function OverviewPage() {
             <div>
               {recent.map((item) => {
                 const rs = riskStyle[item.claim_risk as keyof typeof riskStyle] ?? riskStyle.low
+                const patientLabel = item.first_name
+                  ? `${item.first_name} ${item.last_name ?? ''}`.trim()
+                  : null
                 return (
                   <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--color-border-tertiary)' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: rs.dot, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{item.cdt_code}</span>
+                        {patientLabel && (
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>· {patientLabel}</span>
+                        )}
                         <span style={{ fontSize: 11, padding: '1px 7px', borderRadius: 20, background: rs.bg, color: rs.text, fontWeight: 500 }}>{item.claim_risk}</span>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {item.coverage_percent}% covered · Patient pays ${(item.patient_cost || 0).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {item.coverage_percent}% covered · Patient pays ${(item.patient_cost || 0).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} · Insurer pays ${(item.insurer_pays || 0).toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </div>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', flexShrink: 0 }}>{timeAgo(item.created_at)}</div>
@@ -179,6 +330,10 @@ export default function OverviewPage() {
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
+        }
+        @keyframes aiPulse {
+          0%, 100% { opacity: 0.3; transform: scale(0.85); }
+          50%       { opacity: 1;   transform: scale(1);    }
         }
       `}</style>
     </div>
