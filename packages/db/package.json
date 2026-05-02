@@ -9,16 +9,17 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@dentaliq/config": "workspace:*",
     "@libsql/client": "^0.14.0",
-    "pg": "^8.12.0",
-    "drizzle-orm": "^0.31.0",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@dentaliq/config": "workspace:*"
+    "drizzle-orm": "^0.31.0",
+    "pg": "^8.12.0"
   },
   "optionalDependencies": {
     "@types/pg": "^8.11.0"
   },
   "devDependencies": {
+    "dotenv": "^17.4.2",
     "drizzle-kit": "^0.22.0",
     "typescript": "^5.4.0"
   }
