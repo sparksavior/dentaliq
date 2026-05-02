@@ -1131,6 +1131,59 @@ export default function SettingsPage() {
         </div>
       </Section>
 
+      {/* Cortex Agents */}
+      {tenant?.plan === "cortex" && (
+        <Section
+          title="Digital Workforce"
+          desc="Manage your active AI agents and explore new ones."
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 14px",
+              background:
+                "linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.05))",
+              borderRadius: 9,
+              border: "1px solid rgba(99,102,241,0.2)",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                Hire Digital Employees
+              </div>
+              <div
+                style={{ fontSize: 12, color: "var(--color-text-secondary)" }}
+              >
+                Scale your clinic by deploying autonomous agents.
+              </div>
+            </div>
+            <button
+              onClick={() => (window.location.href = "/dashboard/cortex/hire")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "#6366f1",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Hire Agents
+            </button>
+          </div>
+        </Section>
+      )}
+
       {/* Insurance plan modal */}
       {showPlanModal && (
         <div

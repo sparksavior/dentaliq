@@ -138,6 +138,25 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: "/dashboard/billing",
+    label: "Billing",
+    icon: (
+      <svg
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.8}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+        />
+      </svg>
+    ),
+  },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -580,6 +599,66 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+
+          {/* Cortex Agent nav items — only visible to Cortex plan users */}
+          {tenant?.plan === "cortex" && (
+            <>
+              <div
+                style={{
+                  padding: "12px 10px 4px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#8b5cf6",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                Cortex Agents
+              </div>
+              {[
+                {
+                  href: "/dashboard/cortex",
+                  label: "Command Center",
+                  icon: "🧠",
+                },
+                {
+                  href: "/dashboard/cortex/inbox",
+                  label: "Approval Inbox",
+                  icon: "📥",
+                },
+              ].map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 10px",
+                      borderRadius: 9,
+                      fontSize: 14,
+                      fontWeight: isActive ? 600 : 400,
+                      textDecoration: "none",
+                      transition: "all 0.15s",
+                      background: isActive
+                        ? "rgba(99,102,241,0.1)"
+                        : "transparent",
+                      color: isActive
+                        ? "#6366f1"
+                        : "var(--color-text-secondary)",
+                    }}
+                  >
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>
+                      {item.icon}
+                    </span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* User footer */}

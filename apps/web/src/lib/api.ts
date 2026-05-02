@@ -11,7 +11,7 @@ export interface RegisterInput {
   email: string;
   password: string;
   clinicName: string;
-  plan: "starter" | "pro" | "enterprise";
+  plan: "starter" | "pro" | "enterprise" | "cortex";
 }
 
 export interface LoginInput {
@@ -27,7 +27,7 @@ export interface AuthUser {
   role: "admin" | "dentist" | "front_desk";
   tenantId: string;
   mfaEnabled: boolean;
-  plan?: "starter" | "pro" | "enterprise";
+  plan?: "starter" | "pro" | "enterprise" | "cortex";
   status?: "trial" | "active" | "suspended";
 }
 
@@ -41,7 +41,7 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
-  plan: "starter" | "pro" | "enterprise";
+  plan: "starter" | "pro" | "enterprise" | "cortex";
   status: "trial" | "active" | "suspended";
   pmsType: "open_dental" | "dentrix" | "cleardent" | "none";
   pmsConnected: boolean;
@@ -421,4 +421,40 @@ export const estimateApi = {
       method: "PATCH",
       body: JSON.stringify({ letter }),
     }),
+};
+
+export const agentsApi = {
+  getRentedAgents: (token: string) => tenantRequest<any[]>("/agents", token),
+  rentAgent: (
+    token: string,
+    data: {
+      agentId?: string;
+      clinicId?: string;
+      assignments?: { agentId: string; clinicId: string }[];
+    },
+  ) =>
+    tenantRequest<any>("/agents/rent", token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const billingApi = {
+  getPaymentMethod: (token: string) =>
+    tenantRequest<any>("/billing/payment-method", token),
+  savePaymentMethod: (
+    token: string,
+    data: {
+      cardName: string;
+      cardNumber: string;
+      cardExpiry: string;
+      cardCvc: string;
+    },
+  ) =>
+    tenantRequest<any>("/billing/payment-method", token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getInvoices: (token: string) =>
+    tenantRequest<any[]>("/billing/invoices", token),
 };
