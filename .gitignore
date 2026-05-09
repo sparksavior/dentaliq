@@ -42,5 +42,8 @@ coverage/
 *.db
 *.sqlite
 
+# Scratch / local experiments
+scratch/
+
 # Claude Code local settings
 .claude/settings.local.json

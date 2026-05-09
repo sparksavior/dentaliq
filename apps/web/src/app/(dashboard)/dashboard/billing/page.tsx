@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 import { useAuth } from "@/contexts/auth-context";
 import { tenantsApi, agentsApi, billingApi, type Tenant } from "@/lib/api";
 import {
@@ -11,139 +18,262 @@ import {
   Download,
   Plus,
   X,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
-// Basic card type detection
-function getCardBrand(number: string) {
-  const num = number.replace(/\D/g, "");
-  if (num.match(/^4/)) return "visa";
-  if (num.match(/^(34|37)/)) return "amex";
-  if (num.match(/^5[1-5]/)) return "mastercard";
-  if (num.match(/^6011/)) return "discover";
-  return "unknown";
+// ─── Stripe card setup form (rendered inside Elements provider) ───────────────
+function CardSetupForm({
+  onSuccess,
+  onCancel,
+}: {
+  onSuccess: (paymentMethodId: string) => void;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setIsSubmitting(true);
+    setError(null);
+
+    const { setupIntent, error: stripeError } = await stripe.confirmSetup({
+      elements,
+      redirect: "if_required",
+    });
+
+    if (stripeError) {
+      setError(stripeError.message ?? "Card setup failed.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (setupIntent?.status === "succeeded" && setupIntent.payment_method) {
+      onSuccess(setupIntent.payment_method as string);
+    } else {
+      setError("Setup did not complete. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ marginBottom: "1.5rem" }}>
+        <PaymentElement
+          options={{
+            layout: "tabs",
+            fields: { billingDetails: { name: "auto" } },
+          }}
+        />
+      </div>
+
+      {error && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "12px 14px",
+            borderRadius: 10,
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            color: "#ef4444",
+            fontSize: 14,
+            marginBottom: "1rem",
+          }}
+        >
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 12 }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          style={{
+            flex: 1,
+            padding: "12px",
+            borderRadius: 10,
+            border: "1px solid var(--color-border-secondary)",
+            background: "transparent",
+            color: "var(--color-text-primary)",
+            fontWeight: 600,
+            cursor: isSubmitting ? "not-allowed" : "pointer",
+            fontSize: 15,
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!stripe || isSubmitting}
+          style={{
+            flex: 2,
+            padding: "12px",
+            borderRadius: 10,
+            border: "none",
+            background:
+              !stripe || isSubmitting
+                ? "var(--color-border-secondary)"
+                : "var(--color-accent)",
+            color:
+              !stripe || isSubmitting ? "var(--color-text-secondary)" : "#fff",
+            cursor: !stripe || isSubmitting ? "not-allowed" : "pointer",
+            fontWeight: 700,
+            fontSize: 15,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            boxShadow:
+              !stripe || isSubmitting
+                ? "none"
+                : "0 4px 14px rgba(15,118,110,0.4)",
+          }}
+        >
+          {isSubmitting && <Loader2 size={16} className="animate-spin" />}
+          {isSubmitting ? "Saving..." : "Save Payment Method"}
+        </button>
+      </div>
+    </form>
+  );
 }
 
-function formatCardNumber(num: string, brand: string) {
-  const cleaned = num.replace(/\D/g, "");
-  if (brand === "amex") {
-    const parts = [];
-    if (cleaned.length > 0) parts.push(cleaned.substring(0, 4));
-    if (cleaned.length > 4) parts.push(cleaned.substring(4, 10));
-    if (cleaned.length > 10) parts.push(cleaned.substring(10, 15));
-    return parts.join(" ");
-  }
-  return cleaned.match(/.{1,4}/g)?.join(" ") || "";
-}
-
+// ─── Main billing page ────────────────────────────────────────────────────────
 export default function BillingPage() {
   const { accessToken, user } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [rentedAgents, setRentedAgents] = useState<any[]>([]);
 
+  const [stripePublishableKey, setStripePublishableKey] = useState<
+    string | null
+  >(null);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
+
   const [showCardModal, setShowCardModal] = useState(false);
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvc, setCardCvc] = useState("");
+  const [setupClientSecret, setSetupClientSecret] = useState<string | null>(
+    null,
+  );
+  const [loadingSetupIntent, setLoadingSetupIntent] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Internal state for saved payment method to simulate fully functioning backend integration
   const [savedPayment, setSavedPayment] = useState<{
     brand: string;
     last4: string;
-    name: string;
-    expiry: string;
+    expMonth: number;
+    expYear: number;
   } | null>(null);
 
   const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
 
   useEffect(() => {
-    if (accessToken) {
-      Promise.all([
-        tenantsApi.getTenant(accessToken),
-        agentsApi.getRentedAgents(accessToken).catch(() => []),
-        billingApi.getPaymentMethod(accessToken).catch(() => null),
-        billingApi.getInvoices(accessToken).catch(() => []),
-      ])
-        .then(([t, agents, pm, invs]) => {
-          setTenant(t);
-          setRentedAgents(agents);
-          if (pm) {
-            setSavedPayment(pm);
-          }
-          if (invs) {
-            setInvoices(invs);
-          }
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
-    }
+    if (!accessToken) return;
+    Promise.all([
+      tenantsApi.getTenant(accessToken),
+      agentsApi.getRentedAgents(accessToken).catch(() => []),
+      billingApi.getPaymentMethod(accessToken).catch(() => null),
+      billingApi.getInvoices(accessToken).catch(() => []),
+      billingApi.getConfig(accessToken).catch(() => null),
+    ])
+      .then(([t, agents, pm, invs, config]) => {
+        setTenant(t);
+        setRentedAgents(agents);
+        if (pm) setSavedPayment(pm);
+        if (invs) setInvoices(invs);
+        if (config) {
+          setStripePublishableKey(config.stripePublishableKey);
+          setStripeEnabled(config.stripeEnabled);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [accessToken, user]);
 
-  const saveCard = async () => {
-    if (!cardNumber || !cardExpiry || !cardCvc) {
-      alert("Please fill out all card details.");
-      return;
-    }
-
-    setIsSubmitting(true);
+  const openCardModal = useCallback(async () => {
+    if (!accessToken) return;
+    setSetupError(null);
+    setSetupClientSecret(null);
+    setShowCardModal(true);
+    setLoadingSetupIntent(true);
     try {
-      const res = await billingApi.savePaymentMethod(accessToken!, {
-        cardName: cardName || user?.name || "Cardholder",
-        cardNumber,
-        cardExpiry,
-        cardCvc,
-      });
-
-      setSavedPayment(res);
-      setShowCardModal(false);
-      // Reset form
-      setCardName("");
-      setCardNumber("");
-      setCardExpiry("");
-      setCardCvc("");
-    } catch (err) {
-      alert("Failed to save payment method.");
+      const result = await billingApi.createSetupIntent(accessToken);
+      setSetupClientSecret(result.clientSecret);
+    } catch {
+      setSetupError("Could not initialize payment form. Please try again.");
     } finally {
-      setIsSubmitting(false);
+      setLoadingSetupIntent(false);
     }
-  };
+  }, [accessToken]);
+
+  const handleCardSaved = useCallback(
+    async (paymentMethodId: string) => {
+      if (!accessToken) return;
+      try {
+        const pm = await billingApi.savePaymentMethod(accessToken, {
+          paymentMethodId,
+        });
+        setSavedPayment(pm as any);
+        setShowCardModal(false);
+        setSetupClientSecret(null);
+      } catch {
+        // Re-open stays open — error shown in form
+      }
+    },
+    [accessToken],
+  );
+
+  const closeModal = useCallback(() => {
+    setShowCardModal(false);
+    setSetupClientSecret(null);
+    setSetupError(null);
+  }, []);
 
   if (loading) {
     return (
-      <div style={{ padding: "2rem", color: "var(--color-text-secondary)" }}>
-        Loading billing engine...
+      <div
+        style={{
+          padding: "2rem",
+          color: "var(--color-text-secondary)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <Loader2 size={20} className="animate-spin" /> Loading billing...
       </div>
     );
   }
 
-  const basePrice =
-    tenant?.plan === "starter"
-      ? 49
-      : tenant?.plan === "pro"
-        ? 149
-        : tenant?.plan === "cortex"
-          ? 299
-          : 0;
+  const PLAN_PRICES: Record<string, number> = {
+    starter: 49,
+    pro: 149,
+    enterprise: 249,
+    cortex: 299,
+  };
+  const AGENT_PRICE = 99;
+
+  const basePrice = PLAN_PRICES[tenant?.plan ?? ""] ?? 0;
   const agentInstancesCount = rentedAgents.length;
-  const agentsCost = tenant?.plan === "cortex" ? agentInstancesCount * 99 : 0;
+  const agentsCost =
+    tenant?.plan === "cortex" ? agentInstancesCount * AGENT_PRICE : 0;
   const subtotal = basePrice + agentsCost;
-  const tax = subtotal * 0.13; // Assuming Ontario 13% HST for demonstration
-  const totalDue = subtotal + tax;
 
   const nextBillingDate = new Date();
   nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
   nextBillingDate.setDate(1);
 
-  // Dynamic Card Visuals
-  const activeBrand = getCardBrand(cardNumber);
-  const formattedCardNumber =
-    formatCardNumber(cardNumber, activeBrand) || "•••• •••• •••• ••••";
-  const displayExpiry = cardExpiry || "MM/YY";
-  const displayName = cardName || user?.name || "CARDHOLDER NAME";
+  const stripePromise = stripePublishableKey
+    ? loadStripe(stripePublishableKey)
+    : null;
 
   return (
     <div
@@ -238,7 +368,7 @@ export default function BillingPage() {
                   letterSpacing: "-0.03em",
                 }}
               >
-                ${totalDue.toFixed(2)}
+                ${subtotal.toFixed(2)}
               </span>
               <span
                 style={{
@@ -298,7 +428,7 @@ export default function BillingPage() {
                 }}
               >
                 <span style={{ color: "var(--color-text-primary)" }}>
-                  {tenant?.plan.toUpperCase()} Platform Base
+                  {tenant?.plan?.toUpperCase()} Platform Base
                 </span>
                 <span style={{ fontWeight: 600 }}>${basePrice.toFixed(2)}</span>
               </div>
@@ -346,8 +476,8 @@ export default function BillingPage() {
                   marginBottom: 12,
                 }}
               >
-                <span>HST (13%)</span>
-                <span>${tax.toFixed(2)}</span>
+                <span>Applicable taxes</span>
+                <span>Calculated at invoice</span>
               </div>
 
               <div
@@ -366,13 +496,13 @@ export default function BillingPage() {
                   fontWeight: 800,
                 }}
               >
-                <span>Total Due</span>
-                <span>${totalDue.toFixed(2)}</span>
+                <span>Subtotal</span>
+                <span>${subtotal.toFixed(2)}</span>
               </div>
             </div>
           </div>
 
-          {/* Past Receipts */}
+          {/* Billing History */}
           <div
             style={{
               background: "var(--color-background-primary)",
@@ -406,32 +536,29 @@ export default function BillingPage() {
                 </div>
               ) : (
                 invoices.map((inv) => {
-                  const invoice = {
-                    id: inv.id,
-                    date: new Date(inv.date || inv.date).toLocaleDateString(
-                      "en-US",
-                      { month: "long", day: "numeric", year: "numeric" },
-                    ),
-                    shortDate: new Date(
-                      inv.date || inv.date,
-                    ).toLocaleDateString("en-US", {
-                      month: "long",
-                      year: "numeric",
-                    }),
-                    basePrice: inv.base_price || inv.basePrice,
-                    agentsCount: inv.agents_count || inv.agentsCount,
-                    agentsCost: inv.agents_cost || inv.agentsCost,
-                    subtotal: inv.subtotal,
-                    tax: inv.tax,
-                    total: inv.total,
-                    cardLast4: inv.card_last4 || inv.cardLast4,
-                    cardBrand: inv.card_brand || inv.cardBrand,
-                  };
+                  const date = new Date(inv.date ?? inv.created ?? Date.now());
+                  const shortDate = date.toLocaleDateString("en-US", {
+                    month: "long",
+                    year: "numeric",
+                  });
+                  const fullDate = date.toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  });
+                  const total = inv.total ?? inv.amount_paid ?? 0;
 
                   return (
                     <button
-                      key={invoice.id}
-                      onClick={() => setSelectedInvoice(invoice)}
+                      key={inv.id}
+                      onClick={() =>
+                        setSelectedInvoice({
+                          ...inv,
+                          shortDate,
+                          fullDate,
+                          total,
+                        })
+                      }
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -483,7 +610,7 @@ export default function BillingPage() {
                               color: "var(--color-text-primary)",
                             }}
                           >
-                            {invoice.shortDate}
+                            {shortDate}
                           </div>
                           <div
                             style={{
@@ -492,27 +619,19 @@ export default function BillingPage() {
                               marginTop: 2,
                             }}
                           >
-                            Invoice {invoice.id}
+                            Invoice {inv.id}
                           </div>
                         </div>
                       </div>
-                      <div
+                      <span
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 16,
+                          fontSize: 16,
+                          fontWeight: 700,
+                          color: "var(--color-text-primary)",
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 700,
-                            color: "var(--color-text-primary)",
-                          }}
-                        >
-                          ${invoice.total.toFixed(2)}
-                        </span>
-                      </div>
+                        ${(total / 100).toFixed(2)}
+                      </span>
                     </button>
                   );
                 })
@@ -554,7 +673,6 @@ export default function BillingPage() {
                   overflow: "hidden",
                 }}
               >
-                {/* Decorative Elements */}
                 <div
                   style={{
                     position: "absolute",
@@ -577,7 +695,6 @@ export default function BillingPage() {
                     borderRadius: "50%",
                   }}
                 />
-
                 <div
                   style={{
                     display: "flex",
@@ -595,8 +712,7 @@ export default function BillingPage() {
                       background: "linear-gradient(135deg, #e2e8f0, #94a3b8)",
                       borderRadius: 4,
                     }}
-                  />{" "}
-                  {/* Fake Chip */}
+                  />
                   <span
                     style={{
                       fontSize: 18,
@@ -635,8 +751,11 @@ export default function BillingPage() {
                     fontFamily: "monospace",
                   }}
                 >
-                  <span>{savedPayment.name}</span>
-                  <span>{savedPayment.expiry}</span>
+                  <span>Expires</span>
+                  <span>
+                    {String(savedPayment.expMonth).padStart(2, "0")}/
+                    {savedPayment.expYear}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -672,33 +791,59 @@ export default function BillingPage() {
               </div>
             )}
 
+            {!stripeEnabled && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "rgba(234,179,8,0.08)",
+                  border: "1px solid rgba(234,179,8,0.3)",
+                  color: "#ca8a04",
+                  fontSize: 13,
+                  marginBottom: "1rem",
+                }}
+              >
+                <AlertCircle size={14} />
+                Stripe is not configured. Contact support to activate billing.
+              </div>
+            )}
+
             <button
-              onClick={() => setShowCardModal(true)}
+              onClick={openCardModal}
+              disabled={!stripeEnabled}
               style={{
                 width: "100%",
                 padding: "12px",
                 borderRadius: 10,
                 border: "1px solid var(--color-border-secondary)",
-                background: "var(--color-background-secondary)",
-                color: "var(--color-text-primary)",
+                background: !stripeEnabled
+                  ? "var(--color-background-secondary)"
+                  : "var(--color-background-secondary)",
+                color: !stripeEnabled
+                  ? "var(--color-text-secondary)"
+                  : "var(--color-text-primary)",
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: !stripeEnabled ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
                 transition: "all 0.2s",
-                boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+                opacity: !stripeEnabled ? 0.5 : 1,
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.borderColor = "var(--color-accent)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.borderColor =
-                  "var(--color-border-secondary)")
-              }
+              onMouseEnter={(e) => {
+                if (stripeEnabled)
+                  e.currentTarget.style.borderColor = "var(--color-accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor =
+                  "var(--color-border-secondary)";
+              }}
             >
-              <Plus size={16} />{" "}
+              <Plus size={16} />
               {savedPayment ? "Update Payment Method" : "Add Payment Method"}
             </button>
 
@@ -713,14 +858,14 @@ export default function BillingPage() {
                 color: "var(--color-text-secondary)",
               }}
             >
-              <ShieldCheck size={16} color="#10b981" /> Secured via Stripe
-              End-to-End Encryption
+              <ShieldCheck size={16} color="#10b981" /> Secured via Stripe — PCI
+              DSS Level 1
             </div>
           </div>
         </div>
       </div>
 
-      {/* Add/Update Card Interactive Modal */}
+      {/* Add/Update Card Modal — Stripe Elements */}
       {showCardModal && (
         <div
           style={{
@@ -741,7 +886,7 @@ export default function BillingPage() {
               borderRadius: 24,
               padding: "2.5rem",
               width: "100%",
-              maxWidth: 440,
+              maxWidth: 480,
               border: "1px solid var(--color-border-secondary)",
               boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
             }}
@@ -754,11 +899,26 @@ export default function BillingPage() {
                 marginBottom: "2rem",
               }}
             >
-              <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
-                Update Payment Method
-              </h3>
+              <div>
+                <h3
+                  style={{ margin: "0 0 4px 0", fontSize: 20, fontWeight: 800 }}
+                >
+                  {savedPayment
+                    ? "Update Payment Method"
+                    : "Add Payment Method"}
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  Your card details are processed securely by Stripe.
+                </p>
+              </div>
               <button
-                onClick={() => setShowCardModal(false)}
+                onClick={closeModal}
                 style={{
                   background: "none",
                   border: "none",
@@ -770,269 +930,85 @@ export default function BillingPage() {
               </button>
             </div>
 
-            {/* Live Interactive Card Visual */}
-            <div
-              style={{
-                background: "linear-gradient(135deg, #0ea5e9, #6366f1)",
-                color: "#fff",
-                borderRadius: 16,
-                padding: "1.5rem",
-                marginBottom: "2rem",
-                boxShadow:
-                  "0 12px 24px rgba(99,102,241,0.3), inset 0 1px 0 rgba(255,255,255,0.2)",
-                position: "relative",
-                overflow: "hidden",
-                height: 180,
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: -50,
-                  right: -20,
-                  width: 150,
-                  height: 150,
-                  background: "rgba(255,255,255,0.1)",
-                  borderRadius: "50%",
-                }}
-              />
-
+            {loadingSetupIntent && (
               <div
                 style={{
                   display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  position: "relative",
-                  zIndex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  padding: "3rem 0",
+                  color: "var(--color-text-secondary)",
                 }}
               >
-                <div
-                  style={{
-                    width: 45,
-                    height: 32,
-                    background: "linear-gradient(135deg, #fcd34d, #f59e0b)",
-                    borderRadius: 6,
-                    boxShadow: "inset 0 1px 3px rgba(255,255,255,0.5)",
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 900,
-                    fontStyle: "italic",
-                    textTransform: "uppercase",
-                    textShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                  }}
-                >
-                  {activeBrand === "unknown" ? "CARD" : activeBrand}
-                </span>
+                <Loader2 size={24} className="animate-spin" />
+                Initializing secure payment form...
               </div>
+            )}
 
-              <div style={{ position: "relative", zIndex: 1 }}>
-                <div
-                  style={{
-                    fontSize: 22,
-                    letterSpacing: "0.12em",
-                    fontFamily: '"JetBrains Mono", monospace',
-                    marginBottom: 16,
-                    textShadow: "0 2px 4px rgba(0,0,0,0.3)",
-                  }}
-                >
-                  {formattedCardNumber}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 13,
-                    color: "rgba(255,255,255,0.9)",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  <span
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: "70%",
-                    }}
-                  >
-                    {displayName}
-                  </span>
-                  <span>{displayExpiry}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Input Form */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-                marginBottom: "2.5rem",
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--color-text-secondary)",
-                    marginBottom: 8,
-                  }}
-                >
-                  Cardholder Name
-                </label>
-                <input
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                  placeholder="JANE DOE"
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: "1px solid var(--color-border-secondary)",
-                    background: "var(--color-background-secondary)",
-                    color: "var(--color-text-primary)",
-                    fontSize: 15,
-                    fontFamily: "monospace",
-                  }}
-                />
-              </div>
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--color-text-secondary)",
-                    marginBottom: 8,
-                  }}
-                >
-                  Card Number
-                </label>
-                <input
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value)}
-                  placeholder="0000 0000 0000 0000"
-                  maxLength={19}
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: "1px solid var(--color-border-secondary)",
-                    background: "var(--color-background-secondary)",
-                    color: "var(--color-text-primary)",
-                    fontSize: 15,
-                    fontFamily: "monospace",
-                    letterSpacing: "0.05em",
-                  }}
-                />
-              </div>
+            {setupError && !loadingSetupIntent && (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 16,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  padding: "14px",
+                  borderRadius: 10,
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.3)",
+                  color: "#ef4444",
+                  fontSize: 14,
+                  marginBottom: "1rem",
                 }}
               >
+                <AlertCircle
+                  size={16}
+                  style={{ flexShrink: 0, marginTop: 1 }}
+                />
                 <div>
-                  <label
+                  <div style={{ fontWeight: 600 }}>
+                    Payment form unavailable
+                  </div>
+                  <div>{setupError}</div>
+                  <button
+                    onClick={openCardModal}
                     style={{
-                      display: "block",
+                      marginTop: 8,
                       fontSize: 13,
-                      fontWeight: 600,
-                      color: "var(--color-text-secondary)",
-                      marginBottom: 8,
+                      color: "#ef4444",
+                      textDecoration: "underline",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
                     }}
                   >
-                    Expiry
-                  </label>
-                  <input
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(e.target.value)}
-                    placeholder="MM/YY"
-                    maxLength={5}
-                    style={{
-                      width: "100%",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid var(--color-border-secondary)",
-                      background: "var(--color-background-secondary)",
-                      color: "var(--color-text-primary)",
-                      fontSize: 15,
-                      fontFamily: "monospace",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: "var(--color-text-secondary)",
-                      marginBottom: 8,
-                    }}
-                  >
-                    CVC
-                  </label>
-                  <input
-                    value={cardCvc}
-                    onChange={(e) => setCardCvc(e.target.value)}
-                    placeholder="123"
-                    type="password"
-                    maxLength={4}
-                    style={{
-                      width: "100%",
-                      padding: "12px 14px",
-                      borderRadius: 10,
-                      border: "1px solid var(--color-border-secondary)",
-                      background: "var(--color-background-secondary)",
-                      color: "var(--color-text-primary)",
-                      fontSize: 15,
-                      fontFamily: "monospace",
-                      letterSpacing: "0.1em",
-                    }}
-                  />
+                    Retry
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
 
-            <button
-              onClick={saveCard}
-              disabled={isSubmitting}
-              style={{
-                width: "100%",
-                padding: "14px",
-                borderRadius: 10,
-                border: "none",
-                background: isSubmitting
-                  ? "var(--color-border-secondary)"
-                  : "var(--color-accent)",
-                color: isSubmitting ? "var(--color-text-secondary)" : "#fff",
-                cursor: isSubmitting ? "not-allowed" : "pointer",
-                fontWeight: 700,
-                fontSize: 15,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                boxShadow: isSubmitting
-                  ? "none"
-                  : "0 4px 14px rgba(15, 118, 110, 0.4)",
-              }}
-            >
-              {isSubmitting
-                ? "Securing Payment Method..."
-                : "Save Payment Method"}
-            </button>
+            {setupClientSecret && stripePromise && !loadingSetupIntent && (
+              <Elements
+                stripe={stripePromise}
+                options={{
+                  clientSecret: setupClientSecret,
+                  appearance: {
+                    theme: "stripe",
+                    variables: {
+                      colorPrimary: "var(--color-accent, #0f766e)",
+                      borderRadius: "10px",
+                    },
+                  },
+                }}
+              >
+                <CardSetupForm
+                  onSuccess={handleCardSaved}
+                  onCancel={closeModal}
+                />
+              </Elements>
+            )}
           </div>
         </div>
       )}
@@ -1087,17 +1063,17 @@ export default function BillingPage() {
                     marginBottom: 16,
                   }}
                 >
-                  +
+                  <Receipt size={20} />
                 </div>
                 <h3
                   style={{ margin: "0 0 4px 0", fontSize: 20, fontWeight: 800 }}
                 >
-                  Receipt {selectedInvoice.id}
+                  Invoice {selectedInvoice.id}
                 </h3>
                 <div
                   style={{ color: "var(--color-text-secondary)", fontSize: 14 }}
                 >
-                  Paid on {selectedInvoice.date}
+                  {selectedInvoice.fullDate}
                 </div>
               </div>
               <button
@@ -1135,29 +1111,30 @@ export default function BillingPage() {
                     fontWeight: 500,
                   }}
                 >
-                  DentalIQ {tenant?.plan.toUpperCase()} Base
+                  DentalIQ {tenant?.plan?.toUpperCase()} Base
                 </span>
                 <span style={{ fontWeight: 600 }}>
-                  ${selectedInvoice.basePrice.toFixed(2)}
+                  $
+                  {(
+                    (selectedInvoice.base_price ??
+                      selectedInvoice.basePrice ??
+                      0) / 100
+                  ).toFixed(2)}
                 </span>
               </div>
 
-              {tenant?.plan === "cortex" && selectedInvoice.agentsCount > 0 && (
+              {selectedInvoice.tax > 0 && (
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    fontSize: 15,
-                    color: "#6366f1",
+                    fontSize: 14,
+                    color: "var(--color-text-secondary)",
                     marginBottom: 12,
                   }}
                 >
-                  <span style={{ fontWeight: 500 }}>
-                    Cortex Agents ({selectedInvoice.agentsCount}x)
-                  </span>
-                  <span style={{ fontWeight: 600 }}>
-                    ${selectedInvoice.agentsCost.toFixed(2)}
-                  </span>
+                  <span>Taxes</span>
+                  <span>${(selectedInvoice.tax / 100).toFixed(2)}</span>
                 </div>
               )}
 
@@ -1173,76 +1150,57 @@ export default function BillingPage() {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontSize: 14,
-                  color: "var(--color-text-secondary)",
-                  marginBottom: 8,
-                }}
-              >
-                <span>Subtotal</span>
-                <span>${selectedInvoice.subtotal.toFixed(2)}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 14,
-                  color: "var(--color-text-secondary)",
-                  marginBottom: 16,
-                }}
-              >
-                <span>Taxes (HST 13%)</span>
-                <span>${selectedInvoice.tax.toFixed(2)}</span>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
                   fontSize: 20,
                   fontWeight: 800,
                   color: "var(--color-text-primary)",
                 }}
               >
                 <span>Total Paid</span>
-                <span>${selectedInvoice.total.toFixed(2)}</span>
+                <span>${(selectedInvoice.total / 100).toFixed(2)}</span>
               </div>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "1rem",
-                border: "1px solid var(--color-border-secondary)",
-                borderRadius: 12,
-              }}
-            >
-              <CreditCard size={24} color="var(--color-text-secondary)" />
-              <div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {selectedInvoice.cardBrand} ending in{" "}
-                  {selectedInvoice.cardLast4}
-                </div>
-                <div
-                  style={{ fontSize: 12, color: "var(--color-text-secondary)" }}
-                >
-                  Payment processed successfully
+            {(selectedInvoice.card_last4 ?? selectedInvoice.cardLast4) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "1rem",
+                  border: "1px solid var(--color-border-secondary)",
+                  borderRadius: 12,
+                  marginBottom: "1.5rem",
+                }}
+              >
+                <CreditCard size={24} color="var(--color-text-secondary)" />
+                <div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {selectedInvoice.card_brand ?? selectedInvoice.cardBrand}{" "}
+                    ending in{" "}
+                    {selectedInvoice.card_last4 ?? selectedInvoice.cardLast4}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    Payment processed successfully
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <button
               style={{
                 width: "100%",
                 padding: "12px",
-                marginTop: "1.5rem",
                 background: "transparent",
                 border: "1px solid var(--color-border-secondary)",
                 borderRadius: 10,

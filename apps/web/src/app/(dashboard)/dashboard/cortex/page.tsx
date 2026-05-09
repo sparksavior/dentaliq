@@ -17,6 +17,7 @@ import {
   Clock,
   CalendarDays,
   Users,
+  ChevronRight,
 } from "lucide-react";
 
 const CORTEX_AGENTS = [
@@ -27,7 +28,8 @@ const CORTEX_AGENTS = [
     role: "Revenue Compliance Specialist",
     avatar: "💰",
     color: "#6366f1",
-    bg: "rgba(99,102,241,0.1)",
+    glow: "rgba(99,102,241,0.25)",
+    bg: "rgba(99,102,241,0.08)",
     status: "available" as const,
     capabilities: [
       "Pre-auth narrative generation",
@@ -49,7 +51,8 @@ const CORTEX_AGENTS = [
     role: "Patient Reactivation Specialist",
     avatar: "📞",
     color: "#0ea5e9",
-    bg: "rgba(14,165,233,0.1)",
+    glow: "rgba(14,165,233,0.25)",
+    bg: "rgba(14,165,233,0.08)",
     status: "available" as const,
     capabilities: [
       "Hygiene recall automation",
@@ -71,7 +74,8 @@ const CORTEX_AGENTS = [
     role: "Reputation Manager",
     avatar: "⭐",
     color: "#f59e0b",
-    bg: "rgba(245,158,11,0.1)",
+    glow: "rgba(245,158,11,0.25)",
+    bg: "rgba(245,158,11,0.08)",
     status: "available" as const,
     capabilities: [
       "Review solicitation",
@@ -93,7 +97,8 @@ const CORTEX_AGENTS = [
     role: "Inventory Optimizer",
     avatar: "📦",
     color: "#10b981",
-    bg: "rgba(16,185,129,0.1)",
+    glow: "rgba(16,185,129,0.25)",
+    bg: "rgba(16,185,129,0.08)",
     status: "available" as const,
     capabilities: [
       "Inventory monitoring",
@@ -115,7 +120,8 @@ const CORTEX_AGENTS = [
     role: "Case Acceptance Specialist",
     avatar: "🦷",
     color: "#ec4899",
-    bg: "rgba(236,72,153,0.1)",
+    glow: "rgba(236,72,153,0.25)",
+    bg: "rgba(236,72,153,0.08)",
     status: "available" as const,
     capabilities: [
       "Implant/Invisalign follow-up",
@@ -137,7 +143,8 @@ const CORTEX_AGENTS = [
     role: "Schedule Optimizer",
     avatar: "📅",
     color: "#14b8a6",
-    bg: "rgba(20,184,166,0.1)",
+    glow: "rgba(20,184,166,0.25)",
+    bg: "rgba(20,184,166,0.08)",
     status: "available" as const,
     capabilities: [
       "Last-minute fill scheduling",
@@ -160,13 +167,16 @@ export default function CortexCommandCenter() {
   const { selectedClinicId } = useClinic();
 
   const [rentedAgents, setRentedAgents] = useState<any[]>([]);
+  const [agentStats, setAgentStats] = useState<{
+    pending: number;
+    approved: number;
+  } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
-  const [animatedRevenue, setAnimatedRevenue] = useState(0);
-  const [hoursSaved, setHoursSaved] = useState(0);
   const [tasksCompleted, setTasksCompleted] = useState(0);
   const [patientsEngaged, setPatientsEngaged] = useState(0);
+  const [animatedRevenue, setAnimatedRevenue] = useState(0);
 
-  // Scan state
   const [liveLog, setLiveLog] = useState<
     {
       id: string;
@@ -179,6 +189,9 @@ export default function CortexCommandCenter() {
     }[]
   >([]);
 
+  const agentManagerUrl =
+    process.env.NEXT_PUBLIC_AGENT_MANAGER_URL ?? "http://localhost:3006";
+
   useEffect(() => {
     if (accessToken) {
       agentsApi
@@ -188,47 +201,20 @@ export default function CortexCommandCenter() {
     }
   }, [accessToken]);
 
-  // Animate dynamic stats based on clinic
   useEffect(() => {
-    // Determine realistic numbers based on active agents
-    const agentsCount = rentedAgents.filter(
-      (r) => r.clinic_id === selectedClinicId,
-    ).length;
-    const multiplier = agentsCount > 0 ? agentsCount : 0.5; // base demo numbers if 0
+    if (!accessToken) return;
+    setStatsLoading(true);
+    fetch(`${agentManagerUrl}/stats`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setAgentStats(json.data.tasks);
+      })
+      .catch(() => {})
+      .finally(() => setStatsLoading(false));
+  }, [accessToken, agentManagerUrl]);
 
-    const targetRevenue = Math.floor(Math.random() * 2000 * multiplier) + 4500;
-    const targetHours = Math.floor(Math.random() * 15 * multiplier) + 24;
-    const targetTasks = Math.floor(Math.random() * 200 * multiplier) + 430;
-    const targetPatients = Math.floor(Math.random() * 50 * multiplier) + 120;
-
-    let rev = 0,
-      hrs = 0,
-      tsk = 0,
-      pat = 0;
-    const steps = 60;
-
-    const timer = setInterval(() => {
-      rev += targetRevenue / steps;
-      hrs += targetHours / steps;
-      tsk += targetTasks / steps;
-      pat += targetPatients / steps;
-      if (rev >= targetRevenue) {
-        rev = targetRevenue;
-        hrs = targetHours;
-        tsk = targetTasks;
-        pat = targetPatients;
-        clearInterval(timer);
-      }
-      setAnimatedRevenue(Math.round(rev));
-      setHoursSaved(Math.round(hrs * 10) / 10);
-      setTasksCompleted(Math.round(tsk));
-      setPatientsEngaged(Math.round(pat));
-    }, 16);
-
-    return () => clearInterval(timer);
-  }, [selectedClinicId, rentedAgents.length]);
-
-  // Simulate real-time continuous stream of neural activity
   useEffect(() => {
     const activeAgentTypes = CORTEX_AGENTS.filter((agent) =>
       rentedAgents.some(
@@ -266,10 +252,9 @@ export default function CortexCommandCenter() {
           },
           ...prev,
         ];
-        return newLogs.slice(0, 50); // Keep last 50
+        return newLogs.slice(0, 50);
       });
 
-      // Increment stats slightly on each action
       setTasksCompleted((prev) => prev + 1);
       if (Math.random() > 0.7) setPatientsEngaged((prev) => prev + 1);
       if (Math.random() > 0.8)
@@ -278,10 +263,8 @@ export default function CortexCommandCenter() {
         );
     };
 
-    // Initial burst
     for (let i = 0; i < 5; i++) generateLog();
 
-    // Continuous random interval between 800ms and 3000ms
     let timeoutId: NodeJS.Timeout;
     const loop = () => {
       generateLog();
@@ -299,6 +282,43 @@ export default function CortexCommandCenter() {
     clinicAgents.some((r) => r.agent_id === agent.id),
   );
 
+  const kpiStats = [
+    {
+      label: "Pending Review",
+      value: statsLoading ? "…" : (agentStats?.pending ?? 0).toString(),
+      icon: Clock,
+      color: "#f59e0b",
+      bg: "rgba(245,158,11,0.08)",
+      gradient: "linear-gradient(135deg, #f59e0b, #d97706)",
+    },
+    {
+      label: "Tasks Approved",
+      value: statsLoading ? "…" : (agentStats?.approved ?? 0).toString(),
+      icon: CheckCircle2,
+      color: "#10b981",
+      bg: "rgba(16,185,129,0.08)",
+      gradient: "linear-gradient(135deg, #10b981, #059669)",
+    },
+    {
+      label: "Active Agents",
+      value: rentedAgents
+        .filter((r) => r.clinic_id === selectedClinicId)
+        .length.toString(),
+      icon: Zap,
+      color: "#6366f1",
+      bg: "rgba(99,102,241,0.08)",
+      gradient: "linear-gradient(135deg, #6366f1, #4f46e5)",
+    },
+    {
+      label: "Total Agents",
+      value: CORTEX_AGENTS.length.toString(),
+      icon: Users,
+      color: "#0ea5e9",
+      bg: "rgba(14,165,233,0.08)",
+      gradient: "linear-gradient(135deg, #0ea5e9, #0284c7)",
+    },
+  ];
+
   return (
     <div
       style={{
@@ -306,49 +326,92 @@ export default function CortexCommandCenter() {
         maxWidth: 1400,
         margin: "0 auto",
         color: "var(--color-text-primary)",
+        animation: "fadeInUp 0.35s ease-out",
       }}
     >
       {/* Header */}
       <div
         style={{
+          position: "relative",
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           marginBottom: "2rem",
+          padding: "1.75rem 2rem",
+          background:
+            "linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(139,92,246,0.04) 50%, rgba(14,165,233,0.03) 100%)",
+          border: "1px solid rgba(99,102,241,0.15)",
+          borderRadius: 20,
+          overflow: "hidden",
         }}
       >
-        <div>
+        {/* Decorative blob */}
+        <div
+          style={{
+            position: "absolute",
+            top: -40,
+            right: -40,
+            width: 200,
+            height: 200,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: -30,
+            left: 100,
+            width: 150,
+            height: 150,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+        <div style={{ position: "relative" }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 12,
-              marginBottom: 8,
+              marginBottom: 10,
             }}
           >
             <div
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: "var(--color-accent-muted)",
+                width: 48,
+                height: 48,
+                borderRadius: 14,
+                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                boxShadow: "0 4px 14px rgba(99,102,241,0.4)",
               }}
             >
-              <BrainCircuit size={24} color="var(--color-accent)" />
+              <BrainCircuit size={24} color="#fff" />
             </div>
-            <h1
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                margin: 0,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Cortex Command Center
-            </h1>
+            <div>
+              <h1
+                style={{
+                  fontSize: 26,
+                  fontWeight: 800,
+                  margin: 0,
+                  letterSpacing: "-0.03em",
+                  background:
+                    "linear-gradient(135deg, var(--color-text-primary) 60%, #6366f1)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                Cortex Command Center
+              </h1>
+            </div>
             <div
               style={{
                 display: "flex",
@@ -356,11 +419,13 @@ export default function CortexCommandCenter() {
                 gap: 6,
                 background: "rgba(16,185,129,0.1)",
                 color: "#10b981",
-                padding: "4px 10px",
+                padding: "4px 12px",
                 borderRadius: 20,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 700,
                 textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                border: "1px solid rgba(16,185,129,0.2)",
               }}
             >
               <span
@@ -371,7 +436,7 @@ export default function CortexCommandCenter() {
                   background: "#10b981",
                   display: "inline-block",
                   boxShadow: "0 0 6px #10b981",
-                  animation: "pulse 2s infinite",
+                  animation: "pulseDot 2s infinite",
                 }}
               />
               Live
@@ -381,12 +446,58 @@ export default function CortexCommandCenter() {
             style={{
               margin: 0,
               color: "var(--color-text-secondary)",
-              fontSize: 15,
+              fontSize: 14,
+              maxWidth: 520,
             }}
           >
-            Real-time monitoring of automated clinic operations and digital
-            workforce productivity.
+            Real-time monitoring of automated clinic operations and your digital
+            workforce.
           </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, position: "relative" }}>
+          <Link
+            href="/dashboard/cortex/inbox"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "9px 18px",
+              background: "var(--color-accent)",
+              color: "#fff",
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: "none",
+              boxShadow: "0 2px 8px rgba(99,102,241,0.3)",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-1px)";
+              e.currentTarget.style.boxShadow =
+                "0 6px 16px rgba(99,102,241,0.4)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "none";
+              e.currentTarget.style.boxShadow =
+                "0 2px 8px rgba(99,102,241,0.3)";
+            }}
+          >
+            Approval Inbox
+            {agentStats && agentStats.pending > 0 && (
+              <span
+                style={{
+                  background: "rgba(255,255,255,0.25)",
+                  borderRadius: 20,
+                  padding: "1px 7px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                {agentStats.pending}
+              </span>
+            )}
+          </Link>
         </div>
       </div>
 
@@ -399,70 +510,74 @@ export default function CortexCommandCenter() {
           marginBottom: "2rem",
         }}
       >
-        {[
-          {
-            label: "Revenue Secured",
-            value: `$${animatedRevenue.toLocaleString()}`,
-            icon: TrendingUp,
-            color: "#6366f1",
-            bg: "rgba(99,102,241,0.08)",
-          },
-          {
-            label: "Hours Saved",
-            value: `${hoursSaved}h`,
-            icon: Clock,
-            color: "#10b981",
-            bg: "rgba(16,185,129,0.08)",
-          },
-          {
-            label: "Tasks Completed",
-            value: tasksCompleted.toLocaleString(),
-            icon: CheckCircle2,
-            color: "#0ea5e9",
-            bg: "rgba(14,165,233,0.08)",
-          },
-          {
-            label: "Patients Engaged",
-            value: patientsEngaged.toLocaleString(),
-            icon: Users,
-            color: "#f59e0b",
-            bg: "rgba(245,158,11,0.08)",
-          },
-        ].map((stat) => (
+        {kpiStats.map((stat, i) => (
           <div
             key={stat.label}
             style={{
               background: "var(--color-background-primary)",
               border: "1px solid var(--color-border-secondary)",
               borderRadius: 16,
-              padding: "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
+              padding: "1.4rem",
+              position: "relative",
+              overflow: "hidden",
+              boxShadow: "var(--shadow-xs)",
+              animation: `fadeInUp 0.4s ease-out ${i * 0.06}s both`,
+              transition: "all 0.2s ease",
+              cursor: "default",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = `0 8px 24px ${stat.bg.replace("0.08", "0.15")}`;
+              e.currentTarget.style.borderColor = stat.color + "40";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "none";
+              e.currentTarget.style.boxShadow = "var(--shadow-xs)";
+              e.currentTarget.style.borderColor =
+                "var(--color-border-secondary)";
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Top accent stripe */}
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 3,
+                background: `linear-gradient(90deg, transparent, ${stat.color}, transparent)`,
+                borderRadius: "16px 16px 0 0",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 14,
+              }}
+            >
               <div
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 9,
                   background: stat.bg,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  border: `1px solid ${stat.color}25`,
                 }}
               >
                 <stat.icon size={16} color={stat.color} />
               </div>
               <span
                 style={{
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: 600,
                   color: "var(--color-text-secondary)",
                   textTransform: "uppercase",
-                  letterSpacing: "0.05em",
+                  letterSpacing: "0.06em",
                 }}
               >
                 {stat.label}
@@ -470,10 +585,13 @@ export default function CortexCommandCenter() {
             </div>
             <div
               style={{
-                fontSize: 32,
+                fontSize: 36,
                 fontWeight: 800,
-                color: "var(--color-text-primary)",
-                letterSpacing: "-0.02em",
+                letterSpacing: "-0.03em",
+                background: stat.gradient,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
               }}
             >
               {stat.value}
@@ -485,8 +603,8 @@ export default function CortexCommandCenter() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 350px",
-          gap: "2rem",
+          gridTemplateColumns: "1fr 360px",
+          gap: "1.5rem",
         }}
       >
         {/* Left Col: Active Roster */}
@@ -502,16 +620,31 @@ export default function CortexCommandCenter() {
           >
             <h2
               style={{
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: 700,
                 margin: 0,
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                color: "var(--color-text-primary)",
               }}
             >
-              <Shield size={20} color="var(--color-accent)" /> Active Digital
+              <Shield size={18} color="var(--color-accent)" /> Active Digital
               Workforce
+              {activeAgentTypes.length > 0 && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    background: "var(--color-accent-muted)",
+                    color: "var(--color-accent)",
+                    padding: "2px 8px",
+                    borderRadius: 20,
+                    fontWeight: 700,
+                  }}
+                >
+                  {activeAgentTypes.length}
+                </span>
+              )}
             </h2>
           </div>
 
@@ -519,20 +652,34 @@ export default function CortexCommandCenter() {
             <div
               style={{
                 background: "var(--color-background-primary)",
-                border: "1px dashed var(--color-border-secondary)",
+                border: "1.5px dashed var(--color-border-secondary)",
                 padding: "4rem 2rem",
                 textAlign: "center",
                 borderRadius: 24,
               }}
             >
-              <BrainCircuit
-                size={48}
-                color="var(--color-border-secondary)"
-                style={{ margin: "0 auto 1rem" }}
-              />
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: "50%",
+                  background: "var(--color-background-secondary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 1.25rem",
+                }}
+              >
+                <BrainCircuit
+                  size={32}
+                  color="var(--color-text-secondary)"
+                  style={{ opacity: 0.4 }}
+                />
+              </div>
               <h3
                 style={{
-                  fontSize: 18,
+                  fontSize: 17,
+                  fontWeight: 700,
                   color: "var(--color-text-primary)",
                   margin: "0 0 8px 0",
                 }}
@@ -542,13 +689,33 @@ export default function CortexCommandCenter() {
               <p
                 style={{
                   color: "var(--color-text-secondary)",
-                  margin: 0,
+                  margin: "0 0 20px",
                   fontSize: 14,
+                  maxWidth: 360,
+                  marginLeft: "auto",
+                  marginRight: "auto",
                 }}
               >
                 This clinic does not have any active digital employees. Head to
-                the Settings panel to hire agents.
+                Settings to hire your first agent.
               </p>
+              <Link
+                href="/dashboard/settings"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "9px 20px",
+                  background: "var(--color-accent)",
+                  color: "#fff",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                Hire Agents <ChevronRight size={14} />
+              </Link>
             </div>
           ) : (
             <div
@@ -558,7 +725,7 @@ export default function CortexCommandCenter() {
                 gap: 16,
               }}
             >
-              {activeAgentTypes.map((agent) => {
+              {activeAgentTypes.map((agent, idx) => {
                 const activeInstances = clinicAgents.filter(
                   (r) => r.agent_id === agent.id,
                 );
@@ -575,32 +742,44 @@ export default function CortexCommandCenter() {
                       overflow: "hidden",
                       display: "flex",
                       flexDirection: "column",
-                      transition: "all 0.3s ease",
-                      boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
+                      transition: "all 0.25s ease",
+                      boxShadow: "var(--shadow-xs)",
+                      animation: `fadeInUp 0.4s ease-out ${0.1 + idx * 0.07}s both`,
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.borderColor = agent.color + "60";
-                      e.currentTarget.style.boxShadow =
-                        "0 8px 24px rgba(0,0,0,0.06)";
+                      e.currentTarget.style.transform = "translateY(-3px)";
+                      e.currentTarget.style.borderColor = agent.color + "50";
+                      e.currentTarget.style.boxShadow = `0 12px 32px ${agent.glow}`;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.transform = "none";
                       e.currentTarget.style.borderColor =
                         "var(--color-border-secondary)";
-                      e.currentTarget.style.boxShadow =
-                        "0 2px 10px rgba(0,0,0,0.02)";
+                      e.currentTarget.style.boxShadow = "var(--shadow-xs)";
                     }}
                   >
+                    {/* Corner gradient */}
                     <div
                       style={{
                         position: "absolute",
-                        top: 16,
-                        right: 16,
+                        top: 0,
+                        right: 0,
+                        width: 80,
+                        height: 80,
+                        background: `radial-gradient(circle at top right, ${agent.bg}, transparent 70%)`,
+                        pointerEvents: "none",
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 14,
+                        right: 14,
                         background: "rgba(16,185,129,0.1)",
                         border: "1px solid rgba(16,185,129,0.2)",
                         borderRadius: 20,
-                        padding: "4px 10px",
+                        padding: "3px 9px",
                         fontSize: 10,
                         fontWeight: 700,
                         color: "#10b981",
@@ -608,42 +787,43 @@ export default function CortexCommandCenter() {
                         letterSpacing: "0.05em",
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
+                        gap: 5,
                       }}
                     >
                       <span
                         style={{
-                          width: 6,
-                          height: 6,
+                          width: 5,
+                          height: 5,
                           borderRadius: "50%",
                           background: "#10b981",
                           display: "inline-block",
+                          animation: "pulseDot 2s infinite",
                         }}
                       />
-                      {activeInstances.length} INSTANCE
-                      {activeInstances.length > 1 ? "S" : ""}
+                      {activeInstances.length}x
                     </div>
 
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 16,
-                        marginBottom: 16,
+                        gap: 14,
+                        marginBottom: 14,
                       }}
                     >
                       <div
                         style={{
-                          width: 50,
-                          height: 50,
-                          borderRadius: 14,
+                          width: 52,
+                          height: 52,
+                          borderRadius: 15,
                           background: agent.bg,
                           color: agent.color,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          fontSize: 24,
-                          border: `1px solid ${agent.color}30`,
+                          fontSize: 26,
+                          border: `1.5px solid ${agent.color}30`,
+                          flexShrink: 0,
                         }}
                       >
                         {agent.avatar}
@@ -651,37 +831,40 @@ export default function CortexCommandCenter() {
                       <div>
                         <div
                           style={{
-                            fontSize: 10,
+                            fontSize: 9,
                             fontFamily: "monospace",
-                            color: "var(--color-text-secondary)",
-                            marginBottom: 2,
+                            color: agent.color,
+                            marginBottom: 3,
+                            fontWeight: 700,
+                            letterSpacing: "0.08em",
                           }}
                         >
                           {agent.codename}
                         </div>
                         <div
                           style={{
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: 700,
                             color: "var(--color-text-primary)",
-                            marginBottom: 2,
+                            lineHeight: 1.3,
                           }}
                         >
-                          {agent.name}
+                          {agent.name.replace("Cortex ", "")}
                         </div>
                       </div>
                     </div>
 
                     <div
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         color: agent.color,
                         fontWeight: 600,
-                        marginBottom: 12,
+                        marginBottom: 14,
                         background: agent.bg,
-                        padding: "6px 10px",
+                        padding: "5px 10px",
                         borderRadius: 8,
                         display: "inline-block",
+                        border: `1px solid ${agent.color}20`,
                       }}
                     >
                       {agent.role}
@@ -703,19 +886,20 @@ export default function CortexCommandCenter() {
                             color: "var(--color-text-secondary)",
                             display: "flex",
                             alignItems: "flex-start",
-                            gap: 8,
+                            gap: 7,
                           }}
                         >
                           <span
                             style={{
                               color: agent.color,
-                              fontSize: 12,
-                              marginTop: -2,
+                              fontSize: 10,
+                              marginTop: 2,
+                              flexShrink: 0,
                             }}
                           >
                             ✓
                           </span>
-                          <span style={{ lineHeight: 1.3 }}>{cap}</span>
+                          <span style={{ lineHeight: 1.4 }}>{cap}</span>
                         </div>
                       ))}
                     </div>
@@ -726,70 +910,98 @@ export default function CortexCommandCenter() {
           )}
         </div>
 
-        {/* Right Col: Live Neural Stream (Dark Console style) */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {/* Right Col: Live Neural Stream */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
           <div
             style={{
               background: "#09090b",
-              border: "1px solid #27272a",
-              borderRadius: 16,
+              borderRadius: 18,
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              height: 600,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
+              height: 560,
+              boxShadow: "0 0 0 1px #27272a, 0 20px 60px rgba(0,0,0,0.3)",
+              position: "relative",
             }}
           >
+            {/* Terminal top rainbow gradient line */}
             <div
               style={{
-                padding: "1.2rem",
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 2,
+                background:
+                  "linear-gradient(90deg, #6366f1, #0ea5e9, #10b981, #f59e0b, #ec4899)",
+              }}
+            />
+
+            <div
+              style={{
+                padding: "1.1rem 1.2rem",
                 borderBottom: "1px solid #27272a",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                background: "#09090b",
+                marginTop: 2,
               }}
             >
-              <h2
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: "#f4f4f5",
-                  margin: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                <Activity size={16} color="#ef4444" /> Live Terminal
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {/* macOS-style traffic lights */}
+                <div style={{ display: "flex", gap: 6 }}>
+                  {["#ef4444", "#f59e0b", "#10b981"].map((c) => (
+                    <div
+                      key={c}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: c,
+                        opacity: 0.7,
+                      }}
+                    />
+                  ))}
+                </div>
+                <h2
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#71717a",
+                    margin: 0,
+                    fontFamily: "monospace",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  neural.stream
+                </h2>
+              </div>
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
-                  background: "rgba(239, 68, 68, 0.15)",
+                  background: "rgba(239, 68, 68, 0.12)",
                   color: "#ef4444",
-                  padding: "4px 10px",
+                  padding: "3px 10px",
                   borderRadius: 20,
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: 700,
                   textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  letterSpacing: "0.08em",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
                 }}
               >
                 <span
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: 5,
+                    height: 5,
                     borderRadius: "50%",
                     background: "#ef4444",
                     display: "inline-block",
-                    boxShadow: "0 0 8px #ef4444",
-                    animation: "pulse 1.5s infinite",
+                    boxShadow: "0 0 6px #ef4444",
+                    animation: "pulseDot 1.5s infinite",
                   }}
                 />
                 REC
@@ -800,7 +1012,7 @@ export default function CortexCommandCenter() {
               style={{
                 flex: 1,
                 overflowY: "auto",
-                padding: "1rem",
+                padding: "0.75rem 1rem",
                 background: "#09090b",
               }}
             >
@@ -812,69 +1024,81 @@ export default function CortexCommandCenter() {
                     flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#52525b",
+                    color: "#3f3f46",
                   }}
                 >
-                  <Zap size={32} style={{ marginBottom: 16, opacity: 0.2 }} />
+                  <Zap size={28} style={{ marginBottom: 12, opacity: 0.3 }} />
                   <div
                     style={{
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: 600,
-                      marginBottom: 4,
                       fontFamily: "monospace",
+                      letterSpacing: "0.06em",
                     }}
                   >
-                    system.idle
+                    awaiting agents...
                   </div>
                 </div>
               ) : (
                 <div
-                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  style={{ display: "flex", flexDirection: "column", gap: 1 }}
                 >
-                  {liveLog.map((log) => (
+                  {liveLog.map((log, i) => (
                     <div
                       key={log.id}
                       style={{
                         display: "flex",
-                        gap: 12,
-                        padding: "8px 0",
+                        gap: 10,
+                        padding: "6px 4px",
                         borderBottom: "1px solid #18181b",
-                        fontFamily: '"JetBrains Mono", monospace',
+                        fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+                        animation: i === 0 ? "fadeIn 0.3s ease-out" : undefined,
                       }}
                     >
                       <div
                         style={{
-                          fontSize: 10,
-                          color: "#52525b",
+                          fontSize: 9,
+                          color: "#3f3f46",
                           flexShrink: 0,
-                          marginTop: 2,
+                          marginTop: 3,
+                          minWidth: 68,
                         }}
                       >
                         {log.time}
                       </div>
-                      <div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
                             display: "flex",
                             alignItems: "center",
                             gap: 6,
-                            marginBottom: 2,
+                            marginBottom: 1,
                           }}
                         >
                           <span
                             style={{
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: 800,
                               color: log.color,
                               textTransform: "uppercase",
+                              letterSpacing: "0.04em",
                             }}
                           >
                             [{log.agentId}]
                           </span>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              color: "#10b981",
+                              opacity: 0.6,
+                            }}
+                          >
+                            OK
+                          </span>
                         </div>
                         <div
                           style={{
-                            fontSize: 12,
+                            fontSize: 11,
                             color: "#a1a1aa",
                             lineHeight: 1.4,
                           }}
@@ -887,21 +1111,41 @@ export default function CortexCommandCenter() {
                 </div>
               )}
             </div>
+
+            {/* Terminal bottom status bar */}
+            <div
+              style={{
+                padding: "6px 12px",
+                borderTop: "1px solid #27272a",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "#0c0c0e",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  color: "#3f3f46",
+                  fontFamily: "monospace",
+                }}
+              >
+                {liveLog.length} events
+              </span>
+              <span
+                style={{
+                  fontSize: 9,
+                  color: "#10b981",
+                  fontFamily: "monospace",
+                  opacity: 0.6,
+                }}
+              >
+                ● active
+              </span>
+            </div>
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0%,
-          100% {
-            opacity: 0.4;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

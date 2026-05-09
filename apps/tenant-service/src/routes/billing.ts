@@ -1,27 +1,190 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { eq, sql } from "drizzle-orm";
+import { getDb, tenants } from "@dentaliq/db";
 import { requireAuth } from "../middleware/requireAuth";
-import { getDb } from "@dentaliq/db";
-import { sql } from "drizzle-orm";
-import { createId } from "@paralleldrive/cuid2";
+import { createLogger } from "@dentaliq/logger";
+import { getEnv } from "@dentaliq/config";
 
-const SavePaymentMethodSchema = z.object({
-  cardName: z.string().min(1),
-  cardNumber: z.string().min(10),
-  cardExpiry: z.string().min(4),
-  cardCvc: z.string().min(3),
-});
+const logger = createLogger("billing-routes");
 
-function getCardBrand(number: string) {
-  const num = number.replace(/\D/g, "");
-  if (num.match(/^4/)) return "visa";
-  if (num.match(/^(34|37)/)) return "amex";
-  if (num.match(/^5[1-5]/)) return "mastercard";
-  if (num.match(/^6011/)) return "discover";
-  return "card";
+// ─────────────────────────────────────────────────────────
+// Plan pricing — single source of truth
+// ─────────────────────────────────────────────────────────
+export const PLAN_PRICES: Record<string, number> = {
+  starter: 49,
+  pro: 149,
+  enterprise: 249,
+  cortex: 299,
+};
+export const AGENT_PRICE_PER_MONTH = 99;
+
+// ─────────────────────────────────────────────────────────
+// Stripe client — lazy singleton, gracefully disabled when
+// STRIPE_SECRET_KEY is not set
+// ─────────────────────────────────────────────────────────
+let _stripe: any = null;
+
+function getStripe() {
+  const env = getEnv();
+  if (!env.STRIPE_SECRET_KEY) return null;
+  if (!_stripe) {
+    const Stripe = require("stripe");
+    _stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: "2024-04-10" });
+  }
+  return _stripe;
 }
 
+const ConfirmPaymentMethodSchema = z.object({
+  paymentMethodId: z.string().min(2),
+});
+
+const ChangePlanSchema = z.object({
+  plan: z.enum(["starter", "pro", "enterprise", "cortex"]),
+});
+
 export async function billingRoutes(app: FastifyInstance) {
+  const db = getDb();
+  await ensureBillingTables();
+
+  // ── GET /billing/config — Stripe publishable key for frontend ──
+  app.get("/config", async (_req, reply) => {
+    const env = getEnv();
+    return reply.send({
+      success: true,
+      data: {
+        stripePublishableKey: env.STRIPE_PUBLISHABLE_KEY ?? null,
+        stripeEnabled: !!env.STRIPE_SECRET_KEY,
+        plans: PLAN_PRICES,
+        agentPrice: AGENT_PRICE_PER_MONTH,
+      },
+    });
+  });
+
+  // ── POST /billing/setup-intent — Stripe SetupIntent for card collection ─
+  app.post(
+    "/setup-intent",
+    {
+      preHandler: requireAuth(app),
+    },
+    async (req, reply) => {
+      const stripe = getStripe();
+      if (!stripe) {
+        return reply
+          .code(503)
+          .send({
+            success: false,
+            error: "Payment processing not configured. Contact support.",
+          });
+      }
+
+      const jwtUser = req.user as any;
+      const [tenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, jwtUser.tenantId))
+        .limit(1);
+      if (!tenant)
+        return reply
+          .code(404)
+          .send({ success: false, error: "Tenant not found" });
+
+      let customerId = tenant.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: jwtUser.email,
+          name: tenant.name,
+          metadata: { tenantId: tenant.id, plan: tenant.plan },
+        });
+        customerId = customer.id;
+        await db
+          .update(tenants)
+          .set({ stripeCustomerId: customerId })
+          .where(eq(tenants.id, tenant.id));
+      }
+
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        payment_method_types: ["card"],
+      });
+
+      return reply.send({
+        success: true,
+        data: { clientSecret: setupIntent.client_secret },
+      });
+    },
+  );
+
+  // ── POST /billing/payment-method — attach tokenized Stripe card ──
+  app.post(
+    "/payment-method",
+    {
+      preHandler: requireAuth(app),
+    },
+    async (req, reply) => {
+      const stripe = getStripe();
+      const jwtUser = req.user as any;
+      const { paymentMethodId } = ConfirmPaymentMethodSchema.parse(req.body);
+      const db2 = getDb() as any;
+
+      if (!stripe) {
+        await db2.run(
+          sql`INSERT INTO tenant_payment_methods (tenant_id, stripe_pm_id, brand, last4, exp_month, exp_year, name)
+            VALUES (${jwtUser.tenantId}, ${paymentMethodId}, 'card', '****', 0, 0, 'Card on file')
+            ON CONFLICT(tenant_id) DO UPDATE SET stripe_pm_id=excluded.stripe_pm_id, updated_at=datetime('now')`,
+        );
+        return reply
+          .code(201)
+          .send({ success: true, data: { message: "Payment method saved" } });
+      }
+
+      const [tenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, jwtUser.tenantId))
+        .limit(1);
+      if (!tenant || !tenant.stripeCustomerId) {
+        return reply
+          .code(400)
+          .send({
+            success: false,
+            error: "No Stripe customer. Create a setup intent first.",
+          });
+      }
+
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: tenant.stripeCustomerId,
+      });
+      await stripe.customers.update(tenant.stripeCustomerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+
+      const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+      const card = pm.card ?? {};
+
+      await db2.run(
+        sql`INSERT INTO tenant_payment_methods (tenant_id, stripe_pm_id, brand, last4, exp_month, exp_year, name)
+          VALUES (${jwtUser.tenantId}, ${paymentMethodId}, ${card.brand ?? "card"}, ${card.last4 ?? "****"},
+                  ${card.exp_month ?? 0}, ${card.exp_year ?? 0}, ${pm.billing_details?.name ?? ""})
+          ON CONFLICT(tenant_id) DO UPDATE SET
+            stripe_pm_id=excluded.stripe_pm_id, brand=excluded.brand, last4=excluded.last4,
+            exp_month=excluded.exp_month, exp_year=excluded.exp_year, name=excluded.name,
+            updated_at=datetime('now')`,
+      );
+
+      return reply.code(201).send({
+        success: true,
+        data: {
+          brand: card.brand,
+          last4: card.last4,
+          expMonth: card.exp_month,
+          expYear: card.exp_year,
+        },
+      });
+    },
+  );
+
+  // ── GET /billing/payment-method ──────────────────────────────
   app.get(
     "/payment-method",
     {
@@ -29,104 +192,145 @@ export async function billingRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const jwtUser = req.user as any;
-      const db = getDb() as any;
-      try {
-        // Setup the table if it doesn't exist
-        await db.run(
-          sql.raw(`
-        CREATE TABLE IF NOT EXISTS "tenant_payment_methods" (
-          tenant_id TEXT PRIMARY KEY,
-          brand TEXT NOT NULL,
-          last4 TEXT NOT NULL,
-          name TEXT NOT NULL,
-          expiry TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `),
-        );
-
-        const rows = await db.all(
-          sql.raw(
-            `SELECT * FROM "tenant_payment_methods" WHERE tenant_id = '${jwtUser.tenantId}' LIMIT 1`,
-          ),
-        );
-        const row = Array.isArray(rows) ? rows[0] : (rows as any).rows?.[0];
-        if (!row) {
-          return reply.send({ success: true, data: null });
-        }
-        return reply.send({ success: true, data: row });
-      } catch (err) {
-        req.log.error(err);
-        return reply
-          .code(500)
-          .send({ success: false, error: "Database error" });
-      }
+      const db2 = getDb() as any;
+      const rows = await db2.all(
+        sql`SELECT brand, last4, exp_month, exp_year, name FROM tenant_payment_methods WHERE tenant_id = ${jwtUser.tenantId} LIMIT 1`,
+      );
+      return reply.send({
+        success: true,
+        data: (Array.isArray(rows) ? rows[0] : null) ?? null,
+      });
     },
   );
 
+  // ── POST /billing/subscribe — create/update subscription ─────
   app.post(
-    "/payment-method",
+    "/subscribe",
+    {
+      preHandler: requireAuth(app),
+    },
+    async (req, reply) => {
+      const stripe = getStripe();
+      if (!stripe) {
+        return reply
+          .code(503)
+          .send({
+            success: false,
+            error: "Stripe not configured. Set STRIPE_SECRET_KEY.",
+          });
+      }
+
+      const jwtUser = req.user as any;
+      const { plan } = ChangePlanSchema.parse(req.body);
+
+      const [tenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, jwtUser.tenantId))
+        .limit(1);
+      if (!tenant || !tenant.stripeCustomerId) {
+        return reply
+          .code(400)
+          .send({
+            success: false,
+            error: "No payment method on file. Add a card first.",
+          });
+      }
+
+      const env = getEnv() as any;
+      const priceId = env[`STRIPE_PRICE_${plan.toUpperCase()}`];
+      if (!priceId) {
+        return reply.code(503).send({
+          success: false,
+          error: `Stripe price ID for plan "${plan}" not configured. Set STRIPE_PRICE_${plan.toUpperCase()}.`,
+        });
+      }
+
+      const subs = await stripe.subscriptions.list({
+        customer: tenant.stripeCustomerId,
+        status: "active",
+        limit: 1,
+      });
+      let subscription;
+
+      if (subs.data.length > 0) {
+        const existing = subs.data[0];
+        subscription = await stripe.subscriptions.update(existing.id, {
+          items: [{ id: existing.items.data[0].id, price: priceId }],
+          proration_behavior: "create_prorations",
+        });
+      } else {
+        subscription = await stripe.subscriptions.create({
+          customer: tenant.stripeCustomerId,
+          items: [{ price: priceId }],
+          payment_behavior: "default_incomplete",
+          expand: ["latest_invoice.payment_intent"],
+        });
+      }
+
+      await db
+        .update(tenants)
+        .set({ plan, updatedAt: new Date().toISOString() })
+        .where(eq(tenants.id, jwtUser.tenantId));
+
+      return reply.send({
+        success: true,
+        data: { subscriptionId: subscription.id, plan },
+      });
+    },
+  );
+
+  // ── GET /billing/subscription ────────────────────────────────
+  app.get(
+    "/subscription",
     {
       preHandler: requireAuth(app),
     },
     async (req, reply) => {
       const jwtUser = req.user as any;
-      const body = SavePaymentMethodSchema.parse(req.body);
-      const db = getDb() as any;
-
-      const brand = getCardBrand(body.cardNumber);
-      const last4 = body.cardNumber.replace(/\D/g, "").slice(-4) || "0000";
-
-      try {
-        await db.run(
-          sql.raw(`
-        CREATE TABLE IF NOT EXISTS "tenant_payment_methods" (
-          tenant_id TEXT PRIMARY KEY,
-          brand TEXT NOT NULL,
-          last4 TEXT NOT NULL,
-          name TEXT NOT NULL,
-          expiry TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `),
-        );
-
-        // Upsert
-        await db.run(
-          sql.raw(`
-        INSERT INTO "tenant_payment_methods" (tenant_id, brand, last4, name, expiry)
-        VALUES ('${jwtUser.tenantId}', '${brand}', '${last4}', '${body.cardName.replace(/'/g, "''")}', '${body.cardExpiry}')
-        ON CONFLICT(tenant_id) DO UPDATE SET 
-          brand=excluded.brand, 
-          last4=excluded.last4, 
-          name=excluded.name, 
-          expiry=excluded.expiry, 
-          updated_at=datetime('now')
-      `),
-        );
-
+      const stripe = getStripe();
+      const [tenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, jwtUser.tenantId))
+        .limit(1);
+      if (!tenant)
         return reply
-          .code(201)
-          .send({
-            success: true,
-            data: {
-              brand,
-              last4,
-              name: body.cardName,
-              expiry: body.cardExpiry,
-            },
-          });
-      } catch (err) {
-        req.log.error(err);
-        return reply
-          .code(500)
-          .send({ success: false, error: "Database error" });
+          .code(404)
+          .send({ success: false, error: "Tenant not found" });
+
+      if (stripe && tenant.stripeCustomerId) {
+        const subs = await stripe.subscriptions.list({
+          customer: tenant.stripeCustomerId,
+          status: "active",
+          limit: 1,
+        });
+        const sub = subs.data[0];
+        return reply.send({
+          success: true,
+          data: {
+            plan: tenant.plan,
+            status: tenant.status,
+            subscription: sub
+              ? {
+                  id: sub.id,
+                  currentPeriodEnd: new Date(
+                    sub.current_period_end * 1000,
+                  ).toISOString(),
+                }
+              : null,
+          },
+        });
       }
+
+      return reply.send({
+        success: true,
+        data: { plan: tenant.plan, status: tenant.status, subscription: null },
+      });
     },
   );
 
+  // ── GET /billing/invoices ────────────────────────────────────
   app.get(
     "/invoices",
     {
@@ -134,142 +338,200 @@ export async function billingRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const jwtUser = req.user as any;
-      const db = getDb() as any;
+      const stripe = getStripe();
 
-      try {
-        await db.run(
-          sql.raw(`
-        CREATE TABLE IF NOT EXISTS "tenant_invoices" (
-          id TEXT PRIMARY KEY,
-          tenant_id TEXT NOT NULL,
-          date TEXT NOT NULL,
-          base_price REAL NOT NULL,
-          agents_count INTEGER NOT NULL,
-          agents_cost REAL NOT NULL,
-          subtotal REAL NOT NULL,
-          tax REAL NOT NULL,
-          total REAL NOT NULL,
-          card_last4 TEXT NOT NULL,
-          card_brand TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `),
-        );
+      if (stripe) {
+        const [tenant] = await db
+          .select({ stripeCustomerId: tenants.stripeCustomerId })
+          .from(tenants)
+          .where(eq(tenants.id, jwtUser.tenantId))
+          .limit(1);
 
-        // Fetch tenant to get plan and created_at
-        const tenantsRows = await db.all(
-          sql.raw(
-            `SELECT plan, created_at FROM "tenants" WHERE id = '${jwtUser.tenantId}' LIMIT 1`,
-          ),
-        );
-        const tenant = Array.isArray(tenantsRows)
-          ? tenantsRows[0]
-          : (tenantsRows as any).rows?.[0];
-        if (!tenant) return reply.send({ success: true, data: [] });
-
-        const plan = tenant.plan || "pro";
-        const basePrice =
-          plan === "starter"
-            ? 49
-            : plan === "pro"
-              ? 149
-              : plan === "cortex"
-                ? 299
-                : 0;
-
-        const createdAt = new Date(
-          tenant.createdAt || tenant.created_at || new Date().toISOString(),
-        );
-        const now = new Date();
-
-        // Calculate months between creation and now
-        let monthsPassed =
-          (now.getFullYear() - createdAt.getFullYear()) * 12 +
-          (now.getMonth() - createdAt.getMonth());
-        if (now.getDate() < createdAt.getDate()) monthsPassed--; // Not fully passed a month
-
-        // Prevent crazy loops if data is corrupt
-        if (monthsPassed < 0) monthsPassed = 0;
-        if (monthsPassed > 60) monthsPassed = 60;
-
-        const rows = await db.all(
-          sql.raw(
-            `SELECT * FROM "tenant_invoices" WHERE tenant_id = '${jwtUser.tenantId}' ORDER BY date DESC`,
-          ),
-        );
-        const existingInvoices = Array.isArray(rows)
-          ? rows
-          : (rows as any).rows || [];
-
-        // Generate missing invoices
-        const newInvoices = [];
-        for (let i = 1; i <= monthsPassed; i++) {
-          const invoiceDate = new Date(createdAt);
-          invoiceDate.setMonth(createdAt.getMonth() + i);
-          const dateStr = invoiceDate.toISOString().split("T")[0];
-
-          // Skip if we already have an invoice for this month
-          if (
-            existingInvoices.some((inv: any) =>
-              inv.date.startsWith(dateStr.substring(0, 7)),
-            )
-          )
-            continue;
-
-          const id =
-            "INV-" +
-            dateStr.replace(/-/g, "") +
-            "-" +
-            Math.floor(Math.random() * 10000);
-          // Hardcode dummy historical data if there's no actual historical tracker yet
-          const agentsCount =
-            plan === "cortex" ? Math.floor(Math.random() * 3) : 0;
-          const agentsCost = agentsCount * 99;
-          const subtotal = basePrice + agentsCost;
-          const tax = subtotal * 0.13;
-          const total = subtotal + tax;
-
-          // Simulate that old cards might have been different
-          const cardBrand = Math.random() > 0.8 ? "mastercard" : "visa";
-          const cardLast4 = Math.floor(1000 + Math.random() * 9000).toString();
-
-          newInvoices.push({
-            id,
-            date: invoiceDate.toISOString(),
-            basePrice,
-            agentsCount,
-            agentsCost,
-            subtotal,
-            tax,
-            total,
-            cardLast4,
-            cardBrand,
+        if (tenant?.stripeCustomerId) {
+          const invoices = await stripe.invoices.list({
+            customer: tenant.stripeCustomerId,
+            limit: 24,
           });
-
-          await db.run(
-            sql.raw(`
-          INSERT INTO "tenant_invoices" (id, tenant_id, date, base_price, agents_count, agents_cost, subtotal, tax, total, card_last4, card_brand)
-          VALUES ('${id}', '${jwtUser.tenantId}', '${invoiceDate.toISOString()}', ${basePrice}, ${agentsCount}, ${agentsCost}, ${subtotal}, ${tax}, ${total}, '${cardLast4}', '${cardBrand}')
-        `),
-          );
+          const data = invoices.data.map((inv: any) => ({
+            id: inv.id,
+            date: new Date(inv.created * 1000).toISOString(),
+            total: inv.total / 100,
+            subtotal: inv.subtotal / 100,
+            tax: (inv.tax ?? 0) / 100,
+            status: inv.status,
+            pdfUrl: inv.invoice_pdf,
+            hostedUrl: inv.hosted_invoice_url,
+          }));
+          return reply.send({ success: true, data });
         }
-
-        const finalRows = await db.all(
-          sql.raw(
-            `SELECT * FROM "tenant_invoices" WHERE tenant_id = '${jwtUser.tenantId}' ORDER BY date DESC`,
-          ),
-        );
-        const output = Array.isArray(finalRows)
-          ? finalRows
-          : (finalRows as any).rows || [];
-
-        return reply.send({ success: true, data: output });
-      } catch (err) {
-        req.log.error(err);
-        return reply
-          .code(500)
-          .send({ success: false, error: "Database error" });
       }
+
+      // Fallback: local records
+      const db2 = getDb() as any;
+      const rows = await db2.all(
+        sql`SELECT * FROM tenant_invoices WHERE tenant_id = ${jwtUser.tenantId} ORDER BY date DESC LIMIT 24`,
+      );
+      return reply.send({
+        success: true,
+        data: Array.isArray(rows) ? rows : [],
+      });
     },
   );
+
+  // ── GET /billing/usage — real usage tracking ─────────────────
+  app.get(
+    "/usage",
+    {
+      preHandler: requireAuth(app),
+    },
+    async (req, reply) => {
+      const jwtUser = req.user as any;
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const monthEnd = new Date();
+      monthEnd.setMonth(monthEnd.getMonth() + 1, 1);
+      monthEnd.setHours(0, 0, 0, 0);
+
+      const [tenantRow] = await db
+        .select({ plan: tenants.plan, schemaName: tenants.schemaName })
+        .from(tenants)
+        .where(eq(tenants.id, jwtUser.tenantId))
+        .limit(1);
+
+      let estimateCount = 0;
+      if (tenantRow?.schemaName) {
+        try {
+          const db2 = getDb() as any;
+          const rows = await db2.all(
+            sql`SELECT COUNT(*) as cnt FROM ${sql.raw(`"${tenantRow.schemaName}_estimates"`)}
+              WHERE created_at >= ${monthStart.toISOString()} AND created_at < ${monthEnd.toISOString()}`,
+          );
+          estimateCount = rows?.[0]?.cnt ?? 0;
+        } catch {
+          /* estimates table may not exist yet */
+        }
+      }
+
+      const limits: Record<string, number> = {
+        starter: 100,
+        pro: 500,
+        enterprise: 2000,
+        cortex: 5000,
+      };
+      const limit = limits[tenantRow?.plan ?? "pro"] ?? 500;
+
+      return reply.send({
+        success: true,
+        data: {
+          estimates: {
+            current: estimateCount,
+            limit,
+            resetAt: monthEnd.toISOString(),
+          },
+          period: {
+            start: monthStart.toISOString(),
+            end: monthEnd.toISOString(),
+          },
+        },
+      });
+    },
+  );
+
+  // ── POST /billing/webhooks — Stripe event receiver ───────────
+  app.post("/webhooks", async (req, reply) => {
+    const stripe = getStripe();
+    if (!stripe) return reply.code(200).send({ received: true });
+
+    const env = getEnv();
+    const sig = req.headers["stripe-signature"] as string;
+
+    let event: any;
+    try {
+      event = stripe.webhooks.constructEvent(
+        (req as any).rawBody ?? JSON.stringify(req.body),
+        sig,
+        env.STRIPE_WEBHOOK_SECRET ?? "",
+      );
+    } catch (err: any) {
+      logger.error({ err }, "Stripe webhook signature validation failed");
+      return reply.code(400).send({ error: `Webhook error: ${err.message}` });
+    }
+
+    switch (event.type) {
+      case "customer.subscription.updated":
+      case "customer.subscription.created": {
+        const sub = event.data.object;
+        const plan =
+          sub.metadata?.plan ?? sub.items?.data?.[0]?.price?.metadata?.plan;
+        if (plan) {
+          await db
+            .update(tenants)
+            .set({
+              plan,
+              status: "active",
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(tenants.stripeCustomerId, sub.customer));
+        }
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const sub = event.data.object;
+        await db
+          .update(tenants)
+          .set({ status: "suspended", updatedAt: new Date().toISOString() })
+          .where(eq(tenants.stripeCustomerId, sub.customer));
+        break;
+      }
+      case "invoice.payment_failed": {
+        logger.warn(
+          { customerId: event.data.object.customer },
+          "Invoice payment failed",
+        );
+        break;
+      }
+    }
+
+    return reply.send({ received: true });
+  });
+}
+
+async function ensureBillingTables() {
+  const db = getDb() as any;
+  try {
+    await db.run(
+      sql.raw(`
+      CREATE TABLE IF NOT EXISTS tenant_payment_methods (
+        tenant_id    TEXT PRIMARY KEY,
+        stripe_pm_id TEXT,
+        brand        TEXT NOT NULL DEFAULT 'card',
+        last4        TEXT NOT NULL DEFAULT '****',
+        exp_month    INTEGER NOT NULL DEFAULT 0,
+        exp_year     INTEGER NOT NULL DEFAULT 0,
+        name         TEXT NOT NULL DEFAULT '',
+        created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `),
+    );
+    await db.run(
+      sql.raw(`
+      CREATE TABLE IF NOT EXISTS tenant_invoices (
+        id         TEXT PRIMARY KEY,
+        tenant_id  TEXT NOT NULL,
+        date       TEXT NOT NULL,
+        subtotal   REAL NOT NULL,
+        tax        REAL NOT NULL DEFAULT 0,
+        total      REAL NOT NULL,
+        status     TEXT NOT NULL DEFAULT 'paid',
+        pdf_url    TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `),
+    );
+  } catch {
+    /* tables already exist */
+  }
 }

@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────
+# DentalIQ — Production Dockerfile (Modular & Optimized)
+# ─────────────────────────────────────────────────────────
+# This Dockerfile uses multi-stage builds and build arguments
+# to support any service in the monorepo (Web, Auth, Tenant, etc.)
+# ─────────────────────────────────────────────────────────
+
+ARG NODE_VERSION=20-alpine
+ARG APP_NAME
+
+# --- Stage 1: Pruning ---
+FROM node:${NODE_VERSION} AS pruner
+ARG APP_NAME
+WORKDIR /app
+RUN npm install -g turbo
+COPY . .
+# Extract only the necessary files for the specific service
+RUN turbo prune ${APP_NAME} --docker
+
+# --- Stage 2: Dependencies ---
+FROM node:${NODE_VERSION} AS installer
+ARG APP_NAME
+WORKDIR /app
+
+# First install the dependencies (as they change less often)
+COPY .gitignore .gitignore
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+RUN npm install -g pnpm
+RUN pnpm install --frozen-lockfile
+
+# --- Stage 3: Builder ---
+FROM installer AS builder
+ARG APP_NAME
+WORKDIR /app
+COPY --from=pruner /app/out/full/ .
+COPY turbo.json turbo.json
+# Build the specific service and its workspace dependencies
+RUN pnpm turbo build --filter=${APP_NAME}
+
+# --- Stage 4: Runner ---
+FROM node:${NODE_VERSION} AS runner
+ARG APP_NAME
+WORKDIR /app
+
+# Add a non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+USER nextjs
+
+COPY --from=builder /app/package.json .
+
+# Copy only the necessary files for the specific service
+# (Paths change depending on if it's Next.js or a pure Node service)
+COPY --from=builder /app/apps/${APP_NAME}/ ./apps/${APP_NAME}/
+COPY --from=builder /app/packages/ ./packages/
+COPY --from=builder /app/node_modules/ ./node_modules/
+
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+# Probe the /health endpoint; fail fast if the service is unresponsive
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- "http://localhost:${PORT:-3000}/health" || exit 1
+
+CMD ["sh", "-c", "pnpm --filter ${APP_NAME} start"]

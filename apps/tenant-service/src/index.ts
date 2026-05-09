@@ -31,11 +31,24 @@ async function buildApp() {
   });
   await app.register(fastifyJwt, { secret: env.JWT_SECRET });
   await app.register(fastifyRateLimit, {
-    max: 200,
+    max: 120,
     timeWindow: "1 minute",
+    // Per-tenant limiting — one slow tenant cannot starve others
+    keyGenerator: (req) => {
+      try {
+        const token =
+          ((req.headers.authorization as string) ?? "").split(" ")[1] ?? "";
+        const payload = JSON.parse(
+          Buffer.from(token.split(".")[1], "base64url").toString(),
+        );
+        return payload.tenantId ?? req.ip;
+      } catch {
+        return req.ip;
+      }
+    },
     errorResponseBuilder: () => ({
       success: false,
-      error: "Rate limit exceeded",
+      error: "Rate limit exceeded. Max 120 requests/min per tenant.",
     }),
   });
 

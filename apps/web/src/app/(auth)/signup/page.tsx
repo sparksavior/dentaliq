@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, type FormEvent } from "react";
+import { useState, useRef, Suspense, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authApi, tenantsApi, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const STEP_NAMES_DEFAULT = [
   "Account",
@@ -121,18 +122,17 @@ const CORTEX_AGENTS = [
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "11px 14px",
-  border: "1.5px solid #e2e8f0",
+  border: "1.5px solid var(--color-border-secondary)",
   borderRadius: 10,
   fontSize: 14,
-  color: "#0f172a",
-  background: "#fff",
+  color: "var(--color-text-primary)",
+  background: "var(--color-input-bg)",
   outline: "none",
   boxSizing: "border-box",
-  fontFamily: "system-ui",
-  transition: "border-color 0.15s",
+  transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
-export default function SignupPage() {
+function SignupPage() {
   const router = useRouter();
   const params = useSearchParams();
   const { setSession } = useAuth();
@@ -370,19 +370,22 @@ export default function SignupPage() {
             DentalIQ
           </span>
         </div>
-        <a
-          href="/login"
-          style={{
-            fontSize: 14,
-            color: "var(--color-text-secondary)",
-            textDecoration: "none",
-          }}
-        >
-          Already have an account?{" "}
-          <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
-            Sign in
-          </span>
-        </a>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <ThemeToggle storageKey="diq_pub_theme" variant="pill" />
+          <a
+            href="/login"
+            style={{
+              fontSize: 14,
+              color: "var(--color-text-secondary)",
+              textDecoration: "none",
+            }}
+          >
+            Already have an account?{" "}
+            <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
+              Sign in
+            </span>
+          </a>
+        </div>
       </div>
 
       <div
@@ -1201,11 +1204,12 @@ export default function SignupPage() {
         {step === 1 && (
           <div
             style={{
-              background: "#fff",
-              border: "1px solid #e2e8f0",
+              background: "var(--color-background-primary)",
+              border: "1px solid var(--color-border-secondary)",
               borderRadius: 16,
               padding: "2rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+              boxShadow: "var(--shadow-sm)",
+              animation: "scaleIn 0.25s ease-out",
             }}
           >
             <div
@@ -1213,7 +1217,7 @@ export default function SignupPage() {
                 width: 56,
                 height: 56,
                 borderRadius: "50%",
-                background: "#f0fdfa",
+                background: "var(--color-accent-muted)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1227,7 +1231,7 @@ export default function SignupPage() {
               style={{
                 fontSize: 22,
                 fontWeight: 700,
-                color: "#0f172a",
+                color: "var(--color-text-primary)",
                 marginBottom: 6,
                 letterSpacing: "-0.03em",
               }}
@@ -1235,10 +1239,16 @@ export default function SignupPage() {
               Verify your email
             </h2>
             <p
-              style={{ fontSize: 14, color: "#64748b", marginBottom: "1.5rem" }}
+              style={{
+                fontSize: 14,
+                color: "var(--color-text-secondary)",
+                marginBottom: "1.5rem",
+              }}
             >
               We sent a verification link to{" "}
-              <strong style={{ color: "#0f172a" }}>{form.email}</strong>
+              <strong style={{ color: "var(--color-text-primary)" }}>
+                {form.email}
+              </strong>
             </p>
 
             <div
@@ -1266,20 +1276,28 @@ export default function SignupPage() {
                       )?.focus();
                   }}
                   style={{
-                    width: 48,
-                    height: 56,
+                    width: 52,
+                    height: 60,
                     textAlign: "center",
-                    fontSize: 22,
-                    border: "1.5px solid #e2e8f0",
-                    borderRadius: 10,
-                    background: "#fff",
-                    color: "#0f172a",
+                    fontSize: 24,
+                    border: "1.5px solid var(--color-border-secondary)",
+                    borderRadius: 12,
+                    background: "var(--color-input-bg)",
+                    color: "var(--color-text-primary)",
                     fontFamily: "monospace",
                     outline: "none",
-                    transition: "border-color 0.15s",
+                    transition: "border-color 0.15s, box-shadow 0.15s",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#0f766e")}
-                  onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = "var(--color-accent)";
+                    e.target.style.boxShadow =
+                      "0 0 0 3px var(--color-accent-subtle)";
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor =
+                      "var(--color-border-secondary)";
+                    e.target.style.boxShadow = "none";
+                  }}
                 />
               ))}
             </div>
@@ -2208,5 +2226,13 @@ export default function SignupPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SignupPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPage />
+    </Suspense>
   );
 }

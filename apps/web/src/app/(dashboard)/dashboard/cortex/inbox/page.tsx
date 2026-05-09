@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useAuth } from "@/contexts/auth-context";
 import {
   Sparkles,
   Check,
@@ -9,321 +10,604 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  RefreshCw,
+  AlertCircle,
+  Loader2,
+  Inbox,
+  ArrowLeft,
 } from "lucide-react";
 
-interface InboxItem {
+const AGENT_MANAGER_URL =
+  process.env.NEXT_PUBLIC_AGENT_MANAGER_URL ?? "http://localhost:3006";
+
+const AGENT_META: Record<
+  string,
+  { name: string; avatar: string; color: string; bg: string }
+> = {
+  billing: {
+    name: "Billing Agent",
+    avatar: "💰",
+    color: "#6366f1",
+    bg: "rgba(99,102,241,0.08)",
+  },
+  recall: {
+    name: "Recall Agent",
+    avatar: "📞",
+    color: "#0ea5e9",
+    bg: "rgba(14,165,233,0.08)",
+  },
+  review: {
+    name: "Review Agent",
+    avatar: "⭐",
+    color: "#f59e0b",
+    bg: "rgba(245,158,11,0.08)",
+  },
+  supply: {
+    name: "Supply Agent",
+    avatar: "📦",
+    color: "#10b981",
+    bg: "rgba(16,185,129,0.08)",
+  },
+  treatment: {
+    name: "Treatment Agent",
+    avatar: "🦷",
+    color: "#ec4899",
+    bg: "rgba(236,72,153,0.08)",
+  },
+  hygienist: {
+    name: "Hygienist Agent",
+    avatar: "🪥",
+    color: "#14b8a6",
+    bg: "rgba(20,184,166,0.08)",
+  },
+};
+
+const RISK_META = {
+  high: {
+    color: "#ef4444",
+    bg: "rgba(239,68,68,0.08)",
+    border: "rgba(239,68,68,0.25)",
+    label: "High Risk",
+  },
+  medium: {
+    color: "#f59e0b",
+    bg: "rgba(245,158,11,0.08)",
+    border: "rgba(245,158,11,0.25)",
+    label: "Medium Risk",
+  },
+  low: {
+    color: "#10b981",
+    bg: "rgba(16,185,129,0.08)",
+    border: "rgba(16,185,129,0.25)",
+    label: "Low Risk",
+  },
+};
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  pre_auth_letter: "Pre-Auth Letter",
+  recall_message: "Recall Message",
+  review_request: "Review Request",
+  supply_order: "Supply Order",
+  treatment_followup: "Treatment Follow-up",
+  schedule_optimization: "Schedule Optimisation",
+};
+
+interface AgentTask {
   id: string;
-  agentName: string;
-  agentAvatar: string;
-  type: string;
-  cdtCode: string;
-  cdtDescription: string;
-  patientName: string;
-  riskLevel: "high" | "medium";
-  narrative: string;
+  agentId: string;
+  taskType: string;
+  cdtCode: string | null;
+  patientName: string | null;
+  riskLevel: "high" | "medium" | "low" | null;
+  content: string;
+  status: "pending" | "approved" | "rejected" | "sent";
   createdAt: string;
-  status: "pending" | "approved" | "rejected";
 }
 
-const MOCK_INBOX: InboxItem[] = [
-  {
-    id: "task_001",
-    agentName: "Cortex Billing Agent",
-    agentAvatar: "💰",
-    type: "billing",
-    cdtCode: "D3330",
-    cdtDescription: "Root Canal Therapy — Molar",
-    patientName: "Sarah Chen",
-    riskLevel: "high",
-    narrative: `Dear Claims Review Team,\n\nI am writing to request pre-authorization for endodontic therapy (CDT Code D3330 — Root Canal Therapy, Molar) for our patient, Sarah Chen (age 34).\n\nClinical Findings:\nThe patient presented with persistent, spontaneous pain in tooth #19 (mandibular left first molar). Clinical examination revealed:\n- Positive response to cold testing with lingering pain exceeding 30 seconds\n- Tenderness to percussion\n- Periapical radiolucency visible on digital radiograph (PA #19)\n- No evidence of fracture upon transillumination\n\nDiagnosis: Irreversible pulpitis with symptomatic apical periodontitis, tooth #19.\n\nMedical Necessity:\nWithout prompt endodontic intervention, the patient faces risk of acute dental abscess, cellulitis, and potential tooth loss requiring more costly restorative procedures (implant or bridge). Root canal therapy is the most conservative and cost-effective treatment to preserve the natural tooth structure.\n\nThank you for your timely review of this authorization request.\n\nSincerely,\nDentalIQ Cortex Billing Agent\nGenerated: ${new Date().toLocaleDateString()}`,
-    createdAt: "2:18 AM Today",
-    status: "pending",
-  },
-  {
-    id: "task_002",
-    agentName: "Cortex Billing Agent",
-    agentAvatar: "💰",
-    type: "billing",
-    cdtCode: "D2750",
-    cdtDescription: "Crown — Porcelain Fused to High Noble Metal",
-    patientName: "James Thompson",
-    riskLevel: "medium",
-    narrative: `Dear Claims Review Team,\n\nI am writing to request pre-authorization for a porcelain-fused-to-high-noble-metal crown (CDT Code D2750) for our patient, James Thompson (age 52).\n\nClinical Findings:\nTooth #14 (maxillary left first premolar) presents with:\n- Large MOD composite restoration (>60% of tooth structure compromised)\n- Visible marginal ridge fracture on the mesial aspect\n- History of repeated composite failures on this tooth\n- No pulpal involvement at this time\n\nDiagnosis: Compromised structural integrity of tooth #14 due to extensive prior restoration and fracture.\n\nMedical Necessity:\nThe existing restoration cannot be predictably replaced with a direct restoration due to insufficient remaining tooth structure. A full-coverage crown is necessary to prevent catastrophic fracture, which would likely result in extraction and more costly replacement options.\n\nThank you for your review.\n\nSincerely,\nDentalIQ Cortex Billing Agent\nGenerated: ${new Date().toLocaleDateString()}`,
-    createdAt: "2:24 AM Today",
-    status: "pending",
-  },
-];
-
 export default function CortexInbox() {
-  const [items, setItems] = useState<InboxItem[]>(MOCK_INBOX);
+  const { accessToken, user } = useAuth();
+  const [items, setItems] = useState<AgentTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editingNarrative, setEditingNarrative] = useState<string | null>(null);
+  const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<"pending" | "completed">("pending");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const pendingItems = items.filter((i) => i.status === "pending");
-  const completedItems = items.filter((i) => i.status !== "pending");
+  const fetchTasks = useCallback(async () => {
+    if (!accessToken) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${AGENT_MANAGER_URL}/tasks?status=${filter === "pending" ? "pending" : "approved"}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setItems(json.data ?? []);
+    } catch {
+      setError("Could not load inbox. Make sure the agent manager is running.");
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, filter]);
 
-  const displayItems = filter === "pending" ? pendingItems : completedItems;
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
 
-  const handleAction = (id: string, actionType: "approved" | "rejected") => {
-    setItems(
-      items.map((i) => (i.id === id ? { ...i, status: actionType } : i)),
-    );
-    setExpandedId(null);
-  };
-
-  const toggleExpand = (id: string) => {
-    if (expandedId === id) {
+  const handleAction = async (
+    id: string,
+    action: "approved" | "rejected",
+    editedContent?: string,
+  ) => {
+    if (!accessToken) return;
+    setActionLoading(id);
+    try {
+      const res = await fetch(`${AGENT_MANAGER_URL}/tasks/${id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: action,
+          userId: user?.id,
+          content: editedContent,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setItems((prev) => prev.filter((i) => i.id !== id));
       setExpandedId(null);
-      setEditingNarrative(null);
-    } else {
-      setExpandedId(id);
-      setEditingNarrative(null);
+    } catch {
+      alert("Action failed. Please try again.");
+    } finally {
+      setActionLoading(null);
     }
   };
+
+  const pendingCount = items.filter((i) => i.status === "pending").length;
+  const displayItems =
+    filter === "pending"
+      ? items.filter((i) => i.status === "pending")
+      : items.filter((i) => i.status !== "pending");
 
   return (
     <div
       style={{
         padding: "2rem",
-        maxWidth: 1000,
+        maxWidth: 900,
         margin: "0 auto",
         color: "var(--color-text-primary)",
+        animation: "fadeInUp 0.35s ease-out",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "2rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 12,
-              background: "var(--color-accent-muted)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 24,
-            }}
-          >
-            📥
-          </div>
-          <div>
-            <h1
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                margin: 0,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Approval Inbox
-            </h1>
-            <p
-              style={{
-                margin: 0,
-                color: "var(--color-text-secondary)",
-                fontSize: 14,
-              }}
-            >
-              Review and approve actions proposed by Cortex Agents.
-            </p>
-          </div>
-        </div>
-        <div
+      {/* Header */}
+      <div style={{ marginBottom: "1.75rem" }}>
+        <Link
+          href="/dashboard/cortex"
           style={{
-            background: "var(--color-background-primary)",
-            border: "1px solid var(--color-border-secondary)",
-            borderRadius: 10,
-            display: "flex",
-            overflow: "hidden",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            color: "var(--color-text-secondary)",
+            textDecoration: "none",
+            marginBottom: 16,
+            fontWeight: 500,
           }}
         >
+          <ArrowLeft size={13} /> Cortex Command Center
+        </Link>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 15,
+                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+                fontSize: 24,
+              }}
+            >
+              📥
+            </div>
+            <div>
+              <h1
+                style={{
+                  fontSize: 24,
+                  fontWeight: 800,
+                  margin: "0 0 3px",
+                  letterSpacing: "-0.03em",
+                }}
+              >
+                Approval Inbox
+              </h1>
+              <p
+                style={{
+                  margin: 0,
+                  color: "var(--color-text-secondary)",
+                  fontSize: 13,
+                }}
+              >
+                Review and approve actions proposed by your Cortex Agents.
+              </p>
+            </div>
+          </div>
+
           <button
-            onClick={() => setFilter("pending")}
+            onClick={fetchTasks}
+            disabled={loading}
             style={{
-              padding: "8px 16px",
-              background:
-                filter === "pending"
-                  ? "var(--color-background-secondary)"
-                  : "transparent",
-              border: "none",
-              color:
-                filter === "pending"
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-secondary)",
-              fontWeight: 600,
-              fontSize: 13,
+              background: "var(--color-background-secondary)",
+              border: "1px solid var(--color-border-secondary)",
+              borderRadius: 10,
+              padding: "8px 14px",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: 6,
-            }}
-          >
-            Pending{" "}
-            <span
-              style={{
-                background: "var(--color-accent)",
-                color: "#fff",
-                padding: "2px 6px",
-                borderRadius: 10,
-                fontSize: 11,
-              }}
-            >
-              {pendingItems.length}
-            </span>
-          </button>
-          <button
-            onClick={() => setFilter("completed")}
-            style={{
-              padding: "8px 16px",
-              background:
-                filter === "completed"
-                  ? "var(--color-background-secondary)"
-                  : "transparent",
-              border: "none",
-              color:
-                filter === "completed"
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-secondary)",
-              fontWeight: 600,
               fontSize: 13,
-              cursor: "pointer",
+              fontWeight: 600,
+              color: "var(--color-text-primary)",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background =
+                "var(--color-background-primary)";
+              e.currentTarget.style.borderColor = "var(--color-border-primary)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background =
+                "var(--color-background-secondary)";
+              e.currentTarget.style.borderColor =
+                "var(--color-border-secondary)";
             }}
           >
-            Completed
+            <RefreshCw
+              size={13}
+              style={{
+                animation: loading ? "spin 0.8s linear infinite" : undefined,
+              }}
+            />
+            Refresh
           </button>
         </div>
       </div>
 
-      {displayItems.length === 0 ? (
+      {/* Filter tabs */}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          marginBottom: "1.5rem",
+          background: "var(--color-background-secondary)",
+          padding: 4,
+          borderRadius: 12,
+          border: "1px solid var(--color-border-secondary)",
+          width: "fit-content",
+        }}
+      >
+        {(["pending", "completed"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              padding: "7px 18px",
+              background:
+                filter === f
+                  ? "var(--color-background-primary)"
+                  : "transparent",
+              border:
+                filter === f
+                  ? "1px solid var(--color-border-secondary)"
+                  : "1px solid transparent",
+              color:
+                filter === f
+                  ? "var(--color-text-primary)"
+                  : "var(--color-text-secondary)",
+              fontWeight: filter === f ? 700 : 500,
+              fontSize: 13,
+              cursor: "pointer",
+              borderRadius: 9,
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              transition: "all 0.15s",
+              boxShadow: filter === f ? "var(--shadow-xs)" : "none",
+            }}
+          >
+            {f === "pending" ? "Pending" : "Completed"}
+            {f === "pending" && pendingCount > 0 && (
+              <span
+                style={{
+                  background: "var(--color-accent)",
+                  color: "#fff",
+                  padding: "1px 7px",
+                  borderRadius: 20,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  lineHeight: 1.6,
+                }}
+              >
+                {pendingCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Loading */}
+      {loading && (
         <div
           style={{
             textAlign: "center",
-            padding: "6rem 2rem",
-            background: "var(--color-background-primary)",
-            borderRadius: 20,
-            border: "1px solid var(--color-border-secondary)",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.02)",
+            padding: "5rem",
+            color: "var(--color-text-secondary)",
           }}
         >
-          <div style={{ fontSize: 56, marginBottom: 16 }}>✨</div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px 0" }}>
-            Inbox Zero
+          <Loader2
+            size={28}
+            style={{
+              animation: "spin 0.8s linear infinite",
+              margin: "0 auto 12px",
+              display: "block",
+            }}
+          />
+          <p style={{ margin: 0, fontSize: 14 }}>Loading inbox…</p>
+        </div>
+      )}
+
+      {/* Error */}
+      {!loading && error && (
+        <div
+          style={{
+            background: "rgba(239,68,68,0.06)",
+            border: "1px solid rgba(239,68,68,0.2)",
+            borderRadius: 14,
+            padding: "1.25rem 1.5rem",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <AlertCircle
+            size={18}
+            style={{ color: "#ef4444", flexShrink: 0, marginTop: 1 }}
+          />
+          <div>
+            <p
+              style={{
+                margin: "0 0 4px",
+                fontWeight: 700,
+                color: "#ef4444",
+                fontSize: 14,
+              }}
+            >
+              Inbox unavailable
+            </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13,
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              {error}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && displayItems.length === 0 && (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "5rem 2rem",
+            background: "var(--color-background-primary)",
+            borderRadius: 24,
+            border: "1px solid var(--color-border-secondary)",
+            animation: "scaleIn 0.25s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              background:
+                "linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.05))",
+              border: "1.5px solid rgba(99,102,241,0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 1.25rem",
+              fontSize: 32,
+            }}
+          >
+            ✨
+          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 8px" }}>
+            {filter === "pending" ? "Inbox Zero" : "No Completed Tasks"}
           </h2>
           <p
             style={{
               color: "var(--color-text-secondary)",
-              fontSize: 15,
-              maxWidth: 400,
+              fontSize: 14,
+              maxWidth: 380,
               margin: "0 auto 24px",
+              lineHeight: 1.6,
             }}
           >
             {filter === "pending"
-              ? "Your agents are currently analyzing data and generating tasks. Check back later!"
-              : "No completed tasks yet."}
+              ? "Your agents are scanning clinic data. New tasks will appear here after the nightly run."
+              : "Completed tasks will appear here once you approve or reject items."}
           </p>
           {filter === "pending" && (
             <Link
               href="/dashboard/cortex"
               style={{
-                display: "inline-block",
-                padding: "10px 24px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "9px 20px",
                 background: "var(--color-background-secondary)",
                 border: "1px solid var(--color-border-secondary)",
                 color: "var(--color-text-primary)",
                 borderRadius: 10,
                 textDecoration: "none",
                 fontWeight: 600,
-                fontSize: 14,
+                fontSize: 13,
               }}
             >
               Go to Command Center
             </Link>
           )}
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {displayItems.map((item) => {
+      )}
+
+      {/* Task list */}
+      {!loading && !error && displayItems.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {displayItems.map((item, idx) => {
             const isExpanded = expandedId === item.id;
+            const meta = AGENT_META[item.agentId] ?? {
+              name: item.agentId,
+              avatar: "🤖",
+              color: "#6366f1",
+              bg: "rgba(99,102,241,0.08)",
+            };
+            const typeLabel = TASK_TYPE_LABELS[item.taskType] ?? item.taskType;
+            const draft = editDrafts[item.id] ?? item.content;
+            const isActioning = actionLoading === item.id;
+            const risk = item.riskLevel ? RISK_META[item.riskLevel] : null;
+
             return (
               <div
                 key={item.id}
                 style={{
                   background: "var(--color-background-primary)",
                   border: "1px solid var(--color-border-secondary)",
-                  borderRadius: 20,
+                  borderRadius: 18,
                   overflow: "hidden",
-                  transition: "all 0.2s ease",
                   boxShadow: isExpanded
-                    ? "0 12px 30px rgba(0,0,0,0.06)"
-                    : "0 4px 12px rgba(0,0,0,0.02)",
+                    ? "var(--shadow-md)"
+                    : "var(--shadow-xs)",
+                  transition: "box-shadow 0.2s ease",
+                  animation: `fadeInUp 0.35s ease-out ${idx * 0.05}s both`,
+                  position: "relative",
                 }}
               >
-                {/* Card Header (Always visible) */}
+                {/* Left accent bar — color-coded by agent type */}
                 <div
                   style={{
-                    padding: "1.5rem",
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 4,
+                    background:
+                      item.status === "pending" && risk
+                        ? risk.color
+                        : item.status === "approved"
+                          ? "#10b981"
+                          : item.status === "rejected"
+                            ? "#ef4444"
+                            : meta.color,
+                    borderRadius: "18px 0 0 18px",
+                  }}
+                />
+
+                {/* Card header */}
+                <div
+                  style={{
+                    padding: "1.25rem 1.5rem 1.25rem 1.75rem",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "flex-start",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Badges row */}
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 8,
-                        marginBottom: 12,
+                        gap: 7,
+                        marginBottom: 10,
+                        flexWrap: "wrap",
                       }}
                     >
+                      {/* Agent badge */}
                       <span
                         style={{
                           fontSize: 11,
-                          padding: "4px 10px",
+                          padding: "3px 10px",
                           borderRadius: 20,
-                          background: "var(--color-accent-muted)",
-                          color: "var(--color-accent)",
+                          background: meta.bg,
+                          color: meta.color,
                           fontWeight: 700,
-                          textTransform: "uppercase",
                           display: "flex",
                           alignItems: "center",
-                          gap: 6,
+                          gap: 5,
+                          border: `1px solid ${meta.color}20`,
                         }}
                       >
-                        <span style={{ fontSize: 14 }}>{item.agentAvatar}</span>{" "}
-                        {item.type}
+                        <span style={{ fontSize: 12 }}>{meta.avatar}</span>
+                        {meta.name}
                       </span>
-                      {item.status === "pending" ? (
+
+                      {/* Task type badge */}
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "3px 10px",
+                          borderRadius: 20,
+                          background: "var(--color-background-secondary)",
+                          color: "var(--color-text-secondary)",
+                          fontWeight: 600,
+                          border: "1px solid var(--color-border-secondary)",
+                        }}
+                      >
+                        {typeLabel}
+                      </span>
+
+                      {/* Risk badge */}
+                      {risk && item.status === "pending" && (
                         <span
                           style={{
                             fontSize: 11,
-                            padding: "4px 10px",
+                            padding: "3px 10px",
                             borderRadius: 20,
-                            background:
-                              item.riskLevel === "high"
-                                ? "rgba(239,68,68,0.1)"
-                                : "rgba(245,158,11,0.1)",
-                            color:
-                              item.riskLevel === "high" ? "#ef4444" : "#f59e0b",
-                            fontWeight: 600,
-                            textTransform: "uppercase",
+                            background: risk.bg,
+                            color: risk.color,
+                            fontWeight: 700,
+                            border: `1px solid ${risk.border}`,
                           }}
                         >
-                          {item.riskLevel} Risk
+                          {risk.label}
                         </span>
-                      ) : (
+                      )}
+
+                      {/* Status badge for completed */}
+                      {item.status !== "pending" && (
                         <span
                           style={{
                             fontSize: 11,
-                            padding: "4px 10px",
+                            padding: "3px 10px",
                             borderRadius: 20,
                             background:
                               item.status === "approved"
@@ -333,130 +617,208 @@ export default function CortexInbox() {
                               item.status === "approved"
                                 ? "#10b981"
                                 : "#ef4444",
-                            fontWeight: 600,
-                            textTransform: "uppercase",
+                            fontWeight: 700,
                           }}
                         >
-                          {item.status}
+                          {item.status === "approved"
+                            ? "✓ Approved"
+                            : "✕ Rejected"}
                         </span>
                       )}
+
                       <span
                         style={{
-                          fontSize: 12,
+                          fontSize: 11,
                           color: "var(--color-text-secondary)",
                           marginLeft: "auto",
                         }}
                       >
-                        {item.createdAt}
+                        {new Date(item.createdAt).toLocaleString("en-CA", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                     </div>
 
                     <h3
                       style={{
-                        margin: "0 0 6px 0",
-                        fontSize: 18,
+                        margin: "0 0 4px",
+                        fontSize: 16,
                         fontWeight: 700,
+                        letterSpacing: "-0.01em",
                       }}
                     >
-                      Pre-Auth: {item.cdtCode} for {item.patientName}
+                      {item.cdtCode
+                        ? `${typeLabel}: ${item.cdtCode}`
+                        : typeLabel}
+                      {item.patientName ? (
+                        <span
+                          style={{
+                            fontWeight: 500,
+                            color: "var(--color-text-secondary)",
+                            fontSize: 15,
+                          }}
+                        >
+                          {" — "}
+                          {item.patientName}
+                        </span>
+                      ) : null}
                     </h3>
+
                     <p
                       style={{
-                        margin: "0 0 16px 0",
+                        margin: "0 0 14px",
                         color: "var(--color-text-secondary)",
-                        fontSize: 14,
+                        fontSize: 13,
+                        lineHeight: 1.4,
                       }}
                     >
-                      {item.agentName} generated a narrative for{" "}
-                      {item.cdtDescription.toLowerCase()}.
+                      Generated by Cortex {meta.name}
                     </p>
 
                     <button
-                      onClick={() => toggleExpand(item.id)}
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
                       style={{
                         background: "var(--color-background-secondary)",
                         border: "1px solid var(--color-border-secondary)",
                         borderRadius: 8,
                         padding: "6px 12px",
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: 600,
-                        color: "var(--color-text-primary)",
+                        color: "var(--color-text-secondary)",
                         cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: 6,
+                        gap: 5,
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color =
+                          "var(--color-text-primary)";
+                        e.currentTarget.style.borderColor =
+                          "var(--color-border-primary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color =
+                          "var(--color-text-secondary)";
+                        e.currentTarget.style.borderColor =
+                          "var(--color-border-secondary)";
                       }}
                     >
-                      <FileText size={14} />
-                      {isExpanded ? "Hide Details" : "Review Narrative"}
+                      <FileText size={12} />
+                      {isExpanded ? "Hide content" : "Review content"}
                       {isExpanded ? (
-                        <ChevronUp size={14} />
+                        <ChevronUp size={12} />
                       ) : (
-                        <ChevronDown size={14} />
+                        <ChevronDown size={12} />
                       )}
                     </button>
                   </div>
 
-                  {/* Quick Actions (Only when pending) */}
                   {item.status === "pending" && (
                     <div
                       style={{
                         display: "flex",
                         gap: 8,
                         flexShrink: 0,
-                        marginLeft: 24,
+                        marginLeft: 20,
                       }}
                     >
                       <button
                         onClick={() => handleAction(item.id, "rejected")}
+                        disabled={isActioning}
+                        title="Reject"
                         style={{
-                          width: 44,
-                          height: 44,
+                          width: 42,
+                          height: 42,
                           borderRadius: 12,
-                          border: "1px solid var(--color-border-secondary)",
+                          border: "1.5px solid var(--color-border-secondary)",
                           background: "transparent",
                           color: "var(--color-text-secondary)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           cursor: "pointer",
-                          transition: "all 0.1s",
+                          transition: "all 0.15s",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "#ef4444";
+                          e.currentTarget.style.color = "#ef4444";
+                          e.currentTarget.style.background =
+                            "rgba(239,68,68,0.06)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor =
+                            "var(--color-border-secondary)";
+                          e.currentTarget.style.color =
+                            "var(--color-text-secondary)";
+                          e.currentTarget.style.background = "transparent";
                         }}
                       >
-                        <X size={20} />
+                        {isActioning ? (
+                          <Loader2
+                            size={16}
+                            style={{ animation: "spin 0.8s linear infinite" }}
+                          />
+                        ) : (
+                          <X size={18} />
+                        )}
                       </button>
                       <button
-                        onClick={() => handleAction(item.id, "approved")}
+                        onClick={() => handleAction(item.id, "approved", draft)}
+                        disabled={isActioning}
                         style={{
                           padding: "0 20px",
-                          height: 44,
+                          height: 42,
                           borderRadius: 12,
                           border: "none",
-                          background: "var(--color-accent)",
+                          background:
+                            "linear-gradient(135deg, #10b981, #059669)",
                           color: "#fff",
-                          fontSize: 14,
-                          fontWeight: 600,
+                          fontSize: 13,
+                          fontWeight: 700,
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
                           gap: 6,
-                          transition: "all 0.1s",
-                          boxShadow: "0 4px 12px rgba(15,118,110,0.3)",
+                          boxShadow: "0 2px 8px rgba(16,185,129,0.3)",
+                          transition: "all 0.15s",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = "translateY(-1px)";
+                          e.currentTarget.style.boxShadow =
+                            "0 6px 16px rgba(16,185,129,0.4)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = "none";
+                          e.currentTarget.style.boxShadow =
+                            "0 2px 8px rgba(16,185,129,0.3)";
                         }}
                       >
-                        <Check size={18} /> Approve
+                        {isActioning ? (
+                          <Loader2
+                            size={15}
+                            style={{ animation: "spin 0.8s linear infinite" }}
+                          />
+                        ) : (
+                          <Check size={15} />
+                        )}
+                        Approve
                       </button>
                     </div>
                   )}
                 </div>
 
-                {/* Expanded Details Section */}
+                {/* Expanded content */}
                 {isExpanded && (
                   <div
                     style={{
                       borderTop: "1px solid var(--color-border-secondary)",
-                      padding: "1.5rem",
-                      background: "rgba(0,0,0,0.01)",
+                      padding: "1.25rem 1.75rem",
+                      background: "var(--color-background-secondary)",
+                      animation: "fadeIn 0.2s ease-out",
                     }}
                   >
                     <div
@@ -467,69 +829,88 @@ export default function CortexInbox() {
                         marginBottom: 12,
                       }}
                     >
-                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>
-                        Drafted Narrative
+                      <h4
+                        style={{
+                          margin: 0,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "var(--color-text-secondary)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Agent-Generated Content
                       </h4>
                       {item.status === "pending" && (
                         <button
                           onClick={() =>
-                            setEditingNarrative(
-                              editingNarrative !== null ? null : item.narrative,
+                            setEditDrafts((prev) =>
+                              prev[item.id] !== undefined
+                                ? (({ [item.id]: _, ...rest }) => rest)(prev)
+                                : { ...prev, [item.id]: item.content },
                             )
                           }
                           style={{
                             background: "none",
                             border: "1px solid var(--color-border-secondary)",
-                            borderRadius: 8,
-                            padding: "4px 12px",
-                            fontSize: 12,
+                            borderRadius: 7,
+                            padding: "4px 11px",
+                            fontSize: 11,
                             fontWeight: 600,
                             color: "var(--color-text-secondary)",
                             cursor: "pointer",
                           }}
                         >
-                          {editingNarrative !== null
-                            ? "Cancel Edit"
+                          {editDrafts[item.id] !== undefined
+                            ? "✕ Cancel Edit"
                             : "✎ Edit Draft"}
                         </button>
                       )}
                     </div>
 
-                    {editingNarrative !== null ? (
+                    {editDrafts[item.id] !== undefined ? (
                       <textarea
-                        value={editingNarrative}
-                        onChange={(e) => setEditingNarrative(e.target.value)}
+                        value={editDrafts[item.id]}
+                        onChange={(e) =>
+                          setEditDrafts((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
                         style={{
                           width: "100%",
-                          minHeight: 300,
-                          padding: 16,
-                          border: "1px solid var(--color-border-secondary)",
+                          minHeight: 260,
+                          padding: "14px 16px",
+                          border: "1.5px solid var(--color-accent)",
                           borderRadius: 12,
                           background: "var(--color-background-primary)",
                           color: "var(--color-text-primary)",
-                          fontSize: 14,
+                          fontSize: 13,
                           fontFamily: "system-ui",
                           lineHeight: 1.6,
                           resize: "vertical",
                           outline: "none",
                           boxSizing: "border-box",
+                          boxShadow: "0 0 0 3px var(--color-accent-subtle)",
                         }}
                       />
                     ) : (
                       <div
                         style={{
                           background: "var(--color-background-primary)",
-                          padding: 20,
+                          padding: "16px 18px",
                           borderRadius: 12,
-                          border: "1px solid var(--color-border-tertiary)",
-                          fontSize: 14,
-                          lineHeight: 1.6,
+                          border: "1px solid var(--color-border-secondary)",
+                          fontSize: 13,
+                          lineHeight: 1.7,
                           color: "var(--color-text-primary)",
                           fontFamily: "system-ui",
                           whiteSpace: "pre-wrap",
+                          maxHeight: 320,
+                          overflowY: "auto",
                         }}
                       >
-                        {item.narrative}
+                        {item.content}
                       </div>
                     )}
 
@@ -538,27 +919,53 @@ export default function CortexInbox() {
                         style={{
                           display: "flex",
                           justifyContent: "flex-end",
-                          marginTop: 16,
+                          marginTop: 14,
+                          gap: 8,
                         }}
                       >
                         <button
-                          onClick={() => handleAction(item.id, "approved")}
+                          onClick={() => handleAction(item.id, "rejected")}
+                          disabled={isActioning}
                           style={{
-                            padding: "10px 24px",
+                            padding: "9px 20px",
+                            borderRadius: 10,
+                            border: "1.5px solid var(--color-border-secondary)",
+                            background: "transparent",
+                            color: "var(--color-text-secondary)",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleAction(item.id, "approved", draft)
+                          }
+                          disabled={isActioning}
+                          style={{
+                            padding: "9px 24px",
                             borderRadius: 10,
                             border: "none",
                             background:
                               "linear-gradient(135deg, #10b981, #059669)",
                             color: "#fff",
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: 700,
                             cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
                             gap: 6,
-                            boxShadow: "0 4px 12px rgba(16,185,129,0.3)",
+                            boxShadow: "0 2px 8px rgba(16,185,129,0.3)",
                           }}
                         >
+                          {isActioning && (
+                            <Loader2
+                              size={14}
+                              style={{ animation: "spin 0.8s linear infinite" }}
+                            />
+                          )}
                           ✓ Approve & Send
                         </button>
                       </div>

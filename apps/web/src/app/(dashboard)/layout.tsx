@@ -11,12 +11,13 @@ import {
   Send,
   Sparkles,
   MessageSquare,
-  ChevronRight,
   Building2,
   ChevronDown,
 } from "lucide-react";
 import { TourGuide } from "@/components/TourGuide";
 import { ClinicInsightPopup } from "@/components/ClinicInsightPopup";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useTheme } from "@/hooks/useTheme";
 
 const NAV = [
   {
@@ -165,8 +166,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [tenant, setTenant] = useState<Tenant | null>(null);
-
-  // AI Chat State
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -179,12 +178,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         "Hello! I'm your DentalIQ Copilot. I have full context of your clinic's patients, claims, and estimates. How can I help you today?",
     },
   ]);
-
-  // Context State for AI
   const [patients, setPatients] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [clinics, setClinics] = useState<any[]>([]);
   const [isClinicMenuOpen, setIsClinicMenuOpen] = useState(false);
+  const [hoveredNav, setHoveredNav] = useState<string | null>(null);
+
+  // Apply saved dashboard theme on mount (overrides any public-zone theme)
+  useTheme("diq_dash_theme");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -200,9 +201,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         .getClinics(accessToken)
         .then((data) => {
           setClinics(data);
-          if (data.length > 0 && !selectedClinicId) {
+          if (data.length > 0 && !selectedClinicId)
             setSelectedClinicId(data[0].id);
-          }
         })
         .catch(() => {});
     }
@@ -210,7 +210,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (accessToken) {
-      // Re-fetch data for AI context when clinic changes
       patientsApi
         .getPatients(accessToken)
         .then(setPatients)
@@ -228,32 +227,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     setChatMessages((prev) => [...prev, userMsg]);
     setChatInput("");
     setChatLoading(true);
-
     try {
-      // Build context string
       const patientSummary = patients
         .slice(0, 10)
         .map((p) => `${p.first_name} ${p.last_name}`)
         .join(", ");
       const claimStats = `Total Estimates/Claims: ${history.length}, High Risk: ${history.filter((h) => h.claim_risk === "high").length}`;
-
       const res = await fetch("http://localhost:11434/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "phi3", // Default model from setup.js
+          model: "phi3",
           messages: [
             {
               role: "system",
-              content: `You are the DentalIQ Copilot, an AI assistant for a dental clinic in Ontario, Canada.
-              
-              Clinic Context:
-              - Clinic Name: ${tenant?.name || "Your Clinic"}
-              - Total Patients: ${patients.length}
-              - Recent Patients: ${patientSummary}
-              - Claims/Estimates Overview: ${claimStats}
-              
-              Be helpful, professional, and knowledgeable about Ontario dental billing (CDAnet), PHIPA compliance, and clinical efficiency. Keep responses concise.`,
+              content: `You are the DentalIQ Copilot, an AI assistant for a dental clinic in Ontario, Canada. Clinic: ${tenant?.name || "Your Clinic"}, Patients: ${patients.length}, ${claimStats}. Be helpful, professional, and concise.`,
             },
             ...chatMessages,
             userMsg,
@@ -261,14 +249,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           stream: false,
         }),
       });
-
       const data = await res.json();
-      if (data.message) {
-        setChatMessages((prev) => [...prev, data.message]);
-      } else {
-        throw new Error("Invalid response");
-      }
-    } catch (err) {
+      if (data.message) setChatMessages((prev) => [...prev, data.message]);
+      else throw new Error("Invalid response");
+    } catch {
       setChatMessages((prev) => [
         ...prev,
         {
@@ -284,8 +268,50 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background-secondary)]">
-        <div className="h-6 w-6 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin" />
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--color-background-secondary)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 11,
+              background: "linear-gradient(135deg, #0f766e, #0d9488)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              fontWeight: 700,
+              color: "#fff",
+            }}
+          >
+            +
+          </div>
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              border: "2px solid var(--color-border-secondary)",
+              borderTopColor: "var(--color-accent)",
+              borderRadius: "50%",
+              animation: "spin 0.7s linear infinite",
+            }}
+          />
+        </div>
       </div>
     );
   }
@@ -303,7 +329,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside
         style={{
-          width: 228,
+          width: 232,
           display: "flex",
           flexDirection: "column",
           borderRight: "1px solid var(--color-border-secondary)",
@@ -311,7 +337,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           flexShrink: 0,
         }}
       >
-        {/* Logo + clinic name */}
+        {/* Logo */}
         <div
           style={{
             padding: "0 16px",
@@ -333,9 +359,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               alignItems: "center",
               justifyContent: "center",
               fontSize: 15,
-              fontWeight: 700,
+              fontWeight: 800,
               color: "#fff",
               flexShrink: 0,
+              boxShadow: "0 2px 8px rgba(15,118,110,0.3)",
             }}
           >
             +
@@ -343,10 +370,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <div style={{ minWidth: 0, flex: 1 }}>
             <div
               style={{
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: 700,
                 color: "var(--color-text-primary)",
-                letterSpacing: "-0.02em",
+                letterSpacing: "-0.03em",
                 lineHeight: 1.2,
               }}
             >
@@ -357,27 +384,27 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* Clinic Switcher */}
         {tenant?.plan === "starter" ? (
-          <div style={{ padding: "12px 16px" }}>
+          <div style={{ padding: "12px 12px 4px" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderRadius: 10,
+                gap: 9,
+                padding: "8px 10px",
+                borderRadius: 9,
                 background: "var(--color-background-secondary)",
                 border: "1px solid var(--color-border-secondary)",
               }}
             >
-              <Building2 size={16} color="var(--color-accent)" />
+              <Building2 size={15} color="var(--color-accent)" />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 11,
-                    color: "var(--color-text-secondary)",
-                    fontWeight: 500,
+                    fontSize: 10,
+                    color: "var(--color-text-tertiary)",
+                    fontWeight: 600,
                     textTransform: "uppercase",
-                    letterSpacing: "0.05em",
+                    letterSpacing: "0.06em",
                   }}
                 >
                   Location
@@ -400,42 +427,45 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               href="/dashboard/settings"
               style={{
                 display: "block",
-                marginTop: 8,
+                marginTop: 6,
+                marginBottom: 4,
                 fontSize: 11,
                 color: "var(--color-accent)",
                 textDecoration: "none",
                 fontWeight: 500,
+                paddingLeft: 2,
               }}
             >
-              Upgrade to Pro for multi-clinic →
+              ↑ Upgrade for multi-clinic
             </Link>
           </div>
         ) : (
-          <div style={{ padding: "12px 16px", position: "relative" }}>
+          <div style={{ padding: "12px 12px 4px", position: "relative" }}>
             <button
               onClick={() => setIsClinicMenuOpen(!isClinicMenuOpen)}
               style={{
                 width: "100%",
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderRadius: 10,
+                gap: 9,
+                padding: "8px 10px",
+                borderRadius: 9,
                 background: "var(--color-background-secondary)",
                 border: "1px solid var(--color-border-secondary)",
                 cursor: "pointer",
                 textAlign: "left",
+                transition: "background 0.15s",
               }}
             >
-              <Building2 size={16} color="var(--color-accent)" />
+              <Building2 size={15} color="var(--color-accent)" />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 11,
-                    color: "var(--color-text-secondary)",
-                    fontWeight: 500,
+                    fontSize: 10,
+                    color: "var(--color-text-tertiary)",
+                    fontWeight: 600,
                     textTransform: "uppercase",
-                    letterSpacing: "0.05em",
+                    letterSpacing: "0.06em",
                   }}
                 >
                   Clinic
@@ -454,23 +484,31 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     "Select Clinic"}
                 </div>
               </div>
-              <ChevronDown size={14} color="var(--color-text-secondary)" />
+              <ChevronDown
+                size={13}
+                color="var(--color-text-tertiary)"
+                style={{
+                  transition: "transform 0.2s",
+                  transform: isClinicMenuOpen ? "rotate(180deg)" : "none",
+                }}
+              />
             </button>
 
             {isClinicMenuOpen && (
               <div
                 style={{
                   position: "absolute",
-                  top: "100%",
-                  left: 16,
-                  right: 16,
+                  top: "calc(100% - 4px)",
+                  left: 12,
+                  right: 12,
                   zIndex: 1000,
                   background: "var(--color-background-primary)",
                   border: "1px solid var(--color-border-secondary)",
                   borderRadius: 12,
                   marginTop: 4,
-                  boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+                  boxShadow: "var(--shadow-lg)",
                   overflow: "hidden",
+                  animation: "slideIn 0.18s ease-out",
                 }}
               >
                 {clinics.map((c) => (
@@ -482,26 +520,26 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     }}
                     style={{
                       width: "100%",
-                      padding: "10px 12px",
+                      padding: "9px 12px",
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
+                      gap: 9,
                       border: "none",
                       background:
                         selectedClinicId === c.id
-                          ? "var(--color-accent-muted)"
+                          ? "var(--color-accent-subtle)"
                           : "transparent",
                       cursor: "pointer",
                       textAlign: "left",
-                      transition: "background 0.2s",
+                      transition: "background 0.15s",
                     }}
                   >
                     <Building2
-                      size={14}
+                      size={13}
                       color={
                         selectedClinicId === c.id
                           ? "var(--color-accent)"
-                          : "var(--color-text-secondary)"
+                          : "var(--color-text-tertiary)"
                       }
                     />
                     <span
@@ -516,6 +554,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     >
                       {c.name}
                     </span>
+                    {selectedClinicId === c.id && (
+                      <svg
+                        style={{ marginLeft: "auto" }}
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="var(--color-accent)"
+                        strokeWidth="2.5"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
                   </button>
                 ))}
                 {tenant?.plan !== "starter" &&
@@ -524,10 +575,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                       href="/dashboard/settings?tab=clinics"
                       style={{
                         width: "100%",
-                        padding: "10px 12px",
+                        padding: "9px 12px",
                         display: "flex",
                         alignItems: "center",
-                        gap: 10,
+                        gap: 9,
                         borderTop: "1px solid var(--color-border-tertiary)",
                         background: "transparent",
                         cursor: "pointer",
@@ -536,7 +587,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                       }}
                       onClick={() => setIsClinicMenuOpen(false)}
                     >
-                      <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+                      <span
+                        style={{ fontSize: 16, lineHeight: 1, fontWeight: 600 }}
+                      >
+                        +
+                      </span>
                       <span style={{ fontSize: 13, fontWeight: 500 }}>
                         Add Location
                       </span>
@@ -552,45 +607,84 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           style={{
             flex: 1,
             overflowY: "auto",
-            padding: "10px 10px",
+            padding: "8px 8px",
             display: "flex",
             flexDirection: "column",
-            gap: 2,
+            gap: 1,
           }}
         >
+          {/* Label */}
+          <div
+            style={{
+              padding: "10px 10px 4px",
+              fontSize: 10,
+              fontWeight: 700,
+              color: "var(--color-text-tertiary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+            }}
+          >
+            Menu
+          </div>
+
           {NAV.map((item) => {
             const isActive =
               item.href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(item.href);
+            const isHovered = hoveredNav === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                onMouseEnter={() => setHoveredNav(item.href)}
+                onMouseLeave={() => setHoveredNav(null)}
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "8px 10px",
-                  borderRadius: 9,
-                  fontSize: 14,
+                  gap: 9,
+                  padding: "7px 10px",
+                  borderRadius: 8,
+                  fontSize: 13.5,
                   fontWeight: isActive ? 600 : 400,
                   textDecoration: "none",
-                  transition: "all 0.15s",
+                  transition: "all 0.13s",
                   background: isActive
-                    ? "var(--color-accent-muted)"
-                    : "transparent",
+                    ? "var(--color-accent-subtle)"
+                    : isHovered
+                      ? "var(--color-background-secondary)"
+                      : "transparent",
                   color: isActive
                     ? "var(--color-accent)"
-                    : "var(--color-text-secondary)",
+                    : isHovered
+                      ? "var(--color-text-primary)"
+                      : "var(--color-text-secondary)",
+                  position: "relative",
                 }}
               >
+                {/* Left accent bar for active item */}
+                {isActive && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "20%",
+                      bottom: "20%",
+                      width: 3,
+                      borderRadius: 99,
+                      background: "var(--color-accent)",
+                    }}
+                  />
+                )}
                 <span
                   style={{
                     color: isActive
                       ? "var(--color-accent)"
-                      : "var(--color-text-secondary)",
+                      : isHovered
+                        ? "var(--color-text-secondary)"
+                        : "var(--color-text-tertiary)",
                     flexShrink: 0,
+                    transition: "color 0.13s",
                   }}
                 >
                   {item.icon}
@@ -600,12 +694,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             );
           })}
 
-          {/* Cortex Agent nav items — only visible to Cortex plan users */}
+          {/* Cortex section */}
           {tenant?.plan === "cortex" && (
             <>
               <div
                 style={{
-                  padding: "12px 10px 4px",
+                  padding: "14px 10px 4px",
                   fontSize: 10,
                   fontWeight: 700,
                   color: "#8b5cf6",
@@ -628,28 +722,49 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 },
               ].map((item) => {
                 const isActive = pathname === item.href;
+                const isHovered = hoveredNav === item.href;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    onMouseEnter={() => setHoveredNav(item.href)}
+                    onMouseLeave={() => setHoveredNav(null)}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
-                      padding: "8px 10px",
-                      borderRadius: 9,
-                      fontSize: 14,
+                      gap: 9,
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      fontSize: 13.5,
                       fontWeight: isActive ? 600 : 400,
                       textDecoration: "none",
-                      transition: "all 0.15s",
+                      transition: "all 0.13s",
+                      position: "relative",
                       background: isActive
                         ? "rgba(99,102,241,0.1)"
-                        : "transparent",
+                        : isHovered
+                          ? "rgba(99,102,241,0.05)"
+                          : "transparent",
                       color: isActive
                         ? "#6366f1"
-                        : "var(--color-text-secondary)",
+                        : isHovered
+                          ? "#7c3aed"
+                          : "var(--color-text-secondary)",
                     }}
                   >
+                    {isActive && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          top: "20%",
+                          bottom: "20%",
+                          width: 3,
+                          borderRadius: 99,
+                          background: "#6366f1",
+                        }}
+                      />
+                    )}
                     <span style={{ fontSize: 14, flexShrink: 0 }}>
                       {item.icon}
                     </span>
@@ -665,17 +780,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div
           style={{
             borderTop: "1px solid var(--color-border-tertiary)",
-            padding: "10px 10px",
+            padding: "10px 8px",
           }}
         >
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "8px 10px",
-              borderRadius: 9,
+              gap: 9,
+              padding: "7px 10px",
+              borderRadius: 8,
+              transition: "background 0.15s",
             }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background =
+                "var(--color-background-secondary)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
           >
             <div
               style={{
@@ -690,6 +813,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 fontWeight: 700,
                 color: "#fff",
                 flexShrink: 0,
+                boxShadow: "0 2px 8px rgba(15,118,110,0.25)",
               }}
             >
               {user.name.charAt(0).toUpperCase()}
@@ -710,13 +834,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <div
                 style={{
                   fontSize: 11,
-                  color: "var(--color-text-secondary)",
+                  color: "var(--color-text-tertiary)",
                   textTransform: "capitalize",
                 }}
               >
                 {user.role.replace("_", " ")}
               </div>
             </div>
+            <ThemeToggle storageKey="diq_dash_theme" variant="sidebar" />
             <button
               onClick={clearSession}
               title="Sign out"
@@ -724,13 +849,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: "var(--color-border-primary)",
+                color: "var(--color-text-tertiary)",
                 padding: 4,
                 borderRadius: 6,
                 display: "flex",
                 alignItems: "center",
                 transition: "color 0.15s",
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "var(--color-text-tertiary)")
+              }
             >
               <svg
                 style={{ width: 15, height: 15 }}
@@ -754,19 +883,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <main style={{ flex: 1, overflowY: "auto", position: "relative" }}>
         {children}
 
-        {/* Trial Ended / Suspended Overlay */}
+        {/* Suspended overlay */}
         {tenant?.status === "suspended" && (
           <div
             style={{
               position: "fixed",
               inset: 0,
               zIndex: 99999,
-              background: "rgba(0, 0, 0, 0.85)",
-              backdropFilter: "blur(12px)",
+              background: "rgba(0,0,0,0.85)",
+              backdropFilter: "blur(16px)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               padding: "2rem",
+              animation: "fadeIn 0.3s ease",
             }}
           >
             <div
@@ -777,8 +907,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 borderRadius: 24,
                 padding: "3rem",
                 textAlign: "center",
-                boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+                boxShadow: "var(--shadow-2xl)",
                 border: "1px solid var(--color-border-secondary)",
+                animation: "scaleIn 0.3s ease-out",
               }}
             >
               <div
@@ -786,7 +917,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   width: 80,
                   height: 80,
                   borderRadius: "50%",
-                  background: "rgba(15, 118, 110, 0.1)",
+                  background: "rgba(15,118,110,0.1)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -802,6 +933,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   fontWeight: 800,
                   marginBottom: "1rem",
                   color: "var(--color-text-primary)",
+                  letterSpacing: "-0.03em",
                 }}
               >
                 Free Trial Ended
@@ -814,10 +946,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   marginBottom: "2.5rem",
                 }}
               >
-                We hope you enjoyed your time with DentalIQ! Your free trial has
-                concluded. To continue using our AI-driven clinical suite and
-                manage your clinic effectively, please contact our support team
-                to start your subscription.
+                We hope you enjoyed your time with DentalIQ! To continue, please
+                contact our support team to activate your subscription.
               </p>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 12 }}
@@ -825,12 +955,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 <a
                   href="mailto:support@dentaliq.dev"
                   style={{
-                    background: "var(--color-accent)",
+                    background: "linear-gradient(135deg, #0f766e, #0d9488)",
                     color: "#fff",
                     padding: "14px 24px",
                     borderRadius: 12,
                     fontWeight: 600,
                     textDecoration: "none",
+                    boxShadow: "var(--shadow-accent)",
                     transition: "opacity 0.2s",
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
@@ -875,18 +1006,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <div
                 style={{
                   width: 380,
-                  height: 500,
+                  height: 520,
                   background: "var(--color-background-primary)",
                   border: "1px solid var(--color-border-secondary)",
-                  borderRadius: 16,
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+                  borderRadius: 18,
+                  boxShadow: "var(--shadow-xl)",
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
-                  animation: "slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                  animation: "slideIn 0.25s var(--t-spring)",
                 }}
               >
-                {/* Header */}
                 <div
                   style={{
                     padding: "16px 20px",
@@ -900,34 +1030,59 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   <div
                     style={{ display: "flex", alignItems: "center", gap: 10 }}
                   >
-                    <Sparkles size={18} />
-                    <span style={{ fontWeight: 600, fontSize: 15 }}>
-                      DentalIQ Copilot
-                    </span>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 9,
+                        background: "rgba(255,255,255,0.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Sparkles size={16} />
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 14,
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        DentalIQ Copilot
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.8 }}>
+                        Powered by local AI
+                      </div>
+                    </div>
                   </div>
                   <button
                     onClick={() => setIsChatOpen(false)}
                     style={{
-                      background: "transparent",
+                      background: "rgba(255,255,255,0.15)",
                       border: "none",
                       color: "#fff",
                       cursor: "pointer",
-                      padding: 4,
+                      padding: 6,
+                      borderRadius: 8,
+                      display: "flex",
+                      alignItems: "center",
                     }}
                   >
-                    <X size={20} />
+                    <X size={16} />
                   </button>
                 </div>
 
-                {/* Messages */}
                 <div
                   style={{
                     flex: 1,
                     overflowY: "auto",
-                    padding: "20px",
+                    padding: "16px",
                     display: "flex",
                     flexDirection: "column",
-                    gap: 16,
+                    gap: 12,
                     background: "var(--color-background-secondary)",
                   }}
                 >
@@ -937,15 +1092,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                       style={{
                         alignSelf:
                           msg.role === "user" ? "flex-end" : "flex-start",
-                        maxWidth: "85%",
+                        maxWidth: "86%",
                       }}
                     >
                       <div
                         style={{
                           padding: "10px 14px",
-                          borderRadius: 14,
-                          fontSize: 14,
-                          lineHeight: 1.5,
+                          borderRadius:
+                            msg.role === "user"
+                              ? "14px 14px 4px 14px"
+                              : "14px 14px 14px 4px",
+                          fontSize: 13.5,
+                          lineHeight: 1.55,
                           background:
                             msg.role === "user"
                               ? "var(--color-accent)"
@@ -954,7 +1112,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                             msg.role === "user"
                               ? "#fff"
                               : "var(--color-text-primary)",
-                          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                          boxShadow: "var(--shadow-sm)",
                           border:
                             msg.role === "user"
                               ? "none"
@@ -970,62 +1128,54 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                       style={{
                         alignSelf: "flex-start",
                         background: "var(--color-background-primary)",
-                        padding: "10px 14px",
-                        borderRadius: 14,
+                        padding: "12px 16px",
+                        borderRadius: "14px 14px 14px 4px",
                         border: "1px solid var(--color-border-tertiary)",
+                        boxShadow: "var(--shadow-sm)",
                       }}
                     >
-                      <div style={{ display: "flex", gap: 4 }}>
-                        <div
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: "var(--color-text-secondary)",
-                            animation: "pulse 1.5s infinite",
-                          }}
-                        />
-                        <div
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: "var(--color-text-secondary)",
-                            animation: "pulse 1.5s infinite 0.2s",
-                          }}
-                        />
-                        <div
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: "50%",
-                            background: "var(--color-text-secondary)",
-                            animation: "pulse 1.5s infinite 0.4s",
-                          }}
-                        />
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 5,
+                          alignItems: "center",
+                        }}
+                      >
+                        {[0, 0.15, 0.3].map((d, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: "var(--color-accent)",
+                              animation: `pulseDot 1.2s ease-in-out ${d}s infinite`,
+                            }}
+                          />
+                        ))}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Input */}
                 <div
                   style={{
-                    padding: "16px",
+                    padding: "12px 16px",
                     borderTop: "1px solid var(--color-border-secondary)",
                     background: "var(--color-background-primary)",
                     display: "flex",
                     gap: 8,
+                    alignItems: "center",
                   }}
                 >
                   <input
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                    placeholder="Ask anything..."
+                    placeholder="Ask anything…"
                     style={{
                       flex: 1,
-                      padding: "10px 16px",
+                      padding: "9px 14px",
                       borderRadius: 20,
                       border: "1px solid var(--color-border-secondary)",
                       background: "var(--color-background-secondary)",
@@ -1038,8 +1188,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     onClick={handleSendChat}
                     disabled={!chatInput.trim() || chatLoading}
                     style={{
-                      width: 38,
-                      height: 38,
+                      width: 36,
+                      height: 36,
                       borderRadius: "50%",
                       background: "var(--color-accent)",
                       color: "#fff",
@@ -1048,10 +1198,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                       alignItems: "center",
                       justifyContent: "center",
                       cursor: "pointer",
-                      opacity: !chatInput.trim() || chatLoading ? 0.5 : 1,
+                      opacity: !chatInput.trim() || chatLoading ? 0.45 : 1,
+                      transition: "opacity 0.15s, transform 0.15s",
                     }}
+                    onMouseEnter={(e) => {
+                      if (chatInput.trim())
+                        e.currentTarget.style.transform = "scale(1.08)";
+                    }}
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.transform = "scale(1)")
+                    }
                   >
-                    <Send size={18} />
+                    <Send size={16} />
                   </button>
                 </div>
               </div>
@@ -1060,64 +1218,46 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <button
               onClick={() => setIsChatOpen(!isChatOpen)}
               style={{
-                width: 60,
-                height: 60,
+                width: 56,
+                height: 56,
                 borderRadius: "50%",
-                background: "var(--color-accent)",
+                background: isChatOpen
+                  ? "var(--color-text-primary)"
+                  : "linear-gradient(135deg, #0f766e, #0d9488)",
                 color: "#fff",
                 border: "none",
                 cursor: "pointer",
-                boxShadow: "0 8px 32px rgba(15, 118, 110, 0.4)",
+                boxShadow: isChatOpen
+                  ? "var(--shadow-lg)"
+                  : "var(--shadow-accent-lg)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "transform 0.2s",
+                transition: "all 0.25s var(--t-spring)",
+                animation: !isChatOpen
+                  ? "pulseRing 3s ease-out infinite 2s"
+                  : "none",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.transform = "scale(1.05)")
+                (e.currentTarget.style.transform = "scale(1.06)")
               }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.transform = "scale(1)")
               }
             >
-              {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
+              {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
             </button>
           </div>
         )}
       </main>
 
-      {/* Tour guide for new users */}
       <TourGuide plan={tenant?.plan || "starter"} />
-
-      {/* AI clinic insight popup on login */}
       <ClinicInsightPopup
         patients={patients}
         history={history}
         clinicName={tenant?.name ?? user.name}
         userName={user.name}
       />
-
-      <style jsx global>{`
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-        @keyframes pulse {
-          0%,
-          100% {
-            opacity: 0.4;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

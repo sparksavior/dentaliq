@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2 } from "lucide-react";
+import {
+  Building2,
+  Settings2,
+  MapPin,
+  Plug,
+  ShieldCheck,
+  User,
+  Sliders,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   tenantsApi,
@@ -63,49 +71,105 @@ function Section({
   title,
   desc,
   children,
+  icon: Icon,
+  accentColor = "var(--color-accent)",
 }: {
   title: string;
   desc?: string;
   children: React.ReactNode;
+  icon?: React.ElementType;
+  accentColor?: string;
 }) {
   return (
     <div
       style={{
         background: "var(--color-background-primary)",
         border: "1px solid var(--color-border-secondary)",
-        borderRadius: 14,
-        padding: "1.5rem",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        borderRadius: 16,
+        overflow: "hidden",
+        boxShadow: "var(--shadow-xs)",
         marginBottom: 16,
       }}
     >
-      <div style={{ marginBottom: "1.2rem" }}>
-        <h2
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: "var(--color-text-primary)",
-            marginBottom: desc ? 3 : 0,
-          }}
-        >
-          {title}
-        </h2>
-        {desc && (
-          <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-            {desc}
-          </p>
+      {/* Section header */}
+      <div
+        style={{
+          padding: "1.1rem 1.5rem",
+          borderBottom: "1px solid var(--color-border-secondary)",
+          background: "var(--color-background-secondary)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        {Icon && (
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: `${accentColor}15`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon size={14} color={accentColor} />
+          </div>
         )}
+        <div>
+          <h2
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: "var(--color-text-primary)",
+              margin: 0,
+            }}
+          >
+            {title}
+          </h2>
+          {desc && (
+            <p
+              style={{
+                fontSize: 12,
+                color: "var(--color-text-secondary)",
+                margin: 0,
+                marginTop: 1,
+              }}
+            >
+              {desc}
+            </p>
+          )}
+        </div>
       </div>
-      {children}
+      <div style={{ padding: "1.5rem" }}>{children}</div>
     </div>
   );
 }
+
+type SettingsTab =
+  | "profile"
+  | "locations"
+  | "integrations"
+  | "insurance"
+  | "account"
+  | "preferences";
+
+const TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
+  { id: "profile", label: "Profile", icon: Settings2 },
+  { id: "locations", label: "Locations", icon: MapPin },
+  { id: "integrations", label: "Integrations", icon: Plug },
+  { id: "insurance", label: "Insurance", icon: ShieldCheck },
+  { id: "account", label: "Account", icon: User },
+  { id: "preferences", label: "Preferences", icon: Sliders },
+];
 
 export default function SettingsPage() {
   const { user, accessToken } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [plans, setPlans] = useState<InsurancePlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
 
   // Clinic name edit
   const [clinicName, setClinicName] = useState("");
@@ -306,15 +370,76 @@ export default function SettingsPage() {
     outline: "none",
     boxSizing: "border-box",
     fontFamily: "system-ui",
-    transition: "border-color 0.15s",
+    transition: "border-color 0.15s, box-shadow 0.15s",
+  };
+
+  const inpFocus = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => {
+    e.currentTarget.style.borderColor = "var(--color-accent)";
+    e.currentTarget.style.boxShadow = "0 0 0 3px var(--color-accent-subtle)";
+  };
+  const inpBlur = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => {
+    e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+    e.currentTarget.style.boxShadow = "none";
   };
 
   if (loading) {
     return (
       <div style={{ padding: "2rem", maxWidth: 780, margin: "0 auto" }}>
-        <div style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
-          Loading settings…
-        </div>
+        {/* Skeleton shimmer */}
+        <div
+          style={{ height: 32, width: 120, borderRadius: 8, marginBottom: 24 }}
+          className="skeleton"
+        />
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              background: "var(--color-background-primary)",
+              border: "1px solid var(--color-border-secondary)",
+              borderRadius: 16,
+              overflow: "hidden",
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                padding: "1.1rem 1.5rem",
+                background: "var(--color-background-secondary)",
+                borderBottom: "1px solid var(--color-border-secondary)",
+              }}
+            >
+              <div
+                style={{ height: 16, width: 140, borderRadius: 6 }}
+                className="skeleton"
+              />
+            </div>
+            <div
+              style={{
+                padding: "1.5rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{ height: 38, borderRadius: 9 }}
+                className="skeleton"
+              />
+              <div
+                style={{ height: 38, width: "60%", borderRadius: 9 }}
+                className="skeleton"
+              />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -326,71 +451,168 @@ export default function SettingsPage() {
     <div
       style={{
         padding: "2rem",
-        maxWidth: 780,
+        maxWidth: 800,
         margin: "0 auto",
         color: "var(--color-text-primary)",
+        animation: "fadeInUp 0.35s ease-out",
       }}
     >
+      {/* Page header */}
       <div style={{ marginBottom: "1.5rem" }}>
-        <h1
+        <div
           style={{
-            fontSize: 22,
-            fontWeight: 700,
-            color: "var(--color-text-primary)",
-            letterSpacing: "-0.03em",
-            marginBottom: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 6,
           }}
         >
-          Settings
-        </h1>
-        <p style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
-          Manage your clinic, integrations, and insurance plans.
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: "var(--color-accent-muted)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Settings2 size={20} color="var(--color-accent)" />
+          </div>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 800,
+              color: "var(--color-text-primary)",
+              letterSpacing: "-0.03em",
+              margin: 0,
+            }}
+          >
+            Settings
+          </h1>
+        </div>
+        <p
+          style={{
+            fontSize: 13,
+            color: "var(--color-text-secondary)",
+            margin: 0,
+            paddingLeft: 52,
+          }}
+        >
+          Manage your clinic profile, integrations, insurance plans, and
+          preferences.
         </p>
       </div>
 
-      {/* Clinic profile */}
-      <Section
-        title="Clinic Profile"
-        desc="Update your clinic name and view your account details."
+      {/* Tab navigation */}
+      <div
+        style={{
+          display: "flex",
+          gap: 2,
+          marginBottom: "1.75rem",
+          borderBottom: "1px solid var(--color-border-secondary)",
+          overflowX: "auto",
+        }}
       >
-        {tenant && (
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              marginBottom: "1rem",
-              flexWrap: "wrap",
-            }}
-          >
-            {planBadge && (
-              <div
-                style={{
-                  fontSize: 12,
-                  padding: "4px 12px",
-                  borderRadius: 20,
-                  background: planBadge.bg,
-                  color: planBadge.color,
-                  fontWeight: 600,
-                }}
-              >
-                {planBadge.label} Plan
-              </div>
-            )}
-            {statusBadge && (
-              <div
-                style={{
-                  fontSize: 12,
-                  padding: "4px 12px",
-                  borderRadius: 20,
-                  background: statusBadge.bg,
-                  color: statusBadge.color,
-                  fontWeight: 600,
-                }}
-              >
-                {statusBadge.label}
-              </div>
-            )}
-            {tenant.status === "trial" && tenant.trialEndsAt && (
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id;
+          const TabIcon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "9px 14px",
+                background: "transparent",
+                border: "none",
+                borderBottom: isActive
+                  ? "2px solid var(--color-accent)"
+                  : "2px solid transparent",
+                color: isActive
+                  ? "var(--color-accent)"
+                  : "var(--color-text-secondary)",
+                fontWeight: isActive ? 700 : 500,
+                fontSize: 13,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                transition: "all 0.15s",
+                marginBottom: -1,
+              }}
+            >
+              <TabIcon size={13} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Clinic profile */}
+      {activeTab === "profile" && (
+        <Section
+          title="Clinic Profile"
+          desc="Update your clinic name and view your account details."
+          icon={Settings2}
+        >
+          {tenant && (
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginBottom: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              {planBadge && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    padding: "4px 12px",
+                    borderRadius: 20,
+                    background: planBadge.bg,
+                    color: planBadge.color,
+                    fontWeight: 600,
+                  }}
+                >
+                  {planBadge.label} Plan
+                </div>
+              )}
+              {statusBadge && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    padding: "4px 12px",
+                    borderRadius: 20,
+                    background: statusBadge.bg,
+                    color: statusBadge.color,
+                    fontWeight: 600,
+                  }}
+                >
+                  {statusBadge.label}
+                </div>
+              )}
+              {tenant.status === "trial" && tenant.trialEndsAt && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    padding: "4px 12px",
+                    borderRadius: 20,
+                    background: "var(--color-background-secondary)",
+                    color: "var(--color-text-secondary)",
+                    fontWeight: 500,
+                  }}
+                >
+                  Trial ends{" "}
+                  {new Date(tenant.trialEndsAt).toLocaleDateString("en-CA", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </div>
+              )}
               <div
                 style={{
                   fontSize: 12,
@@ -401,446 +623,395 @@ export default function SettingsPage() {
                   fontWeight: 500,
                 }}
               >
-                Trial ends{" "}
-                {new Date(tenant.trialEndsAt).toLocaleDateString("en-CA", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {tenant.memberCount} member{tenant.memberCount !== 1 ? "s" : ""}
               </div>
-            )}
-            <div
-              style={{
-                fontSize: 12,
-                padding: "4px 12px",
-                borderRadius: 20,
-                background: "var(--color-background-secondary)",
-                color: "var(--color-text-secondary)",
-                fontWeight: 500,
-              }}
-            >
-              {tenant.memberCount} member{tenant.memberCount !== 1 ? "s" : ""}
-            </div>
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            gap: 10,
-            alignItems: "flex-end",
-          }}
-        >
-          <div>
-            <label
-              style={{
-                fontSize: 12,
-                fontWeight: 500,
-                color: "var(--color-text-secondary)",
-                display: "block",
-                marginBottom: 5,
-              }}
-            >
-              Clinic name
-            </label>
-            <input
-              style={inp}
-              value={clinicName}
-              onChange={(e) => setClinicName(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={saveClinicName}
-            disabled={savingClinic || clinicName === tenant?.name}
-            style={{
-              padding: "10px 20px",
-              borderRadius: 9,
-              border: "none",
-              background:
-                savingClinic || clinicName === tenant?.name
-                  ? "var(--color-background-secondary)"
-                  : "var(--color-accent)",
-              color:
-                savingClinic || clinicName === tenant?.name
-                  ? "var(--color-text-secondary)"
-                  : "#fff",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor:
-                savingClinic || clinicName === tenant?.name
-                  ? "not-allowed"
-                  : "pointer",
-              whiteSpace: "nowrap",
-              transition: "all 0.15s",
-            }}
-          >
-            {savingClinic ? "Saving…" : "Save"}
-          </button>
-        </div>
-        {clinicMsg && (
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 13,
-              color: clinicMsg.startsWith("Error") ? "#ef4444" : "#10b981",
-              fontWeight: 500,
-            }}
-          >
-            {clinicMsg}
-          </div>
-        )}
-      </Section>
-
-      {/* Clinic locations */}
-      <Section
-        title="Clinic Locations"
-        desc="Manage multiple office locations. Data for patients and estimates will be scoped by location."
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {clinics.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "12px 16px",
-                background: "var(--color-background-secondary)",
-                border: "1px solid var(--color-border-secondary)",
-                borderRadius: 12,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: "var(--color-accent-muted)",
-                    color: "var(--color-accent)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Building2 size={16} />
-                </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 600,
-                      color: "var(--color-text-primary)",
-                    }}
-                  >
-                    {c.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--color-text-secondary)",
-                    }}
-                  >
-                    {c.address || "No address set"}
-                  </div>
-                </div>
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  background:
-                    c.status === "active"
-                      ? "rgba(16, 185, 129, 0.1)"
-                      : "var(--color-border-secondary)",
-                  color:
-                    c.status === "active"
-                      ? "#10b981"
-                      : "var(--color-text-secondary)",
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                }}
-              >
-                {c.status}
-              </div>
-            </div>
-          ))}
-
-          {tenant?.plan !== "starter" &&
-            clinics.length < (tenant?.plan === "pro" ? 3 : 999) && (
-              <button
-                onClick={() => setShowClinicModal(true)}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  border: "1.5px dashed var(--color-border-secondary)",
-                  background: "transparent",
-                  color: "var(--color-text-secondary)",
-                  borderRadius: 12,
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                }}
-              >
-                <span>+ Add new location</span>
-              </button>
-            )}
-
-          {tenant?.plan === "starter" && (
-            <div
-              style={{
-                padding: "10px 14px",
-                background: "rgba(14, 116, 144, 0.05)",
-                borderRadius: 10,
-                fontSize: 13,
-                color: "#0e7490",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span>💡 Upgrade to Pro to add up to 3 locations.</span>
             </div>
           )}
-        </div>
-      </Section>
 
-      {/* PMS integration */}
-      <Section
-        title="Practice Management Software"
-        desc="Connect your PMS to sync patients, procedures, and insurance plans automatically."
-      >
-        {tenant?.pmsConnected ? (
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "12px 16px",
-                background: "var(--color-accent-muted)",
-                border: "1px solid var(--color-accent)",
-                borderRadius: 10,
-                marginBottom: "1rem",
-              }}
-            >
-              <div
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: 10,
+              alignItems: "flex-end",
+            }}
+          >
+            <div>
+              <label
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 9,
-                  background: "var(--color-accent)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 18,
-                  flexShrink: 0,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "var(--color-text-secondary)",
+                  display: "block",
+                  marginBottom: 5,
                 }}
               >
-                🦷
-              </div>
-              <div style={{ flex: 1 }}>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--color-accent)",
-                  }}
-                >
-                  {PMS_LABELS[tenant.pmsType] || tenant.pmsType} connected
-                </div>
-                <div style={{ fontSize: 12, color: "var(--color-accent)" }}>
-                  Patient sync active
-                </div>
-              </div>
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "#10b981",
-                }}
+                Clinic name
+              </label>
+              <input
+                style={inp}
+                value={clinicName}
+                onChange={(e) => setClinicName(e.target.value)}
+                onFocus={inpFocus}
+                onBlur={inpBlur}
               />
             </div>
             <button
-              onClick={disconnectPms}
-              disabled={savingPms}
+              onClick={saveClinicName}
+              disabled={savingClinic || clinicName === tenant?.name}
               style={{
-                padding: "8px 18px",
-                borderRadius: 9,
-                border: "1.5px solid #ef4444",
-                background: "transparent",
-                color: "#ef4444",
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              {savingPms ? "Disconnecting…" : "Disconnect PMS"}
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 2fr",
-                gap: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "var(--color-text-secondary)",
-                    display: "block",
-                    marginBottom: 5,
-                  }}
-                >
-                  PMS software
-                </label>
-                <select
-                  style={{ ...inp, cursor: "pointer" }}
-                  value={pmsType}
-                  onChange={(e) => setPmsType(e.target.value as any)}
-                >
-                  <option value="open_dental">Open Dental</option>
-                  <option value="dentrix">Dentrix G7+</option>
-                  <option value="cleardent">ClearDent</option>
-                </select>
-              </div>
-              <div>
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: "var(--color-text-secondary)",
-                    display: "block",
-                    marginBottom: 5,
-                  }}
-                >
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  placeholder="Enter your PMS API key…"
-                  style={inp}
-                  value={pmsApiKey}
-                  onChange={(e) => setPmsApiKey(e.target.value)}
-                />
-              </div>
-            </div>
-            <button
-              onClick={connectPms}
-              disabled={savingPms || !pmsApiKey.trim()}
-              style={{
-                padding: "9px 22px",
+                padding: "10px 20px",
                 borderRadius: 9,
                 border: "none",
                 background:
-                  savingPms || !pmsApiKey.trim()
+                  savingClinic || clinicName === tenant?.name
                     ? "var(--color-background-secondary)"
                     : "var(--color-accent)",
                 color:
-                  savingPms || !pmsApiKey.trim()
+                  savingClinic || clinicName === tenant?.name
                     ? "var(--color-text-secondary)"
                     : "#fff",
                 fontSize: 14,
                 fontWeight: 600,
                 cursor:
-                  savingPms || !pmsApiKey.trim() ? "not-allowed" : "pointer",
+                  savingClinic || clinicName === tenant?.name
+                    ? "not-allowed"
+                    : "pointer",
+                whiteSpace: "nowrap",
+                transition: "all 0.15s",
               }}
             >
-              {savingPms ? "Connecting…" : "Connect PMS"}
+              {savingClinic ? "Saving…" : "Save"}
             </button>
-            {pmsMsg && (
+          </div>
+          {clinicMsg && (
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 13,
+                color: clinicMsg.startsWith("Error") ? "#ef4444" : "#10b981",
+                fontWeight: 500,
+              }}
+            >
+              {clinicMsg}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Clinic locations */}
+      {activeTab === "locations" && (
+        <Section
+          title="Clinic Locations"
+          desc="Manage multiple office locations. Data for patients and estimates will be scoped by location."
+          icon={MapPin}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {clinics.map((c) => (
               <div
+                key={c.id}
                 style={{
-                  marginTop: 8,
-                  fontSize: 13,
-                  color: pmsMsg.startsWith("Error") ? "#ef4444" : "#10b981",
-                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 16px",
+                  background: "var(--color-background-secondary)",
+                  border: "1px solid var(--color-border-secondary)",
+                  borderRadius: 12,
                 }}
               >
-                {pmsMsg}
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      background: "var(--color-accent-muted)",
+                      color: "var(--color-accent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Building2 size={16} />
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "var(--color-text-primary)",
+                      }}
+                    >
+                      {c.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--color-text-secondary)",
+                      }}
+                    >
+                      {c.address || "No address set"}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    background:
+                      c.status === "active"
+                        ? "rgba(16, 185, 129, 0.1)"
+                        : "var(--color-border-secondary)",
+                    color:
+                      c.status === "active"
+                        ? "#10b981"
+                        : "var(--color-text-secondary)",
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {c.status}
+                </div>
+              </div>
+            ))}
+
+            {tenant?.plan !== "starter" &&
+              clinics.length < (tenant?.plan === "pro" ? 3 : 999) && (
+                <button
+                  onClick={() => setShowClinicModal(true)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "1.5px dashed var(--color-border-secondary)",
+                    background: "transparent",
+                    color: "var(--color-text-secondary)",
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>+ Add new location</span>
+                </button>
+              )}
+
+            {tenant?.plan === "starter" && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  background: "rgba(14, 116, 144, 0.05)",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  color: "#0e7490",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>💡 Upgrade to Pro to add up to 3 locations.</span>
               </div>
             )}
           </div>
-        )}
-      </Section>
+        </Section>
+      )}
+
+      {/* PMS integration */}
+      {activeTab === "integrations" && (
+        <Section
+          title="Practice Management Software"
+          desc="Connect your PMS to sync patients, procedures, and insurance plans automatically."
+          icon={Plug}
+        >
+          {tenant?.pmsConnected ? (
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "12px 16px",
+                  background: "var(--color-accent-muted)",
+                  border: "1px solid var(--color-accent)",
+                  borderRadius: 10,
+                  marginBottom: "1rem",
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 9,
+                    background: "var(--color-accent)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 18,
+                    flexShrink: 0,
+                  }}
+                >
+                  🦷
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: "var(--color-accent)",
+                    }}
+                  >
+                    {PMS_LABELS[tenant.pmsType] || tenant.pmsType} connected
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--color-accent)" }}>
+                    Patient sync active
+                  </div>
+                </div>
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#10b981",
+                  }}
+                />
+              </div>
+              <button
+                onClick={disconnectPms}
+                disabled={savingPms}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 9,
+                  border: "1.5px solid #ef4444",
+                  background: "transparent",
+                  color: "#ef4444",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                {savingPms ? "Disconnecting…" : "Disconnect PMS"}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 2fr",
+                  gap: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--color-text-secondary)",
+                      display: "block",
+                      marginBottom: 5,
+                    }}
+                  >
+                    PMS software
+                  </label>
+                  <select
+                    style={{ ...inp, cursor: "pointer" }}
+                    value={pmsType}
+                    onChange={(e) => setPmsType(e.target.value as any)}
+                    onFocus={inpFocus}
+                    onBlur={inpBlur}
+                  >
+                    <option value="open_dental">Open Dental</option>
+                    <option value="dentrix">Dentrix G7+</option>
+                    <option value="cleardent">ClearDent</option>
+                  </select>
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: "var(--color-text-secondary)",
+                      display: "block",
+                      marginBottom: 5,
+                    }}
+                  >
+                    API Key
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Enter your PMS API key…"
+                    style={inp}
+                    value={pmsApiKey}
+                    onChange={(e) => setPmsApiKey(e.target.value)}
+                    onFocus={inpFocus}
+                    onBlur={inpBlur}
+                  />
+                </div>
+              </div>
+              <button
+                onClick={connectPms}
+                disabled={savingPms || !pmsApiKey.trim()}
+                style={{
+                  padding: "9px 22px",
+                  borderRadius: 9,
+                  border: "none",
+                  background:
+                    savingPms || !pmsApiKey.trim()
+                      ? "var(--color-background-secondary)"
+                      : "var(--color-accent)",
+                  color:
+                    savingPms || !pmsApiKey.trim()
+                      ? "var(--color-text-secondary)"
+                      : "#fff",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor:
+                    savingPms || !pmsApiKey.trim() ? "not-allowed" : "pointer",
+                }}
+              >
+                {savingPms ? "Connecting…" : "Connect PMS"}
+              </button>
+              {pmsMsg && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 13,
+                    color: pmsMsg.startsWith("Error") ? "#ef4444" : "#10b981",
+                    fontWeight: 500,
+                  }}
+                >
+                  {pmsMsg}
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* Insurance plans */}
-      <Section
-        title="Insurance Plans"
-        desc="Manage the insurance plans your clinic accepts. Used to assign coverage to patients."
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            marginBottom: "1rem",
-          }}
+      {activeTab === "insurance" && (
+        <Section
+          title="Insurance Plans"
+          desc="Manage the insurance plans your clinic accepts. Used to assign coverage to patients."
+          icon={ShieldCheck}
         >
-          <button
-            onClick={openAddPlan}
-            style={{
-              padding: "8px 18px",
-              borderRadius: 9,
-              border: "none",
-              background: "var(--color-accent)",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            + Add plan
-          </button>
-        </div>
-
-        {plans.length === 0 ? (
           <div
             style={{
-              textAlign: "center",
-              padding: "2rem",
-              background: "var(--color-background-secondary)",
-              borderRadius: 10,
-              border: "1px dashed var(--color-border-secondary)",
+              display: "flex",
+              justifyContent: "flex-end",
+              marginBottom: "1rem",
             }}
           >
-            <div style={{ fontSize: 32, marginBottom: 10 }}>🏥</div>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: "var(--color-text-primary)",
-                marginBottom: 4,
-              }}
-            >
-              No insurance plans yet
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--color-text-secondary)",
-                marginBottom: 14,
-              }}
-            >
-              Add your clinic's insurance plans to enable accurate coverage
-              matching.
-            </div>
             <button
               onClick={openAddPlan}
               style={{
-                padding: "8px 20px",
+                padding: "8px 18px",
                 borderRadius: 9,
                 border: "none",
                 background: "var(--color-accent)",
@@ -850,292 +1021,352 @@ export default function SettingsPage() {
                 cursor: "pointer",
               }}
             >
-              + Add first plan
+              + Add plan
             </button>
           </div>
-        ) : (
-          <div
-            style={{
-              border: "1px solid var(--color-border-secondary)",
-              borderRadius: 10,
-              overflow: "hidden",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    background: "var(--color-background-secondary)",
-                    borderBottom: "1px solid var(--color-border-secondary)",
-                  }}
-                >
-                  {[
-                    "Insurer",
-                    "Plan name",
-                    "Annual max",
-                    "Prev.",
-                    "Basic",
-                    "Major",
-                    "Ortho",
-                    "",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        padding: "10px 12px",
-                        textAlign: h === "" ? "right" : "left",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "var(--color-text-secondary)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {plans.map((plan) => (
-                  <tr
-                    key={plan.id}
-                    style={{
-                      borderBottom: "1px solid var(--color-border-tertiary)",
-                      transition: "background 0.1s",
-                    }}
-                  >
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        fontWeight: 600,
-                        color: "var(--color-text-primary)",
-                      }}
-                    >
-                      {plan.insurer_name}
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        color: "var(--color-text-secondary)",
-                      }}
-                    >
-                      {plan.plan_name || "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        color: "var(--color-text-secondary)",
-                      }}
-                    >
-                      {plan.annual_max
-                        ? `$${plan.annual_max.toLocaleString()}`
-                        : "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        color: "var(--color-accent)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {plan.preventive_coverage}%
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        color: "var(--color-accent)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {plan.basic_coverage}%
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        color: "var(--color-accent)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {plan.major_coverage}%
-                    </td>
-                    <td
-                      style={{
-                        padding: "11px 12px",
-                        color: "var(--color-accent)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {plan.ortho_coverage}%
-                    </td>
-                    <td style={{ padding: "11px 12px", textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          justifyContent: "flex-end",
-                        }}
-                      >
-                        <button
-                          onClick={() => openEditPlan(plan)}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 6,
-                            border: "1px solid var(--color-border-secondary)",
-                            background: "transparent",
-                            color: "var(--color-text-primary)",
-                            fontSize: 11,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(plan.id)}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 6,
-                            border: "1px solid #ef4444",
-                            background: "transparent",
-                            color: "#ef4444",
-                            fontSize: 11,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Del
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
 
-      {/* Account info */}
-      <Section title="Account" desc="Your user account details.">
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
-        >
-          {[
-            ["Name", user?.name ?? "—"],
-            ["Email", user?.email ?? "—"],
-            ["Role", (user?.role ?? "").replace("_", " ")],
-            ["MFA", user?.mfaEnabled ? "✓ Enabled" : "⚠ Not enabled"],
-          ].map(([label, value]) => (
+          {plans.length === 0 ? (
             <div
-              key={label}
               style={{
-                padding: "12px 14px",
+                textAlign: "center",
+                padding: "2rem",
                 background: "var(--color-background-secondary)",
-                borderRadius: 9,
-                border: "1px solid var(--color-border-secondary)",
+                borderRadius: 10,
+                border: "1px dashed var(--color-border-secondary)",
               }}
             >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "var(--color-text-secondary)",
-                  marginBottom: 4,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                {label}
-              </div>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>🏥</div>
               <div
                 style={{
                   fontSize: 14,
-                  fontWeight: 500,
-                  color:
-                    label === "MFA" && value === "⚠ Not enabled"
-                      ? "#f59e0b"
-                      : "var(--color-text-primary)",
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                  marginBottom: 4,
                 }}
               >
-                {value}
+                No insurance plans yet
               </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 14,
+                }}
+              >
+                Add your clinic's insurance plans to enable accurate coverage
+                matching.
+              </div>
+              <button
+                onClick={openAddPlan}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: "var(--color-accent)",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                + Add first plan
+              </button>
             </div>
-          ))}
-        </div>
-        {!user?.mfaEnabled && (
-          <div
-            style={{
-              marginTop: 12,
-              padding: "10px 14px",
-              background: "rgba(245, 158, 11, 0.1)",
-              border: "1px solid rgba(245, 158, 11, 0.2)",
-              borderRadius: 9,
-              fontSize: 13,
-              color: "#f59e0b",
-            }}
-          >
-            <strong>PHIPA reminder:</strong> Enable two-factor authentication to
-            secure access to patient health information.
-          </div>
-        )}
-      </Section>
-
-      {/* Preferences */}
-      <Section title="Preferences" desc="Customize your DentalIQ experience.">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 14px",
-            background: "var(--color-background-secondary)",
-            borderRadius: 9,
-            border: "1px solid var(--color-border-secondary)",
-          }}
-        >
-          <div>
+          ) : (
             <div
               style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: "var(--color-text-primary)",
+                border: "1px solid var(--color-border-secondary)",
+                borderRadius: 10,
+                overflow: "hidden",
               }}
             >
-              App Tour Guide
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 13,
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      background: "var(--color-background-secondary)",
+                      borderBottom: "1px solid var(--color-border-secondary)",
+                    }}
+                  >
+                    {[
+                      "Insurer",
+                      "Plan name",
+                      "Annual max",
+                      "Prev.",
+                      "Basic",
+                      "Major",
+                      "Ortho",
+                      "",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          padding: "10px 12px",
+                          textAlign: h === "" ? "right" : "left",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "var(--color-text-secondary)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {plans.map((plan) => (
+                    <tr
+                      key={plan.id}
+                      style={{
+                        borderBottom: "1px solid var(--color-border-tertiary)",
+                        transition: "background 0.1s",
+                      }}
+                    >
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          fontWeight: 600,
+                          color: "var(--color-text-primary)",
+                        }}
+                      >
+                        {plan.insurer_name}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          color: "var(--color-text-secondary)",
+                        }}
+                      >
+                        {plan.plan_name || "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          color: "var(--color-text-secondary)",
+                        }}
+                      >
+                        {plan.annual_max
+                          ? `$${plan.annual_max.toLocaleString()}`
+                          : "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          color: "var(--color-accent)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {plan.preventive_coverage}%
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          color: "var(--color-accent)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {plan.basic_coverage}%
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          color: "var(--color-accent)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {plan.major_coverage}%
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          color: "var(--color-accent)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {plan.ortho_coverage}%
+                      </td>
+                      <td style={{ padding: "11px 12px", textAlign: "right" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 6,
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <button
+                            onClick={() => openEditPlan(plan)}
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              border: "1px solid var(--color-border-secondary)",
+                              background: "transparent",
+                              color: "var(--color-text-primary)",
+                              fontSize: 11,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(plan.id)}
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              border: "1px solid #ef4444",
+                              background: "transparent",
+                              color: "#ef4444",
+                              fontSize: 11,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Del
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-              Replay the onboarding tour of the platform.
-            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Account info */}
+      {activeTab === "account" && (
+        <Section title="Account" desc="Your user account details." icon={User}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+          >
+            {[
+              ["Name", user?.name ?? "—"],
+              ["Email", user?.email ?? "—"],
+              ["Role", (user?.role ?? "").replace("_", " ")],
+              ["MFA", user?.mfaEnabled ? "✓ Enabled" : "⚠ Not enabled"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                style={{
+                  padding: "12px 14px",
+                  background: "var(--color-background-secondary)",
+                  borderRadius: 9,
+                  border: "1px solid var(--color-border-secondary)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: "var(--color-text-secondary)",
+                    marginBottom: 4,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color:
+                      label === "MFA" && value === "⚠ Not enabled"
+                        ? "#f59e0b"
+                        : "var(--color-text-primary)",
+                  }}
+                >
+                  {value}
+                </div>
+              </div>
+            ))}
           </div>
-          <button
-            onClick={() => window.dispatchEvent(new Event("diq_show_tour"))}
+          {!user?.mfaEnabled && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                background: "rgba(245, 158, 11, 0.1)",
+                border: "1px solid rgba(245, 158, 11, 0.2)",
+                borderRadius: 9,
+                fontSize: 13,
+                color: "#f59e0b",
+              }}
+            >
+              <strong>PHIPA reminder:</strong> Enable two-factor authentication
+              to secure access to patient health information.
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Preferences */}
+      {activeTab === "preferences" && (
+        <Section
+          title="Preferences"
+          desc="Customize your DentalIQ experience."
+          icon={Sliders}
+        >
+          <div
             style={{
-              padding: "8px 16px",
-              borderRadius: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 14px",
+              background: "var(--color-background-secondary)",
+              borderRadius: 9,
               border: "1px solid var(--color-border-secondary)",
-              background: "var(--color-background-primary)",
-              color: "var(--color-text-primary)",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
             }}
           >
-            Show Tour
-          </button>
-        </div>
-      </Section>
+            <div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                App Tour Guide
+              </div>
+              <div
+                style={{ fontSize: 12, color: "var(--color-text-secondary)" }}
+              >
+                Replay the onboarding tour of the platform.
+              </div>
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new Event("diq_show_tour"))}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "1px solid var(--color-border-secondary)",
+                background: "var(--color-background-primary)",
+                color: "var(--color-text-primary)",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Show Tour
+            </button>
+          </div>
+        </Section>
+      )}
 
-      {/* Cortex Agents */}
-      {tenant?.plan === "cortex" && (
+      {/* Cortex Agents — shown in preferences tab for cortex plan */}
+      {activeTab === "preferences" && tenant?.plan === "cortex" && (
         <Section
           title="Digital Workforce"
           desc="Manage your active AI agents and explore new ones."
+          icon={Sliders}
         >
           <div
             style={{

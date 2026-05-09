@@ -440,21 +440,41 @@ export const agentsApi = {
 };
 
 export const billingApi = {
-  getPaymentMethod: (token: string) =>
-    tenantRequest<any>("/billing/payment-method", token),
-  savePaymentMethod: (
-    token: string,
-    data: {
-      cardName: string;
-      cardNumber: string;
-      cardExpiry: string;
-      cardCvc: string;
-    },
-  ) =>
-    tenantRequest<any>("/billing/payment-method", token, {
+  getConfig: (token: string) =>
+    tenantRequest<{
+      stripePublishableKey: string | null;
+      stripeEnabled: boolean;
+      plans: Record<string, number>;
+      agentPrice: number;
+    }>("/billing/config", token),
+
+  createSetupIntent: (token: string) =>
+    tenantRequest<{ clientSecret: string }>("/billing/setup-intent", token, {
       method: "POST",
-      body: JSON.stringify(data),
     }),
+
+  getPaymentMethod: (token: string) =>
+    tenantRequest<{
+      brand: string;
+      last4: string;
+      expMonth: number;
+      expYear: number;
+    } | null>("/billing/payment-method", token),
+
+  savePaymentMethod: (token: string, data: { paymentMethodId: string }) =>
+    tenantRequest<{ brand: string; last4: string }>(
+      "/billing/payment-method",
+      token,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+
   getInvoices: (token: string) =>
     tenantRequest<any[]>("/billing/invoices", token),
+
+  getSubscription: (token: string) =>
+    tenantRequest<{
+      plan: string;
+      status: string;
+      subscriptionId: string | null;
+    }>("/billing/subscription", token),
 };

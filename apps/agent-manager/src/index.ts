@@ -1,24 +1,24 @@
 // ─────────────────────────────────────────────────────────
-// DentalIQ — Agent Manager (Cortex Orchestrator)
+// DentalIQ — Cortex Agent Manager
 //
-// This microservice orchestrates autonomous background
-// agents for tenants on the Cortex plan.
-//
-// Each clinic (tenant) gets its own isolated agent instance.
-// If a user has 3 clinics and hires the Billing Agent,
-// that means 3 separate Billing Agent instances — one per
-// clinic, each scanning only that clinic's data.
+// Orchestrates autonomous agents for tenants on the Cortex plan.
+// Each clinic gets isolated agents scanning only its own data.
 //
 // HTTP API:
-//   POST /scan       — trigger a manual scan for all cortex tenants
-//   POST /scan/:id   — trigger a manual scan for a specific tenant
-//   GET  /health     — health check
+//   POST /scan         — manual scan for all Cortex tenants
+//   POST /scan/:id     — manual scan for specific tenant
+//   GET  /tasks        — list pending agent tasks (auth required)
+//   PATCH /tasks/:id   — approve/reject a task (auth required)
+//   GET  /stats        — aggregate stats for tenant dashboard
+//   GET  /health       — health check
 // ─────────────────────────────────────────────────────────
 
 import http from "node:http";
 import cron from "node-cron";
-import { getDb, tenants } from "@dentaliq/db";
-import { eq, sql } from "drizzle-orm";
+import { getDb, tenants, agentTasks } from "@dentaliq/db";
+import { eq, sql, desc, and } from "drizzle-orm";
+import { getEnv } from "@dentaliq/config";
+import { createLogger } from "@dentaliq/logger";
 import { runBillingAgent } from "./agents/BillingAgent";
 import { runRecallAgent } from "./agents/RecallAgent";
 import { runReviewAgent } from "./agents/ReviewAgent";
@@ -26,23 +26,17 @@ import { runSupplyAgent } from "./agents/SupplyAgent";
 import { runTreatmentCoordinatorAgent } from "./agents/TreatmentCoordinatorAgent";
 import { runHygienistAgent } from "./agents/HygienistAgent";
 
+const logger = createLogger("agent-manager");
+const env = getEnv();
 const PORT = parseInt(process.env.AGENT_MANAGER_PORT ?? "3006");
 
-async function getCortexTenants() {
-  const db = getDb() as any;
-  try {
-    const rows = await db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.plan, "cortex"));
-    return rows;
-  } catch (err) {
-    console.error("[AgentManager] Failed to fetch cortex tenants:", err);
-    return [];
-  }
-}
+// Allowed origins from config
+const ALLOWED_ORIGINS = (
+  env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:3005"
+)
+  .split(",")
+  .map((o) => o.trim());
 
-// Track scan results for the API response
 interface ScanResult {
   tenantId: string;
   tenantName: string;
@@ -53,54 +47,58 @@ interface ScanResult {
   error?: string;
 }
 
-async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
-  const startTime = new Date().toISOString();
-  console.log(`[AgentManager] ─── Starting agent cycle at ${startTime} ───`);
-
-  let cortexTenants = await getCortexTenants();
-  if (singleTenantId) {
-    cortexTenants = cortexTenants.filter((t: any) => t.id === singleTenantId);
+async function getCortexTenants(singleId?: string) {
+  const db = getDb();
+  try {
+    const all = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.plan, "cortex"));
+    return singleId ? all.filter((t) => t.id === singleId) : all;
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch Cortex tenants");
+    return [];
   }
+}
 
-  console.log(`[AgentManager] Found ${cortexTenants.length} Cortex tenant(s)`);
+async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
+  logger.info({ singleTenantId }, "Agent cycle starting");
+
+  const cortexTenants = await getCortexTenants(singleTenantId);
+  logger.info({ count: cortexTenants.length }, "Processing Cortex tenants");
+
   const results: ScanResult[] = [];
   const db = getDb() as any;
 
   for (const tenant of cortexTenants) {
-    console.log(
-      `[AgentManager] ┌── Processing tenant: "${tenant.name}" (${tenant.schemaName})`,
+    logger.info(
+      { tenant: tenant.name, schema: tenant.schemaName },
+      "Processing tenant",
     );
 
-    // Fetch clinics and rented agents
     let clinics: any[] = [];
     let rentedAgents: any[] = [];
+
     try {
       clinics = await db.all(
-        sql.raw(
-          `SELECT * FROM "${tenant.schemaName}_clinic_locations" WHERE status = 'active'`,
-        ),
+        sql`SELECT * FROM ${sql.raw(`"${tenant.schemaName}_clinic_locations"`)} WHERE status = 'active'`,
       );
       rentedAgents = await db.all(
-        sql.raw(`SELECT * FROM "${tenant.schemaName}_cortex_agents"`),
+        sql`SELECT * FROM ${sql.raw(`"${tenant.schemaName}_cortex_agents"`)}`,
       );
-    } catch (err) {
-      console.log(
-        `[AgentManager] │  No clinics or agents setup for "${tenant.name}" yet. Defaulting to main clinic billing...`,
-      );
+    } catch {
+      // Tenant hasn't set up clinic locations / agents yet — use defaults
       clinics = [{ id: "default", name: tenant.name }];
       rentedAgents = [{ clinic_id: "default", agent_id: "billing" }];
     }
 
-    if (clinics.length === 0) {
-      clinics = [{ id: "default", name: tenant.name }];
-    }
-    if (rentedAgents.length === 0) {
+    if (clinics.length === 0) clinics = [{ id: "default", name: tenant.name }];
+    if (rentedAgents.length === 0)
       rentedAgents = [{ clinic_id: "default", agent_id: "billing" }];
-    }
 
     for (const clinic of clinics) {
       const clinicAgents = rentedAgents.filter(
-        (ra) => ra.clinic_id === clinic.id || ra.clinic_id === "default",
+        (ra: any) => ra.clinic_id === clinic.id || ra.clinic_id === "default",
       );
 
       const result: ScanResult = {
@@ -112,42 +110,41 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
         status: "success",
       };
 
-      console.log(`[AgentManager] │  Processing clinic: "${clinic.name}"`);
-
       for (const ra of clinicAgents) {
-        console.log(
-          `[AgentManager] │    Deploying ${ra.agent_id} agent for "${clinic.name}"...`,
+        logger.info(
+          { agent: ra.agent_id, clinic: clinic.name },
+          "Running agent",
         );
-
         try {
           let count = 0;
-          if (ra.agent_id === "billing") {
-            count = await runBillingAgent(tenant.id, tenant.schemaName);
-          } else if (ra.agent_id === "recall") {
-            count = await runRecallAgent(tenant.id, tenant.schemaName);
-          } else if (ra.agent_id === "review") {
-            count = await runReviewAgent(tenant.id, tenant.schemaName);
-          } else if (ra.agent_id === "supply") {
-            count = await runSupplyAgent(tenant.id, tenant.schemaName);
-          } else if (ra.agent_id === "treatment") {
-            count = await runTreatmentCoordinatorAgent(
-              tenant.id,
-              tenant.schemaName,
-            );
-          } else if (ra.agent_id === "hygienist") {
-            count = await runHygienistAgent(tenant.id, tenant.schemaName);
+          switch (ra.agent_id) {
+            case "billing":
+              count = await runBillingAgent(tenant.id, tenant.schemaName);
+              break;
+            case "recall":
+              count = await runRecallAgent(tenant.id, tenant.schemaName);
+              break;
+            case "review":
+              count = await runReviewAgent(tenant.id, tenant.schemaName);
+              break;
+            case "supply":
+              count = await runSupplyAgent(tenant.id, tenant.schemaName);
+              break;
+            case "treatment":
+              count = await runTreatmentCoordinatorAgent(
+                tenant.id,
+                tenant.schemaName,
+              );
+              break;
+            case "hygienist":
+              count = await runHygienistAgent(tenant.id, tenant.schemaName);
+              break;
           }
-
           result.agentsRun.push(ra.agent_id);
           result.itemsFound += count;
-          console.log(
-            `[AgentManager] │    └── ✓ ${ra.agent_id} complete: ${count} items processed`,
-          );
+          logger.info({ agent: ra.agent_id, count }, "Agent complete");
         } catch (err: any) {
-          console.error(
-            `[AgentManager] │    └── ✗ ${ra.agent_id} failed for "${clinic.name}":`,
-            err?.message,
-          );
+          logger.error({ agent: ra.agent_id, err }, "Agent failed");
           result.status = "error";
           result.error = err?.message;
         }
@@ -155,21 +152,41 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
 
       results.push(result);
     }
-    console.log(`[AgentManager] └── Completed tenant "${tenant.name}"`);
+    logger.info({ tenant: tenant.name }, "Tenant complete");
   }
 
-  console.log(
-    `[AgentManager] ─── Agent cycle complete (${cortexTenants.length} tenants) ───\n`,
+  logger.info(
+    { tenants: cortexTenants.length, results: results.length },
+    "Agent cycle complete",
   );
   return results;
 }
 
-// ── HTTP Server for manual triggers ──────────────────────
+// ── JWT auth helper for API endpoints ────────────────────
+function extractTenantId(authHeader: string | undefined): string | null {
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  try {
+    const token = authHeader.slice(7);
+    const payload = JSON.parse(
+      Buffer.from(token.split(".")[1], "base64url").toString(),
+    );
+    return payload.tenantId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── HTTP server ───────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
-  // CORS headers for frontend access
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  const origin = req.headers.origin ?? "";
+  const corsOrigin = ALLOWED_ORIGINS.includes(origin)
+    ? origin
+    : ALLOWED_ORIGINS[0];
+
+  res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -178,12 +195,26 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
-  const json = (data: any, status = 200) => {
+
+  const json = (data: unknown, status = 200) => {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
   };
 
-  // Health check
+  const readBody = (): Promise<any> =>
+    new Promise((resolve) => {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          resolve(JSON.parse(body || "{}"));
+        } catch {
+          resolve({});
+        }
+      });
+    });
+
+  // ── GET /health ─────────────────────────────────────────
   if (url.pathname === "/health" && req.method === "GET") {
     return json({
       status: "ok",
@@ -192,49 +223,138 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  // Manual scan — all tenants
+  // ── POST /scan — manual trigger (internal only) ─────────
   if (url.pathname === "/scan" && req.method === "POST") {
-    console.log("[AgentManager] ⚡ Manual scan triggered via API");
+    logger.info("Manual scan triggered via API");
     const results = await runAgentCycle();
-    return json({ success: true, message: "Scan complete", results });
+    return json({ success: true, results });
   }
 
-  // Manual scan — specific tenant
-  const tenantMatch = url.pathname.match(/^\/scan\/(.+)$/);
-  if (tenantMatch && req.method === "POST") {
-    const tenantId = tenantMatch[1];
-    console.log(
-      `[AgentManager] ⚡ Manual scan triggered for tenant: ${tenantId}`,
-    );
+  const tenantScanMatch = url.pathname.match(/^\/scan\/(.+)$/);
+  if (tenantScanMatch && req.method === "POST") {
+    const tenantId = tenantScanMatch[1];
     const results = await runAgentCycle(tenantId);
-    if (results.length === 0) {
+    if (results.length === 0)
       return json(
-        { success: false, error: "Tenant not found or not on Cortex plan" },
+        { success: false, error: "Not found or not Cortex plan" },
         404,
       );
+    return json({ success: true, results });
+  }
+
+  // ── GET /tasks — list agent tasks for authenticated tenant ─
+  if (url.pathname === "/tasks" && req.method === "GET") {
+    const tenantId = extractTenantId(req.headers.authorization);
+    if (!tenantId) return json({ success: false, error: "Unauthorized" }, 401);
+
+    const db = getDb();
+    const statusFilter = (url.searchParams.get("status") as any) ?? "pending";
+    const tasks = await db
+      .select()
+      .from(agentTasks)
+      .where(
+        and(
+          eq(agentTasks.tenantId, tenantId),
+          eq(agentTasks.status, statusFilter),
+        ),
+      )
+      .orderBy(desc(agentTasks.createdAt))
+      .limit(100);
+
+    return json({ success: true, data: tasks });
+  }
+
+  // ── PATCH /tasks/:id — approve or reject a task ─────────
+  const taskMatch = url.pathname.match(/^\/tasks\/(.+)$/);
+  if (taskMatch && req.method === "PATCH") {
+    const tenantId = extractTenantId(req.headers.authorization);
+    if (!tenantId) return json({ success: false, error: "Unauthorized" }, 401);
+
+    const taskId = taskMatch[1];
+    const body = await readBody();
+    const status = body.status as string;
+
+    if (!["approved", "rejected"].includes(status)) {
+      return json(
+        { success: false, error: "status must be approved or rejected" },
+        400,
+      );
     }
-    return json({ success: true, message: "Scan complete", results });
+
+    const db = getDb();
+    const [existing] = await db
+      .select()
+      .from(agentTasks)
+      .where(eq(agentTasks.id, taskId))
+      .limit(1);
+
+    if (!existing || existing.tenantId !== tenantId) {
+      return json({ success: false, error: "Task not found" }, 404);
+    }
+
+    const [updated] = await db
+      .update(agentTasks)
+      .set({
+        status,
+        approvedBy: body.userId ?? null,
+        approvedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(agentTasks.id, taskId))
+      .returning();
+
+    return json({ success: true, data: updated });
+  }
+
+  // ── GET /stats — aggregate stats for the Cortex dashboard ─
+  if (url.pathname === "/stats" && req.method === "GET") {
+    const tenantId = extractTenantId(req.headers.authorization);
+    if (!tenantId) return json({ success: false, error: "Unauthorized" }, 401);
+
+    const db = getDb() as any;
+
+    // Count tasks by status and agent
+    const taskRows = await db
+      .all(
+        sql`SELECT agent_id, status, COUNT(*) as count
+          FROM agent_tasks
+          WHERE tenant_id = ${tenantId}
+          GROUP BY agent_id, status`,
+      )
+      .catch(() => []);
+
+    const totalPending = (taskRows as any[])
+      .filter((r: any) => r.status === "pending")
+      .reduce((sum: number, r: any) => sum + r.count, 0);
+    const totalApproved = (taskRows as any[])
+      .filter((r: any) => r.status === "approved")
+      .reduce((sum: number, r: any) => sum + r.count, 0);
+
+    return json({
+      success: true,
+      data: {
+        tasks: { pending: totalPending, approved: totalApproved },
+        byAgent: taskRows,
+        lastUpdated: new Date().toISOString(),
+      },
+    });
   }
 
   json({ error: "Not found" }, 404);
 });
 
 server.listen(PORT, () => {
-  console.log(`[AgentManager] DentalIQ Cortex Agent Manager`);
-  console.log(`[AgentManager]   → HTTP API:  http://localhost:${PORT}`);
-  console.log(`[AgentManager]   → Health:    http://localhost:${PORT}/health`);
-  console.log(
-    `[AgentManager]   → Scan API:  POST http://localhost:${PORT}/scan`,
-  );
-  console.log(`[AgentManager]   → Scheduled: nightly at 2:00 AM`);
+  logger.info({ port: PORT }, "Cortex Agent Manager listening");
 });
 
-// Schedule: Run every night at 2:00 AM
+// Nightly run at 2:00 AM
 cron.schedule("0 2 * * *", () => {
-  console.log("[AgentManager] Scheduled nightly run triggered");
-  runAgentCycle();
+  logger.info("Scheduled nightly agent cycle starting");
+  runAgentCycle().catch((err) => logger.error({ err }, "Nightly cycle failed"));
 });
 
-// Also run on startup for dev/testing
-console.log("[AgentManager] Running initial agent cycle...");
-runAgentCycle();
+// Run on startup in dev/test
+if (env.NODE_ENV !== "production") {
+  logger.info("Running startup agent cycle (dev mode)");
+  runAgentCycle().catch((err) => logger.error({ err }, "Startup cycle failed"));
+}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const PLANS = [
   {
@@ -490,18 +491,16 @@ export default function LandingPage() {
     marginBottom: "4rem",
   };
   const h2: React.CSSProperties = {
-    fontSize: 32,
-    fontWeight: 700,
-    letterSpacing: "-0.03em",
+    fontSize: 34,
+    fontWeight: 800,
+    letterSpacing: "-0.04em",
     color: "var(--color-text-primary)",
     marginBottom: "0.5rem",
-    fontFamily: "system-ui",
   };
 
   return (
     <div
       style={{
-        fontFamily: "system-ui",
         background: "var(--color-background-primary)",
         minHeight: "100vh",
         scrollBehavior: "smooth",
@@ -513,11 +512,13 @@ export default function LandingPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "1.2rem 2.5rem",
-          borderBottom: "0.5px solid var(--color-border-tertiary)",
+          padding: "1rem 2.5rem",
+          borderBottom: "1px solid var(--color-border-tertiary)",
           position: "sticky",
           top: 0,
-          background: "var(--color-background-primary)",
+          background: "var(--color-nav-bg)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
           zIndex: 100,
         }}
       >
@@ -526,21 +527,15 @@ export default function LandingPage() {
             style={{
               width: 32,
               height: 32,
-              borderRadius: 8,
-              background: "#0f766e",
+              borderRadius: 9,
+              background: "linear-gradient(135deg, #0f766e, #0d9488)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              boxShadow: "0 2px 8px rgba(15,118,110,0.3)",
             }}
           >
-            <span
-              style={{
-                color: "#fff",
-                fontSize: 16,
-                fontFamily: "monospace",
-                fontWeight: 700,
-              }}
-            >
+            <span style={{ color: "#fff", fontSize: 17, fontWeight: 800 }}>
               +
             </span>
           </div>
@@ -555,7 +550,7 @@ export default function LandingPage() {
             Dental<span style={{ color: "#0f766e" }}>IQ</span>
           </span>
         </div>
-        <div style={{ display: "flex", gap: 28, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
           {(
             [
               ["Features", "features"],
@@ -593,27 +588,47 @@ export default function LandingPage() {
               {label}
             </a>
           ))}
+          <ThemeToggle storageKey="diq_pub_theme" variant="icon" />
           <Link
             href="/login"
             style={{
               fontSize: 14,
               color: "var(--color-text-secondary)",
               textDecoration: "none",
+              transition: "color 0.15s",
             }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.color = "var(--color-text-primary)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.color = "var(--color-text-secondary)")
+            }
           >
             Sign in
           </Link>
           <button
             onClick={goSignup}
             style={{
-              background: "#0f766e",
+              background: "linear-gradient(135deg, #0f766e, #0d9488)",
               color: "#fff",
               border: "none",
-              borderRadius: 8,
-              padding: "8px 20px",
+              borderRadius: 9,
+              padding: "9px 22px",
               fontSize: 14,
               cursor: "pointer",
-              fontWeight: 500,
+              fontWeight: 600,
+              boxShadow: "0 2px 12px rgba(15,118,110,0.3)",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 4px 20px rgba(15,118,110,0.4)";
+              e.currentTarget.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow =
+                "0 2px 12px rgba(15,118,110,0.3)";
+              e.currentTarget.style.transform = "translateY(0)";
             }}
           >
             Get started →
@@ -625,7 +640,13 @@ export default function LandingPage() {
         style={{ maxWidth: 1100, margin: "0 auto", padding: "5rem 2rem 4rem" }}
       >
         {/* Hero */}
-        <div style={{ textAlign: "center", marginBottom: "4rem" }}>
+        <div
+          style={{
+            textAlign: "center",
+            marginBottom: "4rem",
+            animation: "fadeInUp 0.5s ease-out",
+          }}
+        >
           <div
             style={{
               display: "inline-block",
@@ -643,45 +664,72 @@ export default function LandingPage() {
           </div>
           <h1
             style={{
-              fontSize: 58,
-              fontWeight: 700,
-              lineHeight: 1.1,
-              marginBottom: "1.2rem",
+              fontSize: 62,
+              fontWeight: 800,
+              lineHeight: 1.08,
+              marginBottom: "1.25rem",
               color: "var(--color-text-primary)",
-              letterSpacing: "-0.04em",
+              letterSpacing: "-0.045em",
             }}
           >
             Insurance clarity,
             <br />
-            <em style={{ color: "#0f766e", fontStyle: "normal" }}>
+            <span
+              style={{
+                background:
+                  "linear-gradient(135deg, #0f766e, #0d9488, #0891b2)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
               instantly.
-            </em>
+            </span>
           </h1>
           <p
             style={{
               fontSize: 19,
               color: "var(--color-text-secondary)",
-              lineHeight: 1.6,
-              maxWidth: 580,
+              lineHeight: 1.65,
+              maxWidth: 560,
               margin: "0 auto 2.5rem",
             }}
           >
             AI-powered cost estimates, claim risk detection, and an intelligent
             copilot for Ontario dental clinics. Ready in minutes.
           </p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
             <button
               onClick={goSignup}
               style={{
-                background: "#0f766e",
+                background: "linear-gradient(135deg, #0f766e, #0d9488)",
                 color: "#fff",
                 border: "none",
-                borderRadius: 10,
+                borderRadius: 11,
                 padding: "14px 32px",
                 fontSize: 16,
                 cursor: "pointer",
-                fontWeight: 600,
-                boxShadow: "0 4px 16px rgba(15,118,110,0.3)",
+                fontWeight: 700,
+                boxShadow: "0 4px 24px rgba(15,118,110,0.35)",
+                transition: "all 0.2s",
+                letterSpacing: "-0.01em",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow =
+                  "0 8px 32px rgba(15,118,110,0.45)";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow =
+                  "0 4px 24px rgba(15,118,110,0.35)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}
             >
               Start free trial →
@@ -691,13 +739,25 @@ export default function LandingPage() {
               style={{
                 display: "flex",
                 alignItems: "center",
+                gap: 6,
                 background: "transparent",
-                color: "var(--color-text-primary)",
-                border: "0.5px solid var(--color-border-secondary)",
-                borderRadius: 10,
+                color: "var(--color-text-secondary)",
+                border: "1px solid var(--color-border-secondary)",
+                borderRadius: 11,
                 padding: "14px 28px",
                 fontSize: 16,
                 textDecoration: "none",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor =
+                  "var(--color-border-primary)";
+                e.currentTarget.style.color = "var(--color-text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor =
+                  "var(--color-border-secondary)";
+                e.currentTarget.style.color = "var(--color-text-secondary)";
               }}
             >
               Sign in
@@ -719,25 +779,47 @@ export default function LandingPage() {
               key={s.num}
               style={{
                 background: "var(--color-background-secondary)",
-                borderRadius: 14,
-                padding: "1.5rem",
-                border: "0.5px solid var(--color-border-tertiary)",
+                borderRadius: 16,
+                padding: "1.75rem",
+                border: "1px solid var(--color-border-tertiary)",
                 textAlign: "center",
+                transition: "all 0.2s ease",
+                cursor: "default",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-3px)";
+                e.currentTarget.style.boxShadow = "var(--shadow-md)";
+                e.currentTarget.style.borderColor =
+                  "var(--color-border-secondary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.borderColor =
+                  "var(--color-border-tertiary)";
               }}
             >
               <div
                 style={{
-                  fontSize: 36,
-                  fontWeight: 700,
-                  color: "#0f766e",
-                  letterSpacing: "-0.03em",
-                  marginBottom: 6,
+                  fontSize: 40,
+                  fontWeight: 800,
+                  background: "linear-gradient(135deg, #0f766e, #0d9488)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  letterSpacing: "-0.04em",
+                  marginBottom: 8,
+                  lineHeight: 1,
                 }}
               >
                 {s.num}
               </div>
               <div
-                style={{ fontSize: 13, color: "var(--color-text-secondary)" }}
+                style={{
+                  fontSize: 13,
+                  color: "var(--color-text-secondary)",
+                  lineHeight: 1.5,
+                }}
               >
                 {s.label}
               </div>
