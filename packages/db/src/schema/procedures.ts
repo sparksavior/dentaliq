@@ -19,6 +19,9 @@ export const procedures = sqliteTable("procedures", {
     .default(false),
   frequencyLimitMonths: integer("frequency_limit_months"),
   notes: text("notes"),
+  versionLabel: text("version_label").default("ODA 2024"),
+  effectiveDate: text("effective_date").default("2024-01-01"),
+  supersededBy: text("superseded_by"),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

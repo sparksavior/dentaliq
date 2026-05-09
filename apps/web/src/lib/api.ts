@@ -437,6 +437,41 @@ export const agentsApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  removeAgent: (token: string, data: { agentId: string; clinicId: string }) =>
+    tenantRequest<any>("/agents/remove", token, {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    }),
+};
+
+export interface AnalyticsOverview {
+  caseAcceptance: {
+    month: string;
+    total: number;
+    advanced: number;
+    rate: number;
+  }[];
+  newPatients: { month: string; count: number }[];
+  patientSummary: {
+    currentMonth: number;
+    priorMonth: number;
+    total: number;
+    momDelta: number | null;
+  };
+  arAging: {
+    band: string;
+    days: string;
+    amount: number;
+    count: number;
+    severity: "current" | "watch" | "overdue" | "critical";
+  }[];
+  arTotal: number;
+  generatedAt: string;
+}
+
+export const analyticsApi = {
+  getOverview: (token: string) =>
+    tenantRequest<AnalyticsOverview>("/analytics/overview", token),
 };
 
 export const billingApi = {

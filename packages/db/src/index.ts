@@ -13,6 +13,8 @@ import * as auditSchema from "./schema/audit";
 import * as proceduresSchema from "./schema/procedures";
 import * as agentTasksSchema from "./schema/agentTasks";
 import * as supportTicketsSchema from "./schema/supportTickets";
+import * as cdtUploadsSchema from "./schema/cdtUploads";
+import * as cdtSupplyMapSchema from "./schema/cdtSupplyMap";
 
 export const schema = {
   ...tenantsSchema,
@@ -21,6 +23,8 @@ export const schema = {
   ...proceduresSchema,
   ...agentTasksSchema,
   ...supportTicketsSchema,
+  ...cdtUploadsSchema,
+  ...cdtSupplyMapSchema,
 };
 
 export type Db = ReturnType<typeof getDb>;
@@ -74,3 +78,5 @@ export * from "./schema/audit";
 export * from "./schema/procedures";
 export * from "./schema/agentTasks";
 export * from "./schema/supportTickets";
+export * from "./schema/cdtUploads";
+export * from "./schema/cdtSupplyMap";

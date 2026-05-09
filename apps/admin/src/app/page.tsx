@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { adminApi, type Tenant, type SupportTicket } from "@/lib/api";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Users,
   Building2,
@@ -16,9 +17,17 @@ import {
   RefreshCw,
   TrendingUp,
   Clock,
+  FileUp,
+  BookOpen,
 } from "lucide-react";
 
-type NavTab = "clinics" | "tickets" | "metrics" | "health" | "audit";
+type NavTab =
+  | "clinics"
+  | "tickets"
+  | "metrics"
+  | "health"
+  | "audit"
+  | "feeSchedule";
 
 const PLAN_PRICES: Record<string, number> = {
   starter: 49,
@@ -167,6 +176,18 @@ export default function AdminDashboard() {
   const [replying, setReplying] = useState(false);
   const [healthLoading, setHealthLoading] = useState(false);
   const healthIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [cdtVersions, setCdtVersions] = useState<any[]>([]);
+  const [cdtUploading, setCdtUploading] = useState(false);
+  const [cdtForm, setCdtForm] = useState({
+    versionLabel: "",
+    effectiveDate: "",
+    format: "csv" as "csv" | "json",
+    file: null as File | null,
+  });
+  const [cdtUploadResult, setCdtUploadResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   const loadTickets = useCallback(async (t: string) => {
     try {
@@ -260,6 +281,17 @@ export default function AdminDashboard() {
     if (tab === "audit" && token) loadAudit(token);
   }, [tab, token, loadAudit]);
 
+  // Load CDT versions when fee schedule tab opens
+  useEffect(() => {
+    if (tab !== "feeSchedule" || !token) return;
+    adminApi
+      .getCdtVersions(token)
+      .then((res: any) => {
+        if (res.success) setCdtVersions(res.data ?? []);
+      })
+      .catch(() => {});
+  }, [tab, token]);
+
   const updateTicketStatus = async (id: string, status: string) => {
     if (!token) return;
     await adminApi.updateTicket(token, id, status);
@@ -325,6 +357,7 @@ export default function AdminDashboard() {
     { id: "metrics", label: "Metrics", icon: BarChart3 },
     { id: "health", label: "System Health", icon: Activity },
     { id: "audit", label: "Audit Log", icon: Clock },
+    { id: "feeSchedule", label: "Fee Schedule", icon: BookOpen },
   ];
 
   return (
@@ -456,6 +489,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+          <ThemeToggle />
           <button
             onClick={() => {
               localStorage.removeItem("token");
@@ -1834,6 +1868,441 @@ export default function AdminDashboard() {
                 )}
               </>
             )}
+          </>
+        )}
+        {/* ── FEE SCHEDULE TAB ───────────────────────────── */}
+        {tab === "feeSchedule" && (
+          <>
+            <div style={{ marginBottom: 32 }}>
+              <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8 }}>
+                Fee Schedule
+              </h1>
+              <p style={{ color: "var(--color-text-secondary)" }}>
+                Manage CDT code versions. Upload a new ODA fee guide annually to
+                keep estimates accurate. Old versions are kept for audit
+                history.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 24,
+                alignItems: "flex-start",
+              }}
+            >
+              {/* Upload form */}
+              <div
+                style={{
+                  background: "var(--color-background-primary)",
+                  borderRadius: 20,
+                  border: "1px solid var(--color-border-secondary)",
+                  padding: "2rem",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 24,
+                  }}
+                >
+                  <FileUp size={20} color="var(--color-accent)" />
+                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+                    Upload New Version
+                  </h2>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 16,
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--color-text-secondary)",
+                        display: "block",
+                        marginBottom: 6,
+                      }}
+                    >
+                      VERSION LABEL
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ODA 2025"
+                      value={cdtForm.versionLabel}
+                      onChange={(e) =>
+                        setCdtForm((f) => ({
+                          ...f,
+                          versionLabel: e.target.value,
+                        }))
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid var(--color-border-secondary)",
+                        background: "var(--color-background-secondary)",
+                        color: "var(--color-text-primary)",
+                        fontSize: 14,
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--color-text-secondary)",
+                        display: "block",
+                        marginBottom: 6,
+                      }}
+                    >
+                      EFFECTIVE DATE
+                    </label>
+                    <input
+                      type="date"
+                      value={cdtForm.effectiveDate}
+                      onChange={(e) =>
+                        setCdtForm((f) => ({
+                          ...f,
+                          effectiveDate: e.target.value,
+                        }))
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid var(--color-border-secondary)",
+                        background: "var(--color-background-secondary)",
+                        color: "var(--color-text-primary)",
+                        fontSize: 14,
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--color-text-secondary)",
+                        display: "block",
+                        marginBottom: 6,
+                      }}
+                    >
+                      FILE FORMAT
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {(["csv", "json"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          onClick={() =>
+                            setCdtForm((f) => ({ ...f, format: fmt }))
+                          }
+                          style={{
+                            padding: "8px 20px",
+                            borderRadius: 8,
+                            border: "1px solid",
+                            borderColor:
+                              cdtForm.format === fmt
+                                ? "var(--color-accent)"
+                                : "var(--color-border-secondary)",
+                            background:
+                              cdtForm.format === fmt
+                                ? "var(--color-accent-muted)"
+                                : "transparent",
+                            color:
+                              cdtForm.format === fmt
+                                ? "var(--color-accent)"
+                                : "var(--color-text-secondary)",
+                            fontWeight: 600,
+                            fontSize: 13,
+                            cursor: "pointer",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {fmt}
+                        </button>
+                      ))}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontSize: 12,
+                        color: "var(--color-text-secondary)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {cdtForm.format === "csv"
+                        ? "Required columns: code, description, category, typicalFee, requiresXray, requiresPreAuth, frequencyLimitMonths, notes"
+                        : "Array of objects: [{code, description, category, typicalFee, requiresXray, requiresPreAuth, frequencyLimitMonths?, notes?}]"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--color-text-secondary)",
+                        display: "block",
+                        marginBottom: 6,
+                      }}
+                    >
+                      FILE
+                    </label>
+                    <input
+                      type="file"
+                      accept={cdtForm.format === "csv" ? ".csv" : ".json"}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null;
+                        setCdtForm((prev) => ({ ...prev, file: f }));
+                        setCdtUploadResult(null);
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px dashed var(--color-border-secondary)",
+                        background: "var(--color-background-secondary)",
+                        color: "var(--color-text-primary)",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        cursor: "pointer",
+                      }}
+                    />
+                  </div>
+
+                  {cdtUploadResult && (
+                    <div
+                      style={{
+                        padding: "12px 16px",
+                        borderRadius: 10,
+                        background: cdtUploadResult.ok
+                          ? "rgba(16,185,129,0.08)"
+                          : "rgba(239,68,68,0.08)",
+                        border: `1px solid ${cdtUploadResult.ok ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`,
+                        color: cdtUploadResult.ok ? "#10b981" : "#ef4444",
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {cdtUploadResult.message}
+                    </div>
+                  )}
+
+                  <button
+                    disabled={
+                      cdtUploading ||
+                      !cdtForm.file ||
+                      !cdtForm.versionLabel ||
+                      !cdtForm.effectiveDate
+                    }
+                    onClick={async () => {
+                      if (
+                        !token ||
+                        !cdtForm.file ||
+                        !cdtForm.versionLabel ||
+                        !cdtForm.effectiveDate
+                      )
+                        return;
+                      setCdtUploading(true);
+                      setCdtUploadResult(null);
+                      try {
+                        const text = await cdtForm.file.text();
+                        const res = await adminApi.uploadCdtCodes(token, {
+                          versionLabel: cdtForm.versionLabel,
+                          effectiveDate: cdtForm.effectiveDate,
+                          filename: cdtForm.file.name,
+                          format: cdtForm.format,
+                          data: text,
+                        });
+                        if (res.success) {
+                          setCdtUploadResult({
+                            ok: true,
+                            message: `Uploaded ${res.data.inserted} codes. ${res.data.superseded} previous codes superseded.`,
+                          });
+                          setCdtForm((f) => ({
+                            ...f,
+                            versionLabel: "",
+                            effectiveDate: "",
+                            file: null,
+                          }));
+                          const refreshed =
+                            await adminApi.getCdtVersions(token);
+                          if (refreshed.success)
+                            setCdtVersions(refreshed.data ?? []);
+                        } else {
+                          setCdtUploadResult({
+                            ok: false,
+                            message: res.error ?? "Upload failed",
+                          });
+                        }
+                      } catch (err: any) {
+                        setCdtUploadResult({
+                          ok: false,
+                          message: err.message ?? "Upload failed",
+                        });
+                      } finally {
+                        setCdtUploading(false);
+                      }
+                    }}
+                    style={{
+                      padding: "12px",
+                      borderRadius: 10,
+                      border: "none",
+                      background:
+                        cdtUploading ||
+                        !cdtForm.file ||
+                        !cdtForm.versionLabel ||
+                        !cdtForm.effectiveDate
+                          ? "var(--color-text-secondary)"
+                          : "var(--color-accent)",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 14,
+                      cursor:
+                        cdtUploading ||
+                        !cdtForm.file ||
+                        !cdtForm.versionLabel ||
+                        !cdtForm.effectiveDate
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    {cdtUploading ? "Uploading…" : "Upload & Activate Version"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Version history */}
+              <div
+                style={{
+                  background: "var(--color-background-primary)",
+                  borderRadius: 20,
+                  border: "1px solid var(--color-border-secondary)",
+                  padding: "2rem",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 24,
+                  }}
+                >
+                  <BookOpen size={20} color="var(--color-accent)" />
+                  <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>
+                    Version History
+                  </h2>
+                </div>
+
+                {cdtVersions.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "3rem 1rem",
+                      color: "var(--color-text-secondary)",
+                      fontSize: 14,
+                    }}
+                  >
+                    No versions found. The initial seed will appear here after
+                    the estimate service starts.
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                    }}
+                  >
+                    {cdtVersions.map((v: any) => (
+                      <div
+                        key={v.id}
+                        style={{
+                          padding: "16px",
+                          borderRadius: 12,
+                          border: "1px solid var(--color-border-secondary)",
+                          background:
+                            v.status === "active"
+                              ? "rgba(16,185,129,0.04)"
+                              : "var(--color-background-secondary)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: 6,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 15,
+                              color: "var(--color-text-primary)",
+                            }}
+                          >
+                            {v.version_label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: "3px 10px",
+                              borderRadius: 20,
+                              background:
+                                v.status === "active"
+                                  ? "rgba(16,185,129,0.12)"
+                                  : "rgba(107,114,128,0.1)",
+                              color:
+                                v.status === "active" ? "#10b981" : "#6b7280",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {v.status}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 16,
+                            fontSize: 12,
+                            color: "var(--color-text-secondary)",
+                          }}
+                        >
+                          <span>
+                            Effective:{" "}
+                            {new Date(v.effective_date).toLocaleDateString(
+                              "en-CA",
+                            )}
+                          </span>
+                          <span>{v.record_count} codes</span>
+                          <span>
+                            Uploaded by {v.uploaded_by} ·{" "}
+                            {new Date(v.created_at).toLocaleDateString("en-CA")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         )}
       </main>
