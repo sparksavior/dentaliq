@@ -1,0 +1,47 @@
+# Default values for base-service.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: dentaliq/service
+  pullPolicy: IfNotPresent
+  # Override in CI/CD: helm upgrade --set image.tag=$(git rev-parse --short HEAD)
+  # Never use "latest" in production — pin to a specific git SHA or semver tag.
+  tag: "latest"  # CI_OVERRIDE: set to git SHA or release tag before deploying
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+env:
+  # Example of how to inject environment variables
+  # PORT: "3001"
+  # DB_TYPE: "postgres"
+
+# Autoscaling configuration
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http

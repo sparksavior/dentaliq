@@ -12,18 +12,29 @@
     "db:migrate": "turbo run db:migrate --filter=@dentaliq/db",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "seed": "pnpm --filter @dentaliq/auth-service run seed"
+    "seed": "pnpm --filter @dentaliq/auth-service run seed",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
-    "typescript": "^5.4.0",
     "@types/node": "^20.0.0",
+    "eslint": "^8.57.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.2.0",
-    "eslint": "^8.57.0"
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@9.1.0"
+  "packageManager": "pnpm@9.1.0",
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "prettier --write"
+    ],
+    "*.{json,css,md}": [
+      "prettier --write"
+    ]
+  }
 }
