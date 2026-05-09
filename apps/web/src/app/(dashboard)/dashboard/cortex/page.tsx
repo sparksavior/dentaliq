@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useClinic } from "@/contexts/clinic-context";
-import { estimateApi, agentsApi } from "@/lib/api";
+import { agentsApi } from "@/lib/api";
 import {
   Activity,
   Zap,
@@ -15,299 +15,284 @@ import {
   TrendingUp,
   CheckCircle2,
   Clock,
-  CalendarDays,
   Users,
   ChevronRight,
+  RefreshCw,
+  AlertCircle,
+  XCircle,
+  Terminal,
 } from "lucide-react";
 
+// ── Agent catalogue ───────────────────────────────────────
 const CORTEX_AGENTS = [
   {
     id: "billing",
-    name: "Cortex Billing Agent",
+    name: "Billing Agent",
     codename: "CORTEX-01",
     role: "Revenue Compliance Specialist",
     avatar: "💰",
     color: "#6366f1",
     glow: "rgba(99,102,241,0.25)",
     bg: "rgba(99,102,241,0.08)",
-    status: "available" as const,
     capabilities: [
-      "Pre-auth narrative generation",
-      "CDCP denial prevention",
-      "Claim risk mitigation",
-      "Overnight batch processing",
-    ],
-    actions: [
-      "Scanned EOB for patient John D.",
-      "Drafted appeal for CDCP denial",
-      "Verified insurance breakdown",
-      "Submitted pre-determination",
+      "Nightly scan of high-risk estimates",
+      "AI-drafted pre-authorization letters",
+      "Prevents $25–50K/yr in denied claims",
+      "Human review before any submission",
     ],
   },
   {
     id: "recall",
-    name: "Cortex Recall Agent",
+    name: "Recall Agent",
     codename: "CORTEX-02",
     role: "Patient Reactivation Specialist",
     avatar: "📞",
     color: "#0ea5e9",
     glow: "rgba(14,165,233,0.25)",
     bg: "rgba(14,165,233,0.08)",
-    status: "available" as const,
     capabilities: [
-      "Hygiene recall automation",
-      "SMS/email outreach",
-      "Treatment follow-up",
-      "Lapsed patient recovery",
-    ],
-    actions: [
-      "Sent 45 hygiene recall SMS",
-      "Booked 3 lapsed patients",
-      "Analyzed unscheduled treatments",
-      "Followed up on unscheduled crown",
+      "Finds patients 6+ months overdue",
+      "Personalized (not template) messages",
+      "Recovers 3–8 patients per month",
+      "Each patient = ~$500–1,200/year",
     ],
   },
   {
     id: "review",
-    name: "Cortex Review Agent",
+    name: "Review Agent",
     codename: "CORTEX-03",
     role: "Reputation Manager",
     avatar: "⭐",
     color: "#f59e0b",
     glow: "rgba(245,158,11,0.25)",
     bg: "rgba(245,158,11,0.08)",
-    status: "available" as const,
     capabilities: [
-      "Review solicitation",
-      "Google review responses",
-      "Sentiment analysis",
-      "NPS tracking",
-    ],
-    actions: [
-      "Replied to 5-star Google review",
-      "Sent NPS survey to 12 patients",
-      "Flagged negative feedback for review",
-      "Analyzed weekly sentiment trends",
+      "Targets recently-completed patients",
+      "Personalized review requests per visit",
+      "No duplicate requests — smart dedup",
+      "Each 0.1★ gain drives new patients",
     ],
   },
   {
     id: "supply",
-    name: "Cortex Supply Agent",
+    name: "Supply Agent",
     codename: "CORTEX-04",
     role: "Inventory Optimizer",
     avatar: "📦",
     color: "#10b981",
     glow: "rgba(16,185,129,0.25)",
     bg: "rgba(16,185,129,0.08)",
-    status: "available" as const,
     capabilities: [
-      "Inventory monitoring",
-      "Price comparison",
-      "Auto-reorder triggers",
-      "Supplier negotiation",
-    ],
-    actions: [
-      "Reordered lidocaine from Henry Schein",
-      "Found 12% cheaper gloves",
-      "Logged incoming supply shipment",
-      "Audited operatory 3 inventory",
+      "Analyzes 30-day CDT procedure volume",
+      "Predicts supply shortages before they hit",
+      "Flags high-volume categories for reorder",
+      "Prevents costly emergency orders",
     ],
   },
   {
     id: "treatment",
-    name: "Cortex Treatment Coordinator",
+    name: "Treatment Coordinator",
     codename: "CORTEX-05",
     role: "Case Acceptance Specialist",
     avatar: "🦷",
     color: "#ec4899",
     glow: "rgba(236,72,153,0.25)",
     bg: "rgba(236,72,153,0.08)",
-    status: "available" as const,
     capabilities: [
-      "Implant/Invisalign follow-up",
-      "Treatment plan nurturing",
-      "Patient education",
-      "Financial option presentation",
-    ],
-    actions: [
-      "Sent Invisalign financing options",
-      "Followed up on implant case",
-      "Drafted treatment presentation",
-      "Calculated out-of-pocket costs",
+      "Tracks unaccepted estimates 14+ days old",
+      "Empathetic follow-ups, not sales scripts",
+      "30–40% of declined plans can be recovered",
+      "Average case value $1,500–5,000",
     ],
   },
   {
     id: "hygienist",
-    name: "Cortex Hygienist Agent",
+    name: "Hygienist Agent",
     codename: "CORTEX-06",
     role: "Schedule Optimizer",
     avatar: "📅",
     color: "#14b8a6",
     glow: "rgba(20,184,166,0.25)",
     bg: "rgba(20,184,166,0.08)",
-    status: "available" as const,
     capabilities: [
-      "Last-minute fill scheduling",
-      "Cancellation recovery",
-      "Chair time optimization",
-      "Waitlist management",
-    ],
-    actions: [
-      "Filled 2pm hygiene cancellation",
-      "Optimized tomorrow's schedule",
-      "Contacted 5 waitlisted patients",
-      "Resolved double-booking conflict",
+      "Finds patients 9+ months overdue for hygiene",
+      "Morning scheduling report with priorities",
+      "Fills same-week cancellation gaps",
+      "Empty chair = $150–300/hr lost revenue",
     ],
   },
 ];
 
+const AGENT_MAP = Object.fromEntries(CORTEX_AGENTS.map((a) => [a.id, a]));
+
+// ── Task-type → human label ───────────────────────────────
+const TASK_LABELS: Record<string, string> = {
+  pre_auth_letter: "Drafted pre-auth letter",
+  recall_message: "Drafted recall message",
+  review_request: "Drafted review request",
+  supply_order: "Created supply reorder",
+  treatment_followup: "Drafted treatment follow-up",
+  schedule_optimization: "Created schedule report",
+  cdt_version_reminder: "Created CDT staleness reminder",
+};
+
+function timeAgo(iso: string): string {
+  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
+
+// ─────────────────────────────────────────────────────────
 export default function CortexCommandCenter() {
   const router = useRouter();
   const { accessToken } = useAuth();
   const { selectedClinicId } = useClinic();
 
   const [rentedAgents, setRentedAgents] = useState<any[]>([]);
+
+  // Activity feed state
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [agentMeta, setAgentMeta] = useState<
+    Record<
+      string,
+      { lastAt: string; pending: number; approved: number; total: number }
+    >
+  >({});
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+  const [devView, setDevView] = useState(false);
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  // KPI stats
   const [agentStats, setAgentStats] = useState<{
     pending: number;
     approved: number;
+    byAgent: { agent_id: string; status: string; count: number }[];
   } | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-
-  const [tasksCompleted, setTasksCompleted] = useState(0);
-  const [patientsEngaged, setPatientsEngaged] = useState(0);
-  const [animatedRevenue, setAnimatedRevenue] = useState(0);
-
-  const [liveLog, setLiveLog] = useState<
-    {
-      id: string;
-      time: string;
-      agentId: string;
-      agentName: string;
-      action: string;
-      type: string;
-      color: string;
-    }[]
-  >([]);
 
   const agentManagerUrl =
     process.env.NEXT_PUBLIC_AGENT_MANAGER_URL ?? "http://localhost:3006";
 
+  // Fetch rented agents
   useEffect(() => {
-    if (accessToken) {
+    if (accessToken)
       agentsApi
         .getRentedAgents(accessToken)
         .then(setRentedAgents)
         .catch(() => {});
-    }
   }, [accessToken]);
 
-  useEffect(() => {
-    if (!accessToken) return;
-    setStatsLoading(true);
-    fetch(`${agentManagerUrl}/stats`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((r) => r.json())
-      .then((json) => {
-        if (json.success) setAgentStats(json.data.tasks);
-      })
-      .catch(() => {})
-      .finally(() => setStatsLoading(false));
-  }, [accessToken, agentManagerUrl]);
+  // Fetch activity feed + stats
+  const fetchActivity = useCallback(
+    async (quiet = false) => {
+      if (!accessToken) return;
+      if (!quiet) setActivityLoading(true);
+      try {
+        const [actRes, statsRes] = await Promise.all([
+          fetch(`${agentManagerUrl}/activity?limit=40`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }),
+          fetch(`${agentManagerUrl}/stats`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }),
+        ]);
+
+        if (actRes.ok) {
+          const actJson = await actRes.json();
+          if (actJson.success) {
+            setTasks(actJson.data.tasks ?? []);
+            setAgentMeta(actJson.data.agentMeta ?? {});
+          }
+        }
+        if (statsRes.ok) {
+          const statsJson = await statsRes.json();
+          if (statsJson.success)
+            setAgentStats({
+              ...statsJson.data.tasks,
+              byAgent: statsJson.data.byAgent ?? [],
+            });
+        }
+        setLastFetched(new Date());
+      } catch {
+        /* service may be down */
+      } finally {
+        setActivityLoading(false);
+      }
+    },
+    [accessToken, agentManagerUrl],
+  );
 
   useEffect(() => {
-    const activeAgentTypes = CORTEX_AGENTS.filter((agent) =>
-      rentedAgents.some(
-        (r) => r.clinic_id === selectedClinicId && r.agent_id === agent.id,
-      ),
-    );
+    fetchActivity();
+    const id = setInterval(() => fetchActivity(true), 30_000);
+    return () => clearInterval(id);
+  }, [fetchActivity]);
 
-    if (activeAgentTypes.length === 0) return;
-
-    const generateLog = () => {
-      const now = new Date();
-      const timeStr =
-        now.toLocaleTimeString("en-US", {
-          hour12: false,
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }) + `.${String(now.getMilliseconds()).padStart(3, "0")}`;
-
-      const agent =
-        activeAgentTypes[Math.floor(Math.random() * activeAgentTypes.length)];
-      const action =
-        agent.actions[Math.floor(Math.random() * agent.actions.length)];
-
-      setLiveLog((prev) => {
-        const newLogs = [
-          {
-            id: Math.random().toString(36).substring(7),
-            time: timeStr,
-            agentId: agent.codename,
-            agentName: agent.name,
-            action: action,
-            type: "done",
-            color: agent.color,
-          },
-          ...prev,
-        ];
-        return newLogs.slice(0, 50);
-      });
-
-      setTasksCompleted((prev) => prev + 1);
-      if (Math.random() > 0.7) setPatientsEngaged((prev) => prev + 1);
-      if (Math.random() > 0.8)
-        setAnimatedRevenue(
-          (prev) => prev + Math.floor(Math.random() * 50) + 10,
-        );
-    };
-
-    for (let i = 0; i < 5; i++) generateLog();
-
-    let timeoutId: NodeJS.Timeout;
-    const loop = () => {
-      generateLog();
-      timeoutId = setTimeout(loop, Math.random() * 2200 + 800);
-    };
-    timeoutId = setTimeout(loop, 1000);
-
-    return () => clearTimeout(timeoutId);
-  }, [selectedClinicId, rentedAgents]);
-
+  // Derived
   const clinicAgents = rentedAgents.filter(
     (r) => r.clinic_id === selectedClinicId,
   );
-  const activeAgentTypes = CORTEX_AGENTS.filter((agent) =>
-    clinicAgents.some((r) => r.agent_id === agent.id),
+  const activeAgentTypes = CORTEX_AGENTS.filter((a) =>
+    clinicAgents.some((r) => r.agent_id === a.id),
+  );
+
+  const approvedByAgent: Record<string, number> = {};
+  for (const row of agentStats?.byAgent ?? []) {
+    if (row.status === "approved")
+      approvedByAgent[row.agent_id] =
+        (approvedByAgent[row.agent_id] ?? 0) + Number(row.count);
+  }
+
+  const HOURS_PER_TASK: Record<string, number> = {
+    billing: 0.75,
+    recall: 0.33,
+    review: 0.08,
+    supply: 0.5,
+    treatment: 0.5,
+    hygienist: 0.25,
+  };
+  const REVENUE_PER_TASK: Record<string, number> = {
+    billing: 800,
+    recall: 600,
+    treatment: 2500,
+    hygienist: 200,
+  };
+
+  const hoursSaved = Object.entries(approvedByAgent).reduce(
+    (s, [id, n]) => s + n * (HOURS_PER_TASK[id] ?? 0),
+    0,
+  );
+  const revenueImpact = Object.entries(approvedByAgent).reduce(
+    (s, [id, n]) => s + n * (REVENUE_PER_TASK[id] ?? 0),
+    0,
   );
 
   const kpiStats = [
     {
       label: "Pending Review",
-      value: statsLoading ? "…" : (agentStats?.pending ?? 0).toString(),
+      value: (agentStats?.pending ?? 0).toString(),
       icon: Clock,
       color: "#f59e0b",
       bg: "rgba(245,158,11,0.08)",
-      gradient: "linear-gradient(135deg, #f59e0b, #d97706)",
+      gradient: "linear-gradient(135deg,#f59e0b,#d97706)",
     },
     {
       label: "Tasks Approved",
-      value: statsLoading ? "…" : (agentStats?.approved ?? 0).toString(),
+      value: (agentStats?.approved ?? 0).toString(),
       icon: CheckCircle2,
       color: "#10b981",
       bg: "rgba(16,185,129,0.08)",
-      gradient: "linear-gradient(135deg, #10b981, #059669)",
+      gradient: "linear-gradient(135deg,#10b981,#059669)",
     },
     {
       label: "Active Agents",
-      value: rentedAgents
-        .filter((r) => r.clinic_id === selectedClinicId)
-        .length.toString(),
+      value: clinicAgents.length.toString(),
       icon: Zap,
       color: "#6366f1",
       bg: "rgba(99,102,241,0.08)",
-      gradient: "linear-gradient(135deg, #6366f1, #4f46e5)",
+      gradient: "linear-gradient(135deg,#6366f1,#4f46e5)",
     },
     {
       label: "Total Agents",
@@ -315,7 +300,26 @@ export default function CortexCommandCenter() {
       icon: Users,
       color: "#0ea5e9",
       bg: "rgba(14,165,233,0.08)",
-      gradient: "linear-gradient(135deg, #0ea5e9, #0284c7)",
+      gradient: "linear-gradient(135deg,#0ea5e9,#0284c7)",
+    },
+    {
+      label: "Hours Saved",
+      value: hoursSaved > 0 ? `${hoursSaved.toFixed(1)}h` : "0h",
+      icon: TrendingUp,
+      color: "#8b5cf6",
+      bg: "rgba(139,92,246,0.08)",
+      gradient: "linear-gradient(135deg,#8b5cf6,#7c3aed)",
+    },
+    {
+      label: "Revenue Impact",
+      value:
+        revenueImpact > 0
+          ? `$${revenueImpact >= 1000 ? `${(revenueImpact / 1000).toFixed(1)}K` : revenueImpact}`
+          : "$0",
+      icon: BarChart3,
+      color: "#ec4899",
+      bg: "rgba(236,72,153,0.08)",
+      gradient: "linear-gradient(135deg,#ec4899,#db2777)",
     },
   ];
 
@@ -329,7 +333,7 @@ export default function CortexCommandCenter() {
         animation: "fadeInUp 0.35s ease-out",
       }}
     >
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────── */}
       <div
         style={{
           position: "relative",
@@ -339,13 +343,12 @@ export default function CortexCommandCenter() {
           marginBottom: "2rem",
           padding: "1.75rem 2rem",
           background:
-            "linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(139,92,246,0.04) 50%, rgba(14,165,233,0.03) 100%)",
+            "linear-gradient(135deg,rgba(99,102,241,0.06) 0%,rgba(139,92,246,0.04) 50%,rgba(14,165,233,0.03) 100%)",
           border: "1px solid rgba(99,102,241,0.15)",
           borderRadius: 20,
           overflow: "hidden",
         }}
       >
-        {/* Decorative blob */}
         <div
           style={{
             position: "absolute",
@@ -355,20 +358,7 @@ export default function CortexCommandCenter() {
             height: 200,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)",
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: -30,
-            left: 100,
-            width: 150,
-            height: 150,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)",
+              "radial-gradient(circle,rgba(99,102,241,0.12) 0%,transparent 70%)",
             pointerEvents: "none",
           }}
         />
@@ -386,7 +376,7 @@ export default function CortexCommandCenter() {
                 width: 48,
                 height: 48,
                 borderRadius: 14,
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -403,7 +393,7 @@ export default function CortexCommandCenter() {
                   margin: 0,
                   letterSpacing: "-0.03em",
                   background:
-                    "linear-gradient(135deg, var(--color-text-primary) 60%, #6366f1)",
+                    "linear-gradient(135deg,var(--color-text-primary) 60%,#6366f1)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   backgroundClip: "text",
@@ -454,7 +444,6 @@ export default function CortexCommandCenter() {
             workforce.
           </p>
         </div>
-
         <div style={{ display: "flex", gap: 8, position: "relative" }}>
           <Link
             href="/dashboard/cortex/inbox"
@@ -470,17 +459,6 @@ export default function CortexCommandCenter() {
               fontWeight: 600,
               textDecoration: "none",
               boxShadow: "0 2px 8px rgba(99,102,241,0.3)",
-              transition: "all 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-1px)";
-              e.currentTarget.style.boxShadow =
-                "0 6px 16px rgba(99,102,241,0.4)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow =
-                "0 2px 8px rgba(99,102,241,0.3)";
             }}
           >
             Approval Inbox
@@ -501,11 +479,11 @@ export default function CortexCommandCenter() {
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
+      {/* ── KPI grid ────────────────────────────────────────── */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(6,1fr)",
           gap: 16,
           marginBottom: "2rem",
         }}
@@ -522,22 +500,8 @@ export default function CortexCommandCenter() {
               overflow: "hidden",
               boxShadow: "var(--shadow-xs)",
               animation: `fadeInUp 0.4s ease-out ${i * 0.06}s both`,
-              transition: "all 0.2s ease",
-              cursor: "default",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-2px)";
-              e.currentTarget.style.boxShadow = `0 8px 24px ${stat.bg.replace("0.08", "0.15")}`;
-              e.currentTarget.style.borderColor = stat.color + "40";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "none";
-              e.currentTarget.style.boxShadow = "var(--shadow-xs)";
-              e.currentTarget.style.borderColor =
-                "var(--color-border-secondary)";
             }}
           >
-            {/* Top accent stripe */}
             <div
               style={{
                 position: "absolute",
@@ -545,7 +509,7 @@ export default function CortexCommandCenter() {
                 left: 0,
                 right: 0,
                 height: 3,
-                background: `linear-gradient(90deg, transparent, ${stat.color}, transparent)`,
+                background: `linear-gradient(90deg,transparent,${stat.color},transparent)`,
                 borderRadius: "16px 16px 0 0",
               }}
             />
@@ -600,14 +564,15 @@ export default function CortexCommandCenter() {
         ))}
       </div>
 
+      {/* ── Main 2-col layout ───────────────────────────────── */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 360px",
+          gridTemplateColumns: "1fr 380px",
           gap: "1.5rem",
         }}
       >
-        {/* Left Col: Active Roster */}
+        {/* Left — Active Workforce ──────────────────────────── */}
         <div
           style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
         >
@@ -626,7 +591,6 @@ export default function CortexCommandCenter() {
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                color: "var(--color-text-primary)",
               }}
             >
               <Shield size={18} color="var(--color-accent)" /> Active Digital
@@ -658,30 +622,21 @@ export default function CortexCommandCenter() {
                 borderRadius: 24,
               }}
             >
-              <div
+              <BrainCircuit
+                size={32}
+                color="var(--color-text-secondary)"
                 style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: "50%",
-                  background: "var(--color-background-secondary)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  opacity: 0.4,
                   margin: "0 auto 1.25rem",
+                  display: "block",
                 }}
-              >
-                <BrainCircuit
-                  size={32}
-                  color="var(--color-text-secondary)"
-                  style={{ opacity: 0.4 }}
-                />
-              </div>
+              />
               <h3
                 style={{
                   fontSize: 17,
                   fontWeight: 700,
                   color: "var(--color-text-primary)",
-                  margin: "0 0 8px 0",
+                  margin: "0 0 8px",
                 }}
               >
                 No Agents Assigned
@@ -691,13 +646,9 @@ export default function CortexCommandCenter() {
                   color: "var(--color-text-secondary)",
                   margin: "0 0 20px",
                   fontSize: 14,
-                  maxWidth: 360,
-                  marginLeft: "auto",
-                  marginRight: "auto",
                 }}
               >
-                This clinic does not have any active digital employees. Head to
-                Settings to hire your first agent.
+                This clinic doesn't have any active digital employees.
               </p>
               <Link
                 href="/dashboard/settings"
@@ -721,14 +672,15 @@ export default function CortexCommandCenter() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
+                gridTemplateColumns: "repeat(2,1fr)",
                 gap: 16,
               }}
             >
               {activeAgentTypes.map((agent, idx) => {
-                const activeInstances = clinicAgents.filter(
-                  (r) => r.agent_id === agent.id,
-                );
+                const meta = agentMeta[agent.id];
+                const pending = meta?.pending ?? 0;
+                const approved = meta?.approved ?? 0;
+                const lastAt = meta?.lastAt;
 
                 return (
                   <div
@@ -758,7 +710,6 @@ export default function CortexCommandCenter() {
                       e.currentTarget.style.boxShadow = "var(--shadow-xs)";
                     }}
                   >
-                    {/* Corner gradient */}
                     <div
                       style={{
                         position: "absolute",
@@ -766,41 +717,46 @@ export default function CortexCommandCenter() {
                         right: 0,
                         width: 80,
                         height: 80,
-                        background: `radial-gradient(circle at top right, ${agent.bg}, transparent 70%)`,
+                        background: `radial-gradient(circle at top right,${agent.bg},transparent 70%)`,
                         pointerEvents: "none",
                       }}
                     />
 
+                    {/* Last-active badge */}
                     <div
                       style={{
                         position: "absolute",
                         top: 14,
                         right: 14,
-                        background: "rgba(16,185,129,0.1)",
-                        border: "1px solid rgba(16,185,129,0.2)",
+                        background: lastAt
+                          ? "rgba(16,185,129,0.1)"
+                          : "rgba(100,116,139,0.1)",
+                        border: `1px solid ${lastAt ? "rgba(16,185,129,0.2)" : "rgba(100,116,139,0.2)"}`,
                         borderRadius: 20,
                         padding: "3px 9px",
                         fontSize: 10,
                         fontWeight: 700,
-                        color: "#10b981",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
+                        color: lastAt
+                          ? "#10b981"
+                          : "var(--color-text-tertiary)",
                         display: "flex",
                         alignItems: "center",
                         gap: 5,
                       }}
                     >
-                      <span
-                        style={{
-                          width: 5,
-                          height: 5,
-                          borderRadius: "50%",
-                          background: "#10b981",
-                          display: "inline-block",
-                          animation: "pulseDot 2s infinite",
-                        }}
-                      />
-                      {activeInstances.length}x
+                      {lastAt && (
+                        <span
+                          style={{
+                            width: 5,
+                            height: 5,
+                            borderRadius: "50%",
+                            background: "#10b981",
+                            display: "inline-block",
+                            animation: "pulseDot 2s infinite",
+                          }}
+                        />
+                      )}
+                      {lastAt ? timeAgo(lastAt) : "No runs yet"}
                     </div>
 
                     <div
@@ -817,7 +773,6 @@ export default function CortexCommandCenter() {
                           height: 52,
                           borderRadius: 15,
                           background: agent.bg,
-                          color: agent.color,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -849,7 +804,7 @@ export default function CortexCommandCenter() {
                             lineHeight: 1.3,
                           }}
                         >
-                          {agent.name.replace("Cortex ", "")}
+                          {agent.name}
                         </div>
                       </div>
                     </div>
@@ -903,6 +858,44 @@ export default function CortexCommandCenter() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Task count strip */}
+                    {meta && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          marginTop: 14,
+                          paddingTop: 12,
+                          borderTop: `1px solid ${agent.color}18`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            fontSize: 11,
+                            color: "#f59e0b",
+                          }}
+                        >
+                          <Clock size={11} />
+                          {pending} pending
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            fontSize: 11,
+                            color: "#10b981",
+                          }}
+                        >
+                          <CheckCircle2 size={11} />
+                          {approved} approved
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -910,7 +903,7 @@ export default function CortexCommandCenter() {
           )}
         </div>
 
-        {/* Right Col: Live Neural Stream */}
+        {/* Right — Activity Feed ───────────────────────────── */}
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div
             style={{
@@ -920,11 +913,11 @@ export default function CortexCommandCenter() {
               flexDirection: "column",
               overflow: "hidden",
               height: 560,
-              boxShadow: "0 0 0 1px #27272a, 0 20px 60px rgba(0,0,0,0.3)",
+              boxShadow: "0 0 0 1px #27272a,0 20px 60px rgba(0,0,0,0.3)",
               position: "relative",
             }}
           >
-            {/* Terminal top rainbow gradient line */}
+            {/* Top rainbow line */}
             <div
               style={{
                 position: "absolute",
@@ -933,10 +926,11 @@ export default function CortexCommandCenter() {
                 right: 0,
                 height: 2,
                 background:
-                  "linear-gradient(90deg, #6366f1, #0ea5e9, #10b981, #f59e0b, #ec4899)",
+                  "linear-gradient(90deg,#6366f1,#0ea5e9,#10b981,#f59e0b,#ec4899)",
               }}
             />
 
+            {/* Header bar */}
             <div
               style={{
                 padding: "1.1rem 1.2rem",
@@ -948,7 +942,6 @@ export default function CortexCommandCenter() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {/* macOS-style traffic lights */}
                 <div style={{ display: "flex", gap: 6 }}>
                   {["#ef4444", "#f59e0b", "#10b981"].map((c) => (
                     <div
@@ -974,41 +967,96 @@ export default function CortexCommandCenter() {
                     letterSpacing: "0.1em",
                   }}
                 >
-                  neural.stream
+                  {devView ? "neural.stream" : "agent.activity"}
                 </h2>
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: "rgba(239, 68, 68, 0.12)",
-                  color: "#ef4444",
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                }}
-              >
-                <span
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {/* Dev view toggle */}
+                <button
+                  onClick={() => setDevView(!devView)}
+                  title={
+                    devView ? "Switch to activity feed" : "Switch to dev view"
+                  }
                   style={{
-                    width: 5,
-                    height: 5,
-                    borderRadius: "50%",
-                    background: "#ef4444",
-                    display: "inline-block",
-                    boxShadow: "0 0 6px #ef4444",
-                    animation: "pulseDot 1.5s infinite",
+                    background: devView
+                      ? "rgba(99,102,241,0.2)"
+                      : "transparent",
+                    border: `1px solid ${devView ? "rgba(99,102,241,0.4)" : "#3f3f46"}`,
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    color: devView ? "#818cf8" : "#52525b",
+                    fontSize: 10,
+                    fontFamily: "monospace",
+                    fontWeight: 600,
                   }}
-                />
-                REC
+                >
+                  <Terminal size={11} />
+                  DEV
+                </button>
+                {/* Refresh */}
+                <button
+                  onClick={() => fetchActivity(true)}
+                  title="Refresh feed"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #3f3f46",
+                    borderRadius: 6,
+                    padding: "3px 7px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    color: "#52525b",
+                  }}
+                >
+                  <RefreshCw
+                    size={11}
+                    style={{
+                      animation: activityLoading
+                        ? "spin 0.7s linear infinite"
+                        : "none",
+                    }}
+                  />
+                </button>
+                {/* Live indicator */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    background: "rgba(16,185,129,0.1)",
+                    color: "#10b981",
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    border: "1px solid rgba(16,185,129,0.2)",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: "#10b981",
+                      display: "inline-block",
+                      boxShadow: "0 0 6px #10b981",
+                      animation: "pulseDot 1.5s infinite",
+                    }}
+                  />
+                  LIVE
+                </div>
               </div>
             </div>
 
+            {/* Feed body */}
             <div
+              ref={feedRef}
               style={{
                 flex: 1,
                 overflowY: "auto",
@@ -1016,7 +1064,36 @@ export default function CortexCommandCenter() {
                 background: "#09090b",
               }}
             >
-              {activeAgentTypes.length === 0 ? (
+              {activityLoading && tasks.length === 0 ? (
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#3f3f46",
+                  }}
+                >
+                  <RefreshCw
+                    size={22}
+                    style={{
+                      marginBottom: 12,
+                      opacity: 0.3,
+                      animation: "spin 1s linear infinite",
+                    }}
+                  />
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontFamily: "monospace",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    loading activity...
+                  </div>
+                </div>
+              ) : tasks.length === 0 ? (
                 <div
                   style={{
                     height: "100%",
@@ -1031,88 +1108,222 @@ export default function CortexCommandCenter() {
                   <div
                     style={{
                       fontSize: 12,
-                      fontWeight: 600,
                       fontFamily: "monospace",
                       letterSpacing: "0.06em",
                     }}
                   >
-                    awaiting agents...
+                    awaiting first agent run...
                   </div>
                 </div>
-              ) : (
+              ) : devView ? (
+                /* Dev view — raw monospace log style */
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 1 }}
                 >
-                  {liveLog.map((log, i) => (
-                    <div
-                      key={log.id}
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        padding: "6px 4px",
-                        borderBottom: "1px solid #18181b",
-                        fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                        animation: i === 0 ? "fadeIn 0.3s ease-out" : undefined,
-                      }}
-                    >
+                  {tasks.map((task, i) => {
+                    const agent = AGENT_MAP[task.agentId];
+                    const color = agent?.color ?? "#71717a";
+                    const codename =
+                      agent?.codename ?? task.agentId.toUpperCase();
+                    const timeStr = new Date(task.createdAt).toLocaleTimeString(
+                      "en-US",
+                      {
+                        hour12: false,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      },
+                    );
+                    return (
                       <div
+                        key={task.id}
                         style={{
-                          fontSize: 9,
-                          color: "#3f3f46",
-                          flexShrink: 0,
-                          marginTop: 3,
-                          minWidth: 68,
+                          display: "flex",
+                          gap: 10,
+                          padding: "6px 4px",
+                          borderBottom: "1px solid #18181b",
+                          fontFamily: '"JetBrains Mono","Fira Code",monospace',
+                          animation:
+                            i === 0 ? "fadeIn 0.3s ease-out" : undefined,
                         }}
                       >
-                        {log.time}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           style={{
+                            fontSize: 9,
+                            color: "#3f3f46",
+                            flexShrink: 0,
+                            marginTop: 3,
+                            minWidth: 68,
+                          }}
+                        >
+                          {timeStr}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              marginBottom: 1,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 9,
+                                fontWeight: 800,
+                                color,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.04em",
+                              }}
+                            >
+                              [{codename}]
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 9,
+                                color:
+                                  task.status === "approved"
+                                    ? "#10b981"
+                                    : task.status === "rejected"
+                                      ? "#ef4444"
+                                      : "#f59e0b",
+                                opacity: 0.8,
+                              }}
+                            >
+                              {task.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#a1a1aa",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {TASK_LABELS[task.taskType] ?? task.taskType}
+                            {task.patientName ? ` — ${task.patientName}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Default — human-readable activity feed */
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 2 }}
+                >
+                  {tasks.map((task, i) => {
+                    const agent = AGENT_MAP[task.agentId];
+                    const color = agent?.color ?? "#71717a";
+                    const StatusIcon =
+                      task.status === "approved"
+                        ? CheckCircle2
+                        : task.status === "rejected"
+                          ? XCircle
+                          : Clock;
+                    const statusColor =
+                      task.status === "approved"
+                        ? "#10b981"
+                        : task.status === "rejected"
+                          ? "#ef4444"
+                          : "#f59e0b";
+
+                    return (
+                      <div
+                        key={task.id}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          padding: "9px 6px",
+                          borderBottom: "1px solid #18181b",
+                          animation:
+                            i === 0 ? "fadeIn 0.3s ease-out" : undefined,
+                        }}
+                      >
+                        {/* Agent avatar */}
+                        <div
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 9,
+                            background: `${color}18`,
+                            border: `1px solid ${color}30`,
                             display: "flex",
                             alignItems: "center",
-                            gap: 6,
-                            marginBottom: 1,
+                            justifyContent: "center",
+                            fontSize: 15,
+                            flexShrink: 0,
                           }}
                         >
-                          <span
-                            style={{
-                              fontSize: 9,
-                              fontWeight: 800,
-                              color: log.color,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.04em",
-                            }}
-                          >
-                            [{log.agentId}]
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 9,
-                              color: "#10b981",
-                              opacity: 0.6,
-                            }}
-                          >
-                            OK
-                          </span>
+                          {agent?.avatar ?? "🤖"}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#a1a1aa",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {log.action}
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              marginBottom: 3,
+                            }}
+                          >
+                            <span
+                              style={{ fontSize: 11, fontWeight: 700, color }}
+                            >
+                              {agent?.name ?? task.agentId}
+                            </span>
+                            <span style={{ fontSize: 10, color: "#52525b" }}>
+                              ·
+                            </span>
+                            <span style={{ fontSize: 10, color: "#52525b" }}>
+                              {timeAgo(task.createdAt)}
+                            </span>
+                            <div
+                              style={{
+                                marginLeft: "auto",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                color: statusColor,
+                              }}
+                            >
+                              <StatusIcon size={11} />
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {task.status}
+                              </span>
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "#a1a1aa",
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {TASK_LABELS[task.taskType] ?? task.taskType}
+                            {task.patientName && (
+                              <span style={{ color: "#71717a" }}>
+                                {" "}
+                                — {task.patientName}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
 
-            {/* Terminal bottom status bar */}
+            {/* Status bar */}
             <div
               style={{
                 padding: "6px 12px",
@@ -1130,7 +1341,18 @@ export default function CortexCommandCenter() {
                   fontFamily: "monospace",
                 }}
               >
-                {liveLog.length} events
+                {tasks.length} events
+              </span>
+              <span
+                style={{
+                  fontSize: 9,
+                  color: "#52525b",
+                  fontFamily: "monospace",
+                }}
+              >
+                {lastFetched
+                  ? `updated ${timeAgo(lastFetched.toISOString())}`
+                  : ""}
               </span>
               <span
                 style={{
@@ -1140,7 +1362,7 @@ export default function CortexCommandCenter() {
                   opacity: 0.6,
                 }}
               >
-                ● active
+                ● auto-refresh 30s
               </span>
             </div>
           </div>

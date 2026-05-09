@@ -8,6 +8,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@dentaliq/agent-core": "workspace:*",
     "@dentaliq/config": "workspace:*",
     "@dentaliq/db": "workspace:*",
     "@dentaliq/llm-interface": "workspace:*",

@@ -103,7 +103,7 @@ export async function estimateRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /estimate/codes — CDT code reference list
+  // GET /estimate/codes — CDT code reference list (DB-backed, cache-served)
   app.get(
     "/estimate/codes",
     {

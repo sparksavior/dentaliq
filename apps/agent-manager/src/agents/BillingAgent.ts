@@ -1,25 +1,22 @@
-// ─────────────────────────────────────────────────────────
-// Cortex Billing Agent
-//
-// Scans high/medium-risk estimates without pre-auth letters,
-// uses the shared LLM interface (Ollama → Claude fallback) to
-// draft professional narratives, and saves them as PENDING REVIEW.
-// ─────────────────────────────────────────────────────────
-
 import { getDb, agentTasks } from "@dentaliq/db";
 import { getLLMWithFallback } from "@dentaliq/llm-interface";
 import { sql } from "drizzle-orm";
+import type { AgentDefinition, AgentContext } from "@dentaliq/agent-core";
 
-export async function runBillingAgent(
-  tenantId: string,
-  tablePrefix: string,
-): Promise<number> {
-  const db = getDb() as any;
-  let highRiskItems: any[] = [];
+export const billingAgent: AgentDefinition = {
+  id: "billing",
+  name: "Billing Agent",
+  version: "1.0.0",
+  priority: 20,
+  emits: ["high_risk_unaccepted_treatment"],
+  async run(ctx: AgentContext): Promise<{ tasksCreated: number }> {
+    const { tenantId, tablePrefix } = ctx;
+    const db = getDb() as any;
+    let highRiskItems: any[] = [];
 
-  try {
-    highRiskItems = await db.all(
-      sql`SELECT e.id, e.cdt_code, e.claim_risk, e.patient_id, e.plain_explanation,
+    try {
+      highRiskItems = await db.all(
+        sql`SELECT e.id, e.cdt_code, e.claim_risk, e.patient_id, e.plain_explanation,
                p.first_name, p.last_name
           FROM ${sql.raw(`"${tablePrefix}_estimates"`)} e
           LEFT JOIN ${sql.raw(`"${tablePrefix}_patients"`)} p ON e.patient_id = p.id
@@ -27,86 +24,114 @@ export async function runBillingAgent(
             AND (e.pre_auth_letter IS NULL OR e.pre_auth_letter = '')
           ORDER BY e.created_at DESC
           LIMIT 20`,
-    );
-  } catch {
-    return 0;
-  }
+      );
+    } catch {
+      return { tasksCreated: 0 };
+    }
 
-  if (highRiskItems.length === 0) return 0;
+    if (highRiskItems.length === 0) return { tasksCreated: 0 };
 
-  let llm: Awaited<ReturnType<typeof getLLMWithFallback>> | null = null;
-  try {
-    llm = await getLLMWithFallback();
-  } catch {
-    /* no LLM configured — use template fallback */
-  }
+    // Emit so TreatmentCoordinatorAgent can follow up on high-risk unaccepted plans
+    ctx.emit("high_risk_unaccepted_treatment", {
+      items: highRiskItems.map((item: any) => ({
+        estimateId: item.id,
+        cdtCode: item.cdt_code,
+        patientId: item.patient_id,
+        claimRisk: item.claim_risk,
+      })),
+    });
 
-  let processed = 0;
-  const globalDb = getDb();
+    let llm: any = null;
+    try {
+      llm = await getLLMWithFallback();
+    } catch {
+      /* use template */
+    }
 
-  for (const item of highRiskItems) {
-    const patientName =
-      item.first_name && item.last_name
-        ? `${item.first_name} ${item.last_name}`
-        : "the patient";
+    let processed = 0;
+    const globalDb = getDb();
 
-    let narrative: string;
+    for (const item of highRiskItems) {
+      const patientName =
+        item.first_name && item.last_name
+          ? `${item.first_name} ${item.last_name}`
+          : "the patient";
 
-    if (llm) {
-      try {
-        const resp = await llm.complete({
-          system: `You are a dental insurance billing specialist writing professional pre-authorization letters.
+      let narrative: string;
+      if (llm) {
+        try {
+          const resp = await llm.complete({
+            system: `You are a dental insurance billing specialist writing professional pre-authorization letters.
 Be concise, clinically accurate, and address the letter to "Claims Review Team".
 Output only the letter text — no preamble or extra commentary.`,
-          prompt: `Write a pre-authorization letter for:
+            prompt: `Write a pre-authorization letter for:
 - CDT Code: ${item.cdt_code}
 - Patient: ${patientName}
 - Risk Level: ${item.claim_risk}
 - Clinical Context: ${item.plain_explanation || "Standard dental procedure"}
 
 Include clinical findings, diagnosis, and medical necessity (200–300 words).`,
-          maxTokens: 500,
-          temperature: 0.3,
-        });
-        narrative = resp.content;
-      } catch {
+            maxTokens: 500,
+            temperature: 0.3,
+          });
+          narrative = resp.content;
+        } catch {
+          narrative = buildTemplateLetter(item.cdt_code, patientName);
+        }
+      } else {
         narrative = buildTemplateLetter(item.cdt_code, patientName);
       }
-    } else {
-      narrative = buildTemplateLetter(item.cdt_code, patientName);
+
+      try {
+        await globalDb.insert(agentTasks).values({
+          tenantId,
+          agentId: "billing",
+          taskType: "pre_auth_letter",
+          cdtCode: item.cdt_code,
+          patientId: item.patient_id ?? null,
+          patientName,
+          riskLevel: item.claim_risk,
+          content: narrative,
+          status: "pending",
+          metadata: JSON.stringify({ estimateId: item.id, tablePrefix }),
+        });
+
+        await db.run(
+          sql`UPDATE ${sql.raw(`"${tablePrefix}_estimates"`)}
+              SET pre_auth_letter = ${"[CORTEX DRAFT — REVIEW IN INBOX]"}
+              WHERE id = ${item.id}`,
+        );
+
+        processed++;
+      } catch (err) {
+        console.error(
+          `[BillingAgent] Failed to save task for ${item.cdt_code}:`,
+          err,
+        );
+      }
     }
 
-    try {
-      await globalDb.insert(agentTasks).values({
-        tenantId,
-        agentId: "billing",
-        taskType: "pre_auth_letter",
-        cdtCode: item.cdt_code,
-        patientId: item.patient_id ?? null,
-        patientName,
-        riskLevel: item.claim_risk,
-        content: narrative,
-        status: "pending",
-        metadata: JSON.stringify({ estimateId: item.id, tablePrefix }),
-      });
+    return { tasksCreated: processed };
+  },
+};
 
-      // Stamp the estimate so it isn't picked up again on the next scan
-      await db.run(
-        sql`UPDATE ${sql.raw(`"${tablePrefix}_estimates"`)}
-            SET pre_auth_letter = ${"[CORTEX DRAFT — REVIEW IN INBOX]"}
-            WHERE id = ${item.id}`,
-      );
-
-      processed++;
-    } catch (err) {
-      console.error(
-        `[BillingAgent] Failed to save task for ${item.cdt_code}:`,
-        err,
-      );
-    }
-  }
-
-  return processed;
+/** @deprecated Use billingAgent.run() via the registry */
+export async function runBillingAgent(
+  tenantId: string,
+  tablePrefix: string,
+): Promise<number> {
+  const bus = new (await import("@dentaliq/agent-core")).CycleEventBus();
+  const result = await billingAgent.run({
+    tenantId,
+    tablePrefix,
+    clinicId: "default",
+    db: null,
+    llm: null,
+    emit: (type, payload) =>
+      bus.emit(type, "billing", tenantId, "default", payload),
+    getEvents: (type) => bus.getEvents(type),
+  });
+  return result.tasksCreated;
 }
 
 function buildTemplateLetter(cdtCode: string, patientName: string): string {

@@ -19,23 +19,32 @@ import { getDb, tenants, agentTasks } from "@dentaliq/db";
 import { eq, sql, desc, and } from "drizzle-orm";
 import { getEnv } from "@dentaliq/config";
 import { createLogger } from "@dentaliq/logger";
-import { runBillingAgent } from "./agents/BillingAgent";
-import { runRecallAgent } from "./agents/RecallAgent";
-import { runReviewAgent } from "./agents/ReviewAgent";
-import { runSupplyAgent } from "./agents/SupplyAgent";
-import { runTreatmentCoordinatorAgent } from "./agents/TreatmentCoordinatorAgent";
-import { runHygienistAgent } from "./agents/HygienistAgent";
+import { AgentRegistry, CycleEventBus } from "@dentaliq/agent-core";
+import { billingAgent } from "./agents/BillingAgent";
+import { recallAgent } from "./agents/RecallAgent";
+import { reviewAgent } from "./agents/ReviewAgent";
+import { supplyAgent } from "./agents/SupplyAgent";
+import { treatmentCoordinatorAgent } from "./agents/TreatmentCoordinatorAgent";
+import { hygienistAgent } from "./agents/HygienistAgent";
 
 const logger = createLogger("agent-manager");
 const env = getEnv();
 const PORT = parseInt(process.env.AGENT_MANAGER_PORT ?? "3006");
 
-// Allowed origins from config
 const ALLOWED_ORIGINS = (
   env.ALLOWED_ORIGINS ?? "http://localhost:3000,http://localhost:3005"
 )
   .split(",")
   .map((o) => o.trim());
+
+// ── Agent registry — add new agents here, no other changes needed ──
+const registry = new AgentRegistry()
+  .register(hygienistAgent)
+  .register(billingAgent)
+  .register(recallAgent)
+  .register(reviewAgent)
+  .register(treatmentCoordinatorAgent)
+  .register(supplyAgent);
 
 interface ScanResult {
   tenantId: string;
@@ -68,7 +77,7 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
   logger.info({ count: cortexTenants.length }, "Processing Cortex tenants");
 
   const results: ScanResult[] = [];
-  const db = getDb() as any;
+  const rawDb = getDb() as any;
 
   for (const tenant of cortexTenants) {
     logger.info(
@@ -80,14 +89,13 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
     let rentedAgents: any[] = [];
 
     try {
-      clinics = await db.all(
+      clinics = await rawDb.all(
         sql`SELECT * FROM ${sql.raw(`"${tenant.schemaName}_clinic_locations"`)} WHERE status = 'active'`,
       );
-      rentedAgents = await db.all(
+      rentedAgents = await rawDb.all(
         sql`SELECT * FROM ${sql.raw(`"${tenant.schemaName}_cortex_agents"`)}`,
       );
     } catch {
-      // Tenant hasn't set up clinic locations / agents yet — use defaults
       clinics = [{ id: "default", name: tenant.name }];
       rentedAgents = [{ clinic_id: "default", agent_id: "billing" }];
     }
@@ -97,9 +105,11 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
       rentedAgents = [{ clinic_id: "default", agent_id: "billing" }];
 
     for (const clinic of clinics) {
-      const clinicAgents = rentedAgents.filter(
-        (ra: any) => ra.clinic_id === clinic.id || ra.clinic_id === "default",
-      );
+      const clinicAgentIds = rentedAgents
+        .filter(
+          (ra: any) => ra.clinic_id === clinic.id || ra.clinic_id === "default",
+        )
+        .map((ra: any) => ra.agent_id as string);
 
       const result: ScanResult = {
         tenantId: tenant.id,
@@ -110,41 +120,29 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
         status: "success",
       };
 
-      for (const ra of clinicAgents) {
-        logger.info(
-          { agent: ra.agent_id, clinic: clinic.name },
-          "Running agent",
-        );
+      // One shared event bus per clinic cycle — enables agent-to-agent communication
+      const bus = new CycleEventBus();
+
+      for (const agent of registry.getOrdered(clinicAgentIds)) {
+        logger.info({ agent: agent.id, clinic: clinic.name }, "Running agent");
         try {
-          let count = 0;
-          switch (ra.agent_id) {
-            case "billing":
-              count = await runBillingAgent(tenant.id, tenant.schemaName);
-              break;
-            case "recall":
-              count = await runRecallAgent(tenant.id, tenant.schemaName);
-              break;
-            case "review":
-              count = await runReviewAgent(tenant.id, tenant.schemaName);
-              break;
-            case "supply":
-              count = await runSupplyAgent(tenant.id, tenant.schemaName);
-              break;
-            case "treatment":
-              count = await runTreatmentCoordinatorAgent(
-                tenant.id,
-                tenant.schemaName,
-              );
-              break;
-            case "hygienist":
-              count = await runHygienistAgent(tenant.id, tenant.schemaName);
-              break;
-          }
-          result.agentsRun.push(ra.agent_id);
-          result.itemsFound += count;
-          logger.info({ agent: ra.agent_id, count }, "Agent complete");
+          const ctx = {
+            tenantId: tenant.id,
+            clinicId: clinic.id,
+            tablePrefix: tenant.schemaName,
+            db: rawDb,
+            llm: null,
+            emit: (type: string, payload: Record<string, unknown>) =>
+              bus.emit(type, agent.id, tenant.id, clinic.id, payload),
+            getEvents: (type: string) => bus.getEvents(type),
+          };
+
+          const { tasksCreated } = await agent.run(ctx);
+          result.agentsRun.push(agent.id);
+          result.itemsFound += tasksCreated;
+          logger.info({ agent: agent.id, tasksCreated }, "Agent complete");
         } catch (err: any) {
-          logger.error({ agent: ra.agent_id, err }, "Agent failed");
+          logger.error({ agent: agent.id, err }, "Agent failed");
           result.status = "error";
           result.error = err?.message;
         }
@@ -220,6 +218,7 @@ const server = http.createServer(async (req, res) => {
       status: "ok",
       service: "agent-manager",
       uptime: process.uptime(),
+      agents: registry.all().map((a) => ({ id: a.id, version: a.version })),
     });
   }
 
@@ -306,6 +305,46 @@ const server = http.createServer(async (req, res) => {
     return json({ success: true, data: updated });
   }
 
+  // ── GET /activity — recent tasks feed (any status) ─────────
+  if (url.pathname === "/activity" && req.method === "GET") {
+    const tenantId = extractTenantId(req.headers.authorization);
+    if (!tenantId) return json({ success: false, error: "Unauthorized" }, 401);
+
+    const db = getDb();
+    const limit = Math.min(
+      parseInt(url.searchParams.get("limit") ?? "40"),
+      100,
+    );
+
+    const tasks = await db
+      .select()
+      .from(agentTasks)
+      .where(eq(agentTasks.tenantId, tenantId))
+      .orderBy(desc(agentTasks.createdAt))
+      .limit(limit);
+
+    // Per-agent last-active + counts derived from this same result set
+    const agentMeta: Record<
+      string,
+      { lastAt: string; pending: number; approved: number; total: number }
+    > = {};
+    for (const t of tasks) {
+      const m = agentMeta[t.agentId] ?? {
+        lastAt: t.createdAt,
+        pending: 0,
+        approved: 0,
+        total: 0,
+      };
+      if (t.createdAt > m.lastAt) m.lastAt = t.createdAt;
+      if (t.status === "pending") m.pending++;
+      if (t.status === "approved") m.approved++;
+      m.total++;
+      agentMeta[t.agentId] = m;
+    }
+
+    return json({ success: true, data: { tasks, agentMeta } });
+  }
+
   // ── GET /stats — aggregate stats for the Cortex dashboard ─
   if (url.pathname === "/stats" && req.method === "GET") {
     const tenantId = extractTenantId(req.headers.authorization);
@@ -313,7 +352,6 @@ const server = http.createServer(async (req, res) => {
 
     const db = getDb() as any;
 
-    // Count tasks by status and agent
     const taskRows = await db
       .all(
         sql`SELECT agent_id, status, COUNT(*) as count
@@ -352,6 +390,99 @@ cron.schedule("0 2 * * *", () => {
   logger.info("Scheduled nightly agent cycle starting");
   runAgentCycle().catch((err) => logger.error({ err }, "Nightly cycle failed"));
 });
+
+// Monthly CDT staleness check — 9 AM on the 1st of each month
+cron.schedule("0 9 1 * *", () => {
+  checkCdtStaleness().catch((err) =>
+    logger.error({ err }, "CDT staleness check failed"),
+  );
+});
+
+async function checkCdtStaleness(): Promise<void> {
+  const rawDb = getDb() as any;
+
+  let activeVersion: any = null;
+  try {
+    const rows = await rawDb.all(
+      sql.raw(
+        `SELECT * FROM cdt_uploads WHERE status = 'active' ORDER BY created_at DESC LIMIT 1`,
+      ),
+    );
+    activeVersion = rows?.[0] ?? null;
+  } catch {
+    logger.warn("CDT staleness check: cdt_uploads table not found — skipping");
+    return;
+  }
+
+  if (!activeVersion) {
+    logger.warn("CDT staleness check: no active CDT version found");
+    return;
+  }
+
+  const effectiveDate = new Date(activeVersion.effective_date);
+  const ageMs = Date.now() - effectiveDate.getTime();
+  const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+
+  if (ageDays < 330) {
+    logger.info(
+      { ageDays, version: activeVersion.version_label },
+      "CDT version is current",
+    );
+    return;
+  }
+
+  logger.warn(
+    { ageDays, version: activeVersion.version_label },
+    "CDT fee schedule is stale — ODA releases an updated guide annually",
+  );
+
+  const cortexTenants = await getCortexTenants();
+  const now = new Date().toISOString();
+  const thisMonth = now.slice(0, 7);
+
+  for (const tenant of cortexTenants) {
+    try {
+      const existing = await rawDb.all(
+        sql.raw(`
+          SELECT id FROM agent_tasks
+          WHERE tenant_id = '${tenant.id}'
+            AND task_type = 'cdt_version_reminder'
+            AND created_at >= '${thisMonth}-01'
+          LIMIT 1
+        `),
+      );
+      if ((existing ?? []).length > 0) continue;
+
+      const { createId } = await import("@paralleldrive/cuid2");
+      await rawDb.run(
+        sql.raw(`
+          INSERT INTO agent_tasks
+            (id, tenant_id, agent_id, task_type, content, status, metadata, created_at, updated_at)
+          VALUES (
+            '${createId()}',
+            '${tenant.id}',
+            'billing',
+            'cdt_version_reminder',
+            'Your CDT fee schedule (${activeVersion.version_label}, effective ${activeVersion.effective_date}) is ${ageDays} days old. The ODA typically releases an updated fee guide each January. Contact DentalIQ support or upload the new fee guide in the admin portal to keep estimates accurate.',
+            'pending',
+            '{"versionLabel":"${activeVersion.version_label}","effectiveDate":"${activeVersion.effective_date}","ageDays":${ageDays}}',
+            '${now}',
+            '${now}'
+          )
+        `),
+      );
+      logger.info(
+        { tenantId: tenant.id },
+        "CDT staleness reminder task created",
+      );
+    } catch (err) {
+      logger.error(
+        { err, tenantId: tenant.id },
+        "Failed to create CDT reminder task",
+      );
+    }
+  }
+}
 
 // Run on startup in dev/test
 if (env.NODE_ENV !== "production") {

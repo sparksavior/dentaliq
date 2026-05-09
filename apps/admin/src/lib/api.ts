@@ -83,6 +83,24 @@ export const adminApi = {
   getAuditLog: (token: string, limit = 100) =>
     authedFetch(`${AUTH_SERVICE_URL}/admin/audit?limit=${limit}`, token),
 
+  getCdtVersions: (token: string) =>
+    authedFetch(`${ESTIMATE_SERVICE_URL}/cdt/versions`, token),
+
+  uploadCdtCodes: (
+    token: string,
+    payload: {
+      versionLabel: string;
+      effectiveDate: string;
+      filename: string;
+      format: "csv" | "json";
+      data: string;
+    },
+  ) =>
+    authedFetch(`${ESTIMATE_SERVICE_URL}/cdt/upload`, token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   // Service health checks (no auth — public /health endpoints)
   getServiceHealth: async () => {
     const services = [

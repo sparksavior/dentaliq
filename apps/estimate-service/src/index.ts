@@ -8,6 +8,13 @@ import { createLogger } from "@dentaliq/logger";
 import { ZodError } from "zod";
 
 import { estimateRoutes } from "./routes/estimate";
+import { cdtRoutes } from "./routes/cdt";
+import {
+  ensureCdtSeeded,
+  getCdtCodeCached,
+  getAllCdtCodesCached,
+} from "./services/cdtDb";
+import { registerCdtCache } from "./data/cdt-codes";
 
 // ─────────────────────────────────────────────────────────
 // DentalIQ — Estimate Service  (port 3004)
@@ -80,16 +87,20 @@ async function buildApp() {
   }));
 
   // Routes
-
   await app.register(estimateRoutes);
+  await app.register(cdtRoutes);
 
   return app;
 }
 
 async function main() {
   const env = getEnv();
-  const app = await buildApp();
 
+  // Seed CDT codes into DB if needed, then register the cache
+  await ensureCdtSeeded();
+  registerCdtCache(getCdtCodeCached, getAllCdtCodesCached);
+
+  const app = await buildApp();
   const port = env.ESTIMATE_PORT ?? 3004;
 
   try {
@@ -98,7 +109,7 @@ async function main() {
     logger.info(`  ✓ Health check     → http://localhost:${port}/health`);
     logger.info(`  ✓ LLM provider     → ${env.LLM_PROVIDER} (with fallback)`);
     logger.info(
-      `  ✓ CDT codes        → ${Object.keys((await import("./data/cdt-codes")).CDT_DATABASE).length} procedures loaded\n`,
+      `  ✓ CDT codes        → ${getAllCdtCodesCached().length} procedures loaded from DB\n`,
     );
   } catch (err) {
     logger.fatal({ err }, "Failed to start");

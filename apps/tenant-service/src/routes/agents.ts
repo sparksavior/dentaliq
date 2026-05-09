@@ -54,6 +54,41 @@ export async function agentsRoutes(app: FastifyInstance) {
     },
   );
 
+  app.delete(
+    "/remove",
+    {
+      preHandler: requireAuth(app),
+    },
+    async (req, reply) => {
+      const jwtUser = req.user as any;
+      const body = z
+        .object({ agentId: z.string(), clinicId: z.string() })
+        .parse(req.body);
+      const tablePrefix = await getTablePrefix(jwtUser.tenantId);
+      if (!tablePrefix)
+        return reply
+          .code(400)
+          .send({ success: false, error: "Tenant not found" });
+
+      const db = getDb() as any;
+      await createAgentsTable(db, tablePrefix);
+
+      try {
+        await db.run(
+          sql.raw(
+            `DELETE FROM "${tablePrefix}_cortex_agents" WHERE agent_id = '${body.agentId}' AND clinic_id = '${body.clinicId}'`,
+          ),
+        );
+        return reply.send({ success: true });
+      } catch (err) {
+        req.log.error(err);
+        return reply
+          .code(500)
+          .send({ success: false, error: "Database error" });
+      }
+    },
+  );
+
   app.post(
     "/rent",
     {
