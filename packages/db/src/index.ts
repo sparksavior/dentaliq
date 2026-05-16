@@ -15,6 +15,7 @@ import * as agentTasksSchema from "./schema/agentTasks";
 import * as supportTicketsSchema from "./schema/supportTickets";
 import * as cdtUploadsSchema from "./schema/cdtUploads";
 import * as cdtSupplyMapSchema from "./schema/cdtSupplyMap";
+import * as inviteTokensSchema from "./schema/inviteTokens";
 
 export const schema = {
   ...tenantsSchema,
@@ -25,6 +26,7 @@ export const schema = {
   ...supportTicketsSchema,
   ...cdtUploadsSchema,
   ...cdtSupplyMapSchema,
+  ...inviteTokensSchema,
 };
 
 export type Db = ReturnType<typeof getDb>;
@@ -80,3 +82,4 @@ export * from "./schema/agentTasks";
 export * from "./schema/supportTickets";
 export * from "./schema/cdtUploads";
 export * from "./schema/cdtSupplyMap";
+export * from "./schema/inviteTokens";

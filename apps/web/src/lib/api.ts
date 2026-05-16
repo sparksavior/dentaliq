@@ -20,6 +20,32 @@ export interface LoginInput {
   totpCode?: string;
 }
 
+export const ALL_PERMISSIONS = [
+  'dashboard',
+  'estimates',
+  'claims',
+  'patients',
+  'analytics',
+  'cortex_agents',
+  'cortex_inbox',
+  'support',
+  'settings',
+] as const
+
+export type PermissionKey = typeof ALL_PERMISSIONS[number]
+
+export const PERMISSION_LABELS: Record<PermissionKey, string> = {
+  dashboard: 'Overview',
+  estimates: 'Estimates',
+  claims: 'Claims',
+  patients: 'Patients',
+  analytics: 'Analytics',
+  cortex_agents: 'Cortex Agents',
+  cortex_inbox: 'Approval Inbox',
+  support: 'Support',
+  settings: 'Settings',
+}
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -30,6 +56,43 @@ export interface AuthUser {
   emailVerified: boolean;
   plan?: "starter" | "pro" | "enterprise" | "cortex";
   status?: "trial" | "active" | "suspended";
+  // Sub-user permission system
+  // Admins (role='admin') always have full access; this array is for non-admin sub-users
+  permissions: PermissionKey[];
+  invitedBy?: string | null;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "dentist" | "front_desk";
+  mfaEnabled: boolean;
+  emailVerified: boolean;
+  permissions: PermissionKey[];
+  invitedBy: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+  status: 'active';
+}
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  name: string;
+  permissions: PermissionKey[];
+  expiresAt: string;
+  createdAt: string;
+  status: 'pending';
+}
+
+export interface InviteDetails {
+  email: string;
+  name: string;
+  clinicName: string;
+  adminName: string;
+  permissions: PermissionKey[];
+  hasMfaSecret: boolean;
 }
 
 export interface AuthTokens {
@@ -251,6 +314,63 @@ export const authApi = {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({}),
+    }),
+};
+
+// ── Invite / onboarding (public — no auth token needed) ──────
+export const inviteApi = {
+  getDetails: (token: string) =>
+    authRequest<InviteDetails>(`/users/invite/${token}`),
+
+  setupMfa: (token: string) =>
+    authRequest<{ secret: string; qrCodeDataUrl: string; backupCodes: string[] }>(
+      `/users/invite/${token}/setup-mfa`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  complete: (token: string, body: { password: string; mfaCode: string; tosAgreed: boolean }) =>
+    authRequest<{ accessToken: string; user: AuthUser }>(
+      `/users/invite/${token}/complete`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+};
+
+// ── Team management (admin only) ─────────────────────────────
+export const teamApi = {
+  listMembers: (token: string) =>
+    authRequest<TeamMember[]>("/users/", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  listPendingInvites: (token: string) =>
+    authRequest<PendingInvite[]>("/users/invites/pending", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  invite: (token: string, data: { email: string; name: string; permissions: PermissionKey[] }) =>
+    authRequest<{ email: string; name: string; expiresAt: string }>("/users/invite", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(data),
+    }),
+
+  updatePermissions: (token: string, userId: string, permissions: PermissionKey[]) =>
+    authRequest<{ id: string; permissions: PermissionKey[] }>(`/users/${userId}/permissions`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ permissions }),
+    }),
+
+  removeMember: (token: string, userId: string) =>
+    authRequest<{ success: true }>(`/users/${userId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  revokeInvite: (token: string, inviteId: string) =>
+    authRequest<{ success: true }>(`/users/invites/${inviteId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
     }),
 };
 

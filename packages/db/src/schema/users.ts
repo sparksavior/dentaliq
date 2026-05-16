@@ -17,6 +17,12 @@ export const users = sqliteTable('users', {
   passwordResetToken: text('password_reset_token'),
   passwordResetExpires: text('password_reset_expires'),
   lastLoginAt: text('last_login_at'),
+  // Sub-user permission system
+  // JSON array of permission keys, e.g. '["dashboard","patients","estimates"]'
+  // Empty array + role='admin' = full access. Non-admin users are limited to listed keys.
+  permissions: text('permissions').notNull().default('[]'),
+  // userId of the admin who created this account via invite (null for the original clinic owner)
+  invitedBy: text('invited_by'),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
 })
