@@ -165,6 +165,9 @@ export class AuthController {
       metadata: { email: user.email },
     });
 
+    let permissions: string[] = []
+    try { permissions = JSON.parse(user.permissions ?? '[]') } catch {}
+
     return {
       requiresMfa: false,
       tokens,
@@ -175,6 +178,8 @@ export class AuthController {
         role: user.role,
         tenantId: user.tenantId,
         mfaEnabled: user.mfaEnabled,
+        permissions,
+        invitedBy: user.invitedBy ?? null,
       },
     };
   }
@@ -339,12 +344,17 @@ export class AuthController {
   }
 
   // ── Issue JWT + refresh token ─────────────────────────────
-  private async issueTokens(user: any): Promise<AuthTokens> {
+  async issueTokens(user: any): Promise<AuthTokens> {
+    // Parse permissions from DB (stored as JSON string)
+    let permissions: string[] = []
+    try { permissions = JSON.parse(user.permissions ?? '[]') } catch {}
+
     const payload: JWTPayload = {
       sub: user.id,
       tenantId: user.tenantId,
       role: user.role,
       email: user.email,
+      permissions,
     };
 
     const accessToken = this.app.jwt.sign(payload, {

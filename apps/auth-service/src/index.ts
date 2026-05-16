@@ -66,11 +66,21 @@ async function initDb() {
       password_reset_token TEXT,
       password_reset_expires TEXT,
       last_login_at TEXT,
+      permissions TEXT NOT NULL DEFAULT '[]',
+      invited_by TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `),
   );
+
+  // Add columns for existing DBs that predate this migration
+  for (const col of [
+    `ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE users ADD COLUMN invited_by TEXT`,
+  ]) {
+    try { await db.run(sql.raw(col)) } catch { /* column already exists */ }
+  }
 
   await db.run(
     sql.raw(`
@@ -128,6 +138,26 @@ async function initDb() {
       sender_type TEXT NOT NULL,
       sender_name TEXT NOT NULL,
       message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `),
+  );
+
+  await db.run(
+    sql.raw(`
+    CREATE TABLE IF NOT EXISTS invite_tokens (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      invited_by_user_id TEXT NOT NULL,
+      permissions TEXT NOT NULL DEFAULT '[]',
+      mfa_setup_secret TEXT,
+      mfa_backup_codes TEXT,
+      expires_at TEXT NOT NULL,
+      accepted_at TEXT,
+      created_user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `),

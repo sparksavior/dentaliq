@@ -71,6 +71,15 @@ export class EmailService {
     });
   }
 
+  async sendInviteEmail(email: string, name: string, clinicName: string, adminName: string, inviteUrl: string) {
+    await this.send({
+      to: email,
+      subject: `${adminName} has invited you to ${clinicName} on DentalIQ`,
+      html: inviteEmailHtml(name, clinicName, adminName, inviteUrl),
+      text: `Hi ${name},\n\n${clinicName} uses DentalIQ and ${adminName} has created access for you to the clinic.\n\nClick the link below to set up your account. This link expires in 7 days.\n\n${inviteUrl}\n\nYou'll be guided through setting a password, enabling two-factor authentication, and agreeing to DentalIQ's terms before you can access the dashboard.\n\nIf you weren't expecting this invitation, you can safely ignore this email.\n\n— The DentalIQ Team`,
+    });
+  }
+
   async sendAgreementEmail(email: string, name: string) {
     const appUrl = this.env.APP_URL;
     await this.send({
@@ -745,6 +754,46 @@ function agreementEmailHtml(name: string, appUrl: string) {
       <p style="margin:0;font-size:13px;color:#475569;"><strong style="color:#1e293b;">General Support</strong> — <a href="mailto:support@dentaliq.ca">support@dentaliq.ca</a></p>
     </div>
     <p class="muted">These agreements are effective as of your account creation date: <strong style="color:#475569;">${effectiveDate}</strong>. Save or print this email for your records.</p>
+    `,
+  );
+}
+
+function inviteEmailHtml(name: string, clinicName: string, adminName: string, inviteUrl: string) {
+  return baseTemplate(
+    `${adminName} has invited you to join ${clinicName} on DentalIQ`,
+    `You've been invited to ${clinicName}`,
+    '#0d9488',
+    `
+    <h1>You've been invited to ${clinicName}</h1>
+    <p style="font-size:16px;color:#334155;margin:0 0 24px;">
+      <strong>${clinicName}</strong> uses DentalIQ and <strong>${adminName}</strong> has created access for you to the clinic.
+    </p>
+    <div style="background:linear-gradient(135deg,rgba(13,148,136,0.06),rgba(13,148,136,0.02));border:1px solid rgba(13,148,136,0.15);border-radius:14px;padding:20px 22px;margin:0 0 28px;">
+      <p style="margin:0 0 8px;font-size:13px;color:#0f766e;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">What to expect</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="color:#0d9488;font-weight:800;flex-shrink:0;margin-top:1px;">01</span>
+          <span style="color:#475569;font-size:14px;"><strong style="color:#1e293b;">Set your password</strong> — Choose a secure password for your account</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="color:#0d9488;font-weight:800;flex-shrink:0;margin-top:1px;">02</span>
+          <span style="color:#475569;font-size:14px;"><strong style="color:#1e293b;">Enable 2-factor authentication</strong> — Protect patient data with TOTP (Google Authenticator, Authy)</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="color:#0d9488;font-weight:800;flex-shrink:0;margin-top:1px;">03</span>
+          <span style="color:#475569;font-size:14px;"><strong style="color:#1e293b;">Agree to terms</strong> — Review and accept DentalIQ's terms of service</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <span style="color:#0d9488;font-weight:800;flex-shrink:0;margin-top:1px;">04</span>
+          <span style="color:#475569;font-size:14px;"><strong style="color:#1e293b;">Access the dashboard</strong> — You'll only see the sections ${adminName} has enabled for you</span>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${inviteUrl}" style="display:inline-block;background:linear-gradient(135deg,#0f766e,#0d9488);color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 36px;border-radius:10px;letter-spacing:0.01em;">Set up my account →</a>
+    </div>
+    <p class="muted">This invitation link expires in <strong>7 days</strong>. If it expires, ask ${adminName} to send a new invite.</p>
+    <p class="muted">If you weren't expecting this invitation or don't know who ${adminName} is, you can safely ignore this email. No account will be created.</p>
     `,
   );
 }

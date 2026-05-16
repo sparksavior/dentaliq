@@ -20,10 +20,12 @@ import { ClinicInsightPopup } from "@/components/ClinicInsightPopup";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTheme } from "@/hooks/useTheme";
 
-const NAV = [
+// permission key that gates this nav item for sub-users (undefined = admin-only)
+const NAV: { href: string; label: string; icon: React.ReactElement; permission?: string; adminOnly?: boolean }[] = [
   {
     href: "/dashboard",
     label: "Overview",
+    permission: "dashboard",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -33,6 +35,7 @@ const NAV = [
   {
     href: "/dashboard/estimates",
     label: "Estimates",
+    permission: "estimates",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -42,6 +45,7 @@ const NAV = [
   {
     href: "/dashboard/claims",
     label: "Claims",
+    permission: "claims",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -51,6 +55,7 @@ const NAV = [
   {
     href: "/dashboard/patients",
     label: "Patients",
+    permission: "patients",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -60,6 +65,7 @@ const NAV = [
   {
     href: "/dashboard/analytics",
     label: "Analytics",
+    permission: "analytics",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 8v8m-4-5v5m-4-2v2M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -69,6 +75,7 @@ const NAV = [
   {
     href: "/dashboard/settings",
     label: "Settings",
+    permission: "settings",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -79,6 +86,7 @@ const NAV = [
   {
     href: "/dashboard/support",
     label: "Support",
+    permission: "support",
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -88,6 +96,7 @@ const NAV = [
   {
     href: "/dashboard/billing",
     label: "Billing",
+    adminOnly: true, // billing is NEVER shown to sub-users
     icon: (
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -533,7 +542,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             width: "100%",
           }}
         >
-          {NAV.map((item) => {
+          {NAV.filter(item => {
+            // Admin always sees everything
+            if (user?.role === 'admin') return true
+            // adminOnly items are never shown to sub-users
+            if (item.adminOnly) return false
+            // For sub-users, show item only if their permissions include it
+            const perms: string[] = (user as any)?.permissions ?? []
+            return !item.permission || perms.includes(item.permission)
+          }).map((item) => {
             const isActive =
               item.href === "/dashboard"
                 ? pathname === "/dashboard"
@@ -607,10 +624,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   flexShrink: 0,
                 }}
               />
-              {[
-                { href: "/dashboard/cortex", label: "Command Center", icon: "🧠" },
-                { href: "/dashboard/cortex/inbox", label: "Approval Inbox", icon: "📥" },
-              ].map((item) => {
+              {([
+                { href: "/dashboard/cortex", label: "Command Center", icon: "🧠", permission: "cortex_agents" },
+                { href: "/dashboard/cortex/inbox", label: "Approval Inbox", icon: "📥", permission: "cortex_inbox" },
+              ] as { href: string; label: string; icon: string; permission: string }[]).filter(item => {
+                if (user?.role === 'admin') return true
+                const perms: string[] = (user as any)?.permissions ?? []
+                return perms.includes(item.permission)
+              }).map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <Link

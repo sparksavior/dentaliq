@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, Settings2, MapPin, Plug, ShieldCheck, User, Sliders } from "lucide-react";
+import { Building2, Settings2, MapPin, Plug, ShieldCheck, User, Sliders, Users, Mail, Trash2, Pencil, X, Check, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { tenantsApi, insurancePlansApi, type Tenant, type InsurancePlan, type CreateInsurancePlanInput } from "@/lib/api";
+import { tenantsApi, insurancePlansApi, teamApi, type Tenant, type InsurancePlan, type CreateInsurancePlanInput, type TeamMember, type PendingInvite, type PermissionKey, ALL_PERMISSIONS, PERMISSION_LABELS } from "@/lib/api";
 
 const PMS_LABELS: Record<string, string> = {
   open_dental: "Open Dental",
@@ -29,10 +29,11 @@ const emptyPlan: CreateInsurancePlanInput = {
   annualMax: undefined, preventiveCoverage: 100, basicCoverage: 80, majorCoverage: 50, orthoCoverage: 50,
 };
 
-type SettingsTab = "profile" | "locations" | "integrations" | "insurance" | "account" | "preferences";
+type SettingsTab = "profile" | "locations" | "integrations" | "insurance" | "account" | "preferences" | "team";
 
-const TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
+const ALL_TABS: { id: SettingsTab; label: string; icon: React.ElementType; adminOnly?: boolean }[] = [
   { id: "profile",      label: "Profile",      icon: Settings2  },
+  { id: "team",         label: "Team",         icon: Users, adminOnly: true },
   { id: "locations",    label: "Locations",    icon: MapPin      },
   { id: "integrations", label: "Integrations", icon: Plug        },
   { id: "insurance",    label: "Insurance",    icon: ShieldCheck },
@@ -104,6 +105,21 @@ export default function SettingsPage() {
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [saveBtnHover, setSaveBtnHover] = useState(false);
 
+  // ── Team tab state ──────────────────────────────────────────
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', permissions: [] as PermissionKey[] });
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState('');
+  const [editPermsFor, setEditPermsFor] = useState<string | null>(null); // userId
+  const [editPerms, setEditPerms] = useState<PermissionKey[]>([]);
+  const [editPermsSaving, setEditPermsSaving] = useState(false);
+  const [removeConfirm, setRemoveConfirm] = useState<string | null>(null); // userId or inviteId
+  const [removeType, setRemoveType] = useState<'member' | 'invite'>('member');
+
   const load = useCallback(async () => {
     if (!accessToken) return;
     setLoading(true);
@@ -121,7 +137,61 @@ export default function SettingsPage() {
     }
   }, [accessToken]);
 
+  const loadTeam = useCallback(async () => {
+    if (!accessToken || user?.role !== 'admin') return;
+    setTeamLoading(true);
+    try {
+      const [members, invites] = await Promise.all([
+        teamApi.listMembers(accessToken).catch(() => [] as TeamMember[]),
+        teamApi.listPendingInvites(accessToken).catch(() => [] as PendingInvite[]),
+      ]);
+      setTeamMembers(members);
+      setPendingInvites(invites);
+    } finally {
+      setTeamLoading(false);
+    }
+  }, [accessToken, user]);
+
+  const handleInvite = async () => {
+    if (!accessToken) return;
+    setInviteError(''); setInviteSuccess('');
+    if (!inviteForm.name.trim() || !inviteForm.email.trim()) { setInviteError('Name and email are required.'); return; }
+    if (!inviteForm.email.includes('@')) { setInviteError('Please enter a valid email address.'); return; }
+    if (inviteForm.permissions.length === 0) { setInviteError('Select at least one permission.'); return; }
+    setInviteSaving(true);
+    try {
+      await teamApi.invite(accessToken, inviteForm);
+      setInviteSuccess(`Invite sent to ${inviteForm.email}! They'll receive an email to set up their account.`);
+      setInviteForm({ name: '', email: '', permissions: [] });
+      await loadTeam();
+      setTimeout(() => { setShowInviteModal(false); setInviteSuccess(''); }, 3000);
+    } catch (err: any) { setInviteError(err.message ?? 'Failed to send invite.'); }
+    finally { setInviteSaving(false); }
+  };
+
+  const handleSavePerms = async () => {
+    if (!accessToken || !editPermsFor) return;
+    setEditPermsSaving(true);
+    try {
+      await teamApi.updatePermissions(accessToken, editPermsFor, editPerms);
+      setEditPermsFor(null);
+      await loadTeam();
+    } catch (err: any) { alert(err.message ?? 'Failed to update permissions.'); }
+    finally { setEditPermsSaving(false); }
+  };
+
+  const handleRemove = async () => {
+    if (!accessToken || !removeConfirm) return;
+    try {
+      if (removeType === 'member') await teamApi.removeMember(accessToken, removeConfirm);
+      else await teamApi.revokeInvite(accessToken, removeConfirm);
+      setRemoveConfirm(null);
+      await loadTeam();
+    } catch (err: any) { alert(err.message ?? 'Failed to remove.'); }
+  };
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (activeTab === 'team') loadTeam(); }, [activeTab, loadTeam]);
 
   const saveClinicName = async () => {
     if (!accessToken || !clinicName.trim()) return;
@@ -262,7 +332,7 @@ export default function SettingsPage() {
           borderBottom: "1px solid var(--color-border-secondary)",
           overflowX: "auto",
         }}>
-          {TABS.map(tab => {
+          {ALL_TABS.filter(t => !t.adminOnly || user?.role === 'admin').map(tab => {
             const isActive = activeTab === tab.id;
             const isHov = hoveredTab === tab.id;
             const TabIcon = tab.icon;
@@ -287,6 +357,258 @@ export default function SettingsPage() {
             );
           })}
         </div>
+
+        {/* Team tab (admin only) */}
+        {activeTab === "team" && user?.role === "admin" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--color-text-primary)" }}>Team Members</h2>
+                <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+                  Invite team members and control exactly what they can access.
+                </p>
+              </div>
+              <button
+                onClick={() => { setInviteForm({ name: '', email: '', permissions: [] }); setInviteError(''); setInviteSuccess(''); setShowInviteModal(true); }}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", background: "linear-gradient(135deg,#0f766e,#0d9488)", color: "#fff", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                <Mail size={14} /> Invite Member
+              </button>
+            </div>
+
+            {teamLoading && (
+              <div style={{ textAlign: "center", padding: "2rem", color: "var(--color-text-secondary)", fontSize: 14 }}>Loading team…</div>
+            )}
+
+            {/* Active members */}
+            {!teamLoading && teamMembers.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Active ({teamMembers.length})</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {teamMembers.map(member => {
+                    const isCurrentUser = member.id === user?.id;
+                    return (
+                      <div key={member.id} style={{ background: "var(--color-background-secondary)", border: "1px solid var(--color-border-secondary)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: 14 }}>
+                        <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg,#0f766e,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                          {member.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                            <span style={{ fontWeight: 700, fontSize: 14, color: "var(--color-text-primary)" }}>{member.name}</span>
+                            {isCurrentUser && <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 100, background: "rgba(13,148,136,0.12)", color: "#0d9488", fontWeight: 600 }}>You</span>}
+                            {member.role === 'admin' && <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 100, background: "rgba(245,158,11,0.1)", color: "#f59e0b", fontWeight: 600 }}>Admin</span>}
+                            {!member.mfaEnabled && <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 100, background: "rgba(239,68,68,0.08)", color: "#ef4444", fontWeight: 600 }}>No 2FA</span>}
+                          </div>
+                          <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--color-text-secondary)" }}>{member.email}</p>
+                          {member.role !== 'admin' && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                              {member.permissions.length === 0
+                                ? <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontStyle: "italic" }}>No permissions set</span>
+                                : member.permissions.map(p => (
+                                  <span key={p} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 100, background: "rgba(13,148,136,0.1)", color: "#0d9488", border: "1px solid rgba(13,148,136,0.2)", fontWeight: 600 }}>
+                                    {PERMISSION_LABELS[p]}
+                                  </span>
+                                ))
+                              }
+                            </div>
+                          )}
+                        </div>
+                        {!isCurrentUser && member.role !== 'admin' && (
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            <button
+                              onClick={() => { setEditPermsFor(member.id); setEditPerms([...member.permissions]); }}
+                              title="Edit permissions"
+                              style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-background-primary)", border: "1px solid var(--color-border-secondary)", borderRadius: 8, cursor: "pointer", color: "var(--color-text-secondary)" }}
+                            ><Pencil size={13} /></button>
+                            <button
+                              onClick={() => { setRemoveConfirm(member.id); setRemoveType('member'); }}
+                              title="Remove member"
+                              style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, cursor: "pointer", color: "#ef4444" }}
+                            ><Trash2 size={13} /></button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pending invites */}
+            {!teamLoading && pendingInvites.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Pending Invites ({pendingInvites.length})</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {pendingInvites.map(invite => (
+                    <div key={invite.id} style={{ background: "var(--color-background-secondary)", border: "1px solid var(--color-border-secondary)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "flex-start", gap: 14, opacity: 0.8 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: "rgba(245,158,11,0.15)", border: "1.5px dashed rgba(245,158,11,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Clock size={16} color="#f59e0b" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: "var(--color-text-primary)" }}>{invite.name}</span>
+                          <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 100, background: "rgba(245,158,11,0.1)", color: "#f59e0b", fontWeight: 600 }}>Invite Pending</span>
+                        </div>
+                        <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--color-text-secondary)" }}>{invite.email}</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {invite.permissions.map(p => (
+                            <span key={p} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 100, background: "rgba(13,148,136,0.1)", color: "#0d9488", border: "1px solid rgba(13,148,136,0.2)", fontWeight: 600 }}>
+                              {PERMISSION_LABELS[p]}
+                            </span>
+                          ))}
+                        </div>
+                        <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--color-text-secondary)" }}>
+                          Expires {new Date(invite.expiresAt).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => { setRemoveConfirm(invite.id); setRemoveType('invite'); }}
+                        title="Revoke invite"
+                        style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 8, cursor: "pointer", color: "#ef4444", flexShrink: 0 }}
+                      ><X size={13} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!teamLoading && teamMembers.length === 0 && pendingInvites.length === 0 && (
+              <div style={{ textAlign: "center", padding: "3rem 1rem", color: "var(--color-text-secondary)" }}>
+                <Users size={36} style={{ marginBottom: 12, opacity: 0.3 }} />
+                <p style={{ margin: "0 0 6px", fontWeight: 600, color: "var(--color-text-primary)" }}>No team members yet</p>
+                <p style={{ margin: 0, fontSize: 13 }}>Click "Invite Member" to add your first team member.</p>
+              </div>
+            )}
+
+            {/* Invite modal */}
+            {showInviteModal && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={e => { if (e.target === e.currentTarget) setShowInviteModal(false); }}>
+                <div style={{ background: "var(--color-background-primary)", border: "1px solid var(--color-border-secondary)", borderRadius: 18, padding: "1.75rem", width: "100%", maxWidth: 500, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>Invite Team Member</h3>
+                    <button onClick={() => setShowInviteModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", padding: 4 }}><X size={18} /></button>
+                  </div>
+
+                  {inviteSuccess ? (
+                    <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+                      <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#0f766e,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+                        <Check size={24} color="#fff" />
+                      </div>
+                      <p style={{ fontWeight: 700, color: "var(--color-text-primary)", margin: "0 0 6px" }}>Invite Sent!</p>
+                      <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: 0 }}>{inviteSuccess}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Full Name *</label>
+                        <input value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Smith" style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1.5px solid var(--color-border-secondary)", borderRadius: 9, fontSize: 14, color: "var(--color-text-primary)", background: "var(--color-input-bg)", outline: "none", fontFamily: "inherit" }} />
+                      </div>
+                      <div style={{ marginBottom: 20 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email Address *</label>
+                        <input value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} type="email" placeholder="jane@yourclinic.ca" style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1.5px solid var(--color-border-secondary)", borderRadius: 9, fontSize: 14, color: "var(--color-text-primary)", background: "var(--color-input-bg)", outline: "none", fontFamily: "inherit" }} />
+                      </div>
+                      <div style={{ marginBottom: 20 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--color-text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Access Permissions *
+                        </label>
+                        <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--color-text-secondary)" }}>
+                          Select exactly what this team member can see in the dashboard. Billing and team management are always restricted to admins.
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          {ALL_PERMISSIONS.map(perm => {
+                            const isChecked = inviteForm.permissions.includes(perm);
+                            return (
+                              <label key={perm} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "9px 11px", borderRadius: 9, border: `1.5px solid ${isChecked ? "var(--color-accent)" : "var(--color-border-secondary)"}`, background: isChecked ? "var(--color-accent-muted)" : "var(--color-background-secondary)", transition: "all 0.15s" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={e => setInviteForm(f => ({ ...f, permissions: e.target.checked ? [...f.permissions, perm] : f.permissions.filter(p => p !== perm) }))}
+                                  style={{ accentColor: "var(--color-accent)", cursor: "pointer", flexShrink: 0 }}
+                                />
+                                <span style={{ fontSize: 12, fontWeight: 600, color: isChecked ? "var(--color-accent)" : "var(--color-text-secondary)" }}>
+                                  {PERMISSION_LABELS[perm]}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {inviteError && <p style={{ margin: "0 0 14px", fontSize: 13, color: "#ef4444" }}>{inviteError}</p>}
+
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setShowInviteModal(false)} style={{ flex: 1, padding: "10px", background: "var(--color-background-secondary)", border: "1px solid var(--color-border-secondary)", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--color-text-secondary)", fontFamily: "inherit" }}>Cancel</button>
+                        <button onClick={handleInvite} disabled={inviteSaving} style={{ flex: 2, padding: "10px", background: "linear-gradient(135deg,#0f766e,#0d9488)", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: inviteSaving ? "default" : "pointer", color: "#fff", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                          {inviteSaving ? <>
+                            <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                            Sending…
+                          </> : <><Mail size={13} /> Send Invite</>}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Edit permissions modal */}
+            {editPermsFor && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={e => { if (e.target === e.currentTarget) setEditPermsFor(null); }}>
+                <div style={{ background: "var(--color-background-primary)", border: "1px solid var(--color-border-secondary)", borderRadius: 18, padding: "1.75rem", width: "100%", maxWidth: 500, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>Edit Permissions</h3>
+                    <button onClick={() => setEditPermsFor(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", padding: 4 }}><X size={18} /></button>
+                  </div>
+                  <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--color-text-secondary)" }}>
+                    {teamMembers.find(m => m.id === editPermsFor)?.name} — update their dashboard access.
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+                    {ALL_PERMISSIONS.map(perm => {
+                      const isChecked = editPerms.includes(perm);
+                      return (
+                        <label key={perm} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "9px 11px", borderRadius: 9, border: `1.5px solid ${isChecked ? "var(--color-accent)" : "var(--color-border-secondary)"}`, background: isChecked ? "var(--color-accent-muted)" : "var(--color-background-secondary)", transition: "all 0.15s" }}>
+                          <input type="checkbox" checked={isChecked} onChange={e => setEditPerms(prev => e.target.checked ? [...prev, perm] : prev.filter(p => p !== perm))} style={{ accentColor: "var(--color-accent)", cursor: "pointer" }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: isChecked ? "var(--color-accent)" : "var(--color-text-secondary)" }}>{PERMISSION_LABELS[perm]}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setEditPermsFor(null)} style={{ flex: 1, padding: "10px", background: "var(--color-background-secondary)", border: "1px solid var(--color-border-secondary)", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--color-text-secondary)", fontFamily: "inherit" }}>Cancel</button>
+                    <button onClick={handleSavePerms} disabled={editPermsSaving} style={{ flex: 2, padding: "10px", background: "linear-gradient(135deg,#0f766e,#0d9488)", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", color: "#fff", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      {editPermsSaving ? 'Saving…' : <><Check size={13} /> Save Changes</>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Remove confirm */}
+            {removeConfirm && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+                <div style={{ background: "var(--color-background-primary)", border: "1px solid var(--color-border-secondary)", borderRadius: 18, padding: "1.75rem", width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", textAlign: "center" }}>
+                  <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(239,68,68,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                    <Trash2 size={22} color="#ef4444" />
+                  </div>
+                  <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 700, color: "var(--color-text-primary)" }}>
+                    {removeType === 'invite' ? 'Revoke invite?' : 'Remove team member?'}
+                  </h3>
+                  <p style={{ margin: "0 0 20px", fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+                    {removeType === 'invite'
+                      ? 'The invite link will be invalidated. You can send a new invite at any time.'
+                      : 'This person will immediately lose access to the dashboard. This cannot be undone.'}
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setRemoveConfirm(null)} style={{ flex: 1, padding: "10px", background: "var(--color-background-secondary)", border: "1px solid var(--color-border-secondary)", borderRadius: 9, fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--color-text-secondary)", fontFamily: "inherit" }}>Cancel</button>
+                    <button onClick={handleRemove} style={{ flex: 1, padding: "10px", background: "#ef4444", border: "none", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", color: "#fff", fontFamily: "inherit" }}>
+                      {removeType === 'invite' ? 'Revoke' : 'Remove'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Profile tab */}
         {activeTab === "profile" && (
