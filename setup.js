@@ -1,406 +1,510 @@
 #!/usr/bin/env node
-// ─────────────────────────────────────────────────────────
-// DentalIQ — All-in-one setup & launch script
-// Run with: node setup.js
+// ─────────────────────────────────────────────────────────────────────────────
+// DentalIQ — Interactive Setup & Launch Script
 //
-// What this does (in order):
-//   1. Checks / installs prerequisites via Homebrew
-//   2. Creates .env from .env.example (if missing)
-//   3. Installs dependencies (pnpm install)
-//   4. Starts Docker infra (Postgres, Redis, Mailpit)
-//   5. Starts Ollama + pulls model for AI features
-//   6. Pushes database schema via Drizzle
-//   7. Seeds demo data
-//   8. Starts all services (pnpm dev)
-// ─────────────────────────────────────────────────────────
+//   node setup.js
+//
+// Steps:
+//   0. Ask two questions upfront  (AI features? Docker email UI?)
+//   1. Check / install prerequisites
+//   2. Create .env (auto-generate secrets)
+//   3. Install dependencies  (pnpm install)
+//   4. Docker services       (mailpit only — app uses SQLite by default)
+//   5. Ollama                (SKIPPED when user opts out of AI)
+//   6. Push database schema
+//   7. Seed demo data
+//   8. Launch all services
+// ─────────────────────────────────────────────────────────────────────────────
 
+const readline  = require('readline')
 const { execSync, spawn } = require('child_process')
-const fs = require('fs')
-const path = require('path')
+const fs        = require('fs')
+const path      = require('path')
+const crypto    = require('crypto')
+const net       = require('net')
 
-const isWin = process.platform === 'win32'
+const ROOT   = __dirname
+const isWin  = process.platform === 'win32'
+const isMac  = process.platform === 'darwin'
+const isLinux = process.platform === 'linux'
 
-// ── Helpers ──────────────────────────────────────────────
+// ─── Colour helpers ───────────────────────────────────────────────────────────
+const c = {
+  reset:  '\x1b[0m',
+  bold:   '\x1b[1m',
+  dim:    '\x1b[2m',
+  green:  '\x1b[32m',
+  yellow: '\x1b[33m',
+  red:    '\x1b[31m',
+  cyan:   '\x1b[36m',
+  blue:   '\x1b[34m',
+  white:  '\x1b[37m',
+  gray:   '\x1b[90m',
+}
 
-const ROOT = __dirname
+const ok   = (msg) => console.log(`  ${c.green}✓${c.reset}  ${msg}`)
+const warn = (msg) => console.log(`  ${c.yellow}⚠${c.reset}  ${msg}`)
+const info = (msg) => console.log(`  ${c.cyan}→${c.reset}  ${msg}`)
+const err  = (msg) => console.log(`  ${c.red}✗${c.reset}  ${msg}`)
+const dim  = (msg) => console.log(`     ${c.gray}${msg}${c.reset}`)
 
-const run = (cmd, opts = {}) => {
-  console.log(`\n  → ${cmd}`)
+function header(step, title) {
+  const line = '─'.repeat(60)
+  console.log(`\n${c.bold}${line}${c.reset}`)
+  console.log(`${c.bold}  ${step}  ${title}${c.reset}`)
+  console.log(`${c.bold}${line}${c.reset}`)
+}
+
+// ─── Shell helpers ────────────────────────────────────────────────────────────
+function run(cmd, opts = {}) {
+  info(cmd)
   execSync(cmd, { stdio: 'inherit', cwd: ROOT, ...opts })
 }
 
-const runQuiet = (cmd) => {
+function runQuiet(cmd) {
+  try { return execSync(cmd, { stdio: 'pipe', cwd: ROOT }).toString().trim() }
+  catch { return null }
+}
+
+function hasCmd(cmd) {
   try {
-    return execSync(cmd, { stdio: 'pipe', cwd: ROOT }).toString().trim()
-  } catch {
-    return null
-  }
+    execSync(isWin ? `where ${cmd}` : `command -v ${cmd}`, { stdio: 'pipe' })
+    return true
+  } catch { return false }
 }
 
-const log = (msg) => console.log(`  ✅ ${msg}`)
-const warn = (msg) => console.log(`  ⚠️  ${msg}`)
-const info = (msg) => console.log(`  ℹ️  ${msg}`)
-const header = (msg) => {
-  console.log(`\n${'─'.repeat(55)}`)
-  console.log(`  ${msg}`)
-  console.log('─'.repeat(55))
-}
-
+// ─── Async helpers ────────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// ── Check if a command exists ────────────────────────────
-
-const hasCmd = (cmd) => {
-  try {
-    const check = isWin ? `where ${cmd}` : `command -v ${cmd}`
-    execSync(check, { stdio: 'pipe' })
-    return true
-  } catch {
-    return false
-  }
-}
-
-// ── Wait for a TCP port to be ready ──────────────────────
-
-const waitForPort = async (port, label, maxWaitSec = 30) => {
-  const { createConnection } = require('net')
+async function waitForPort(port, label, maxSec = 40) {
   const start = Date.now()
-  while (Date.now() - start < maxWaitSec * 1000) {
+  while (Date.now() - start < maxSec * 1000) {
     const ok = await new Promise((resolve) => {
-      const sock = createConnection({ port, host: '127.0.0.1' })
-      sock.once('connect', () => { sock.destroy(); resolve(true) })
-      sock.once('error', () => { sock.destroy(); resolve(false) })
+      const s = net.createConnection({ port, host: '127.0.0.1' })
+      s.once('connect', () => { s.destroy(); resolve(true) })
+      s.once('error',   () => { s.destroy(); resolve(false) })
     })
-    if (ok) { log(`${label} ready on port ${port}`); return true }
-    await sleep(1000)
+    if (ok) { ok(`${label} ready on :${port}`); return true }
+    await sleep(1200)
   }
-  warn(`${label} did not become ready on port ${port} within ${maxWaitSec}s`)
+  warn(`${label} not ready on :${port} after ${maxSec}s — continuing anyway`)
   return false
 }
 
-// ── Wait for Ollama API to respond ───────────────────────
-
-const waitForOllama = async (baseUrl, maxWaitSec = 30) => {
+async function waitForHttp(url, maxSec = 40) {
   const start = Date.now()
-  while (Date.now() - start < maxWaitSec * 1000) {
-    try {
-      const res = await fetch(`${baseUrl}/api/tags`)
-      if (res.ok) return true
-    } catch { /* not ready yet */ }
-    await sleep(1000)
+  while (Date.now() - start < maxSec * 1000) {
+    try { const r = await fetch(url); if (r.ok || r.status < 500) return true }
+    catch { /* not up yet */ }
+    await sleep(1200)
   }
   return false
 }
 
-// ═════════════════════════════════════════════════════════
+// ─── Interactive prompt ───────────────────────────────────────────────────────
+function ask(question) {
+  // If stdin is not a TTY (CI, pipe, etc.) return empty string → defaults apply
+  if (!process.stdin.isTTY) return Promise.resolve('')
+
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input:  process.stdin,
+      output: process.stdout,
+      terminal: true,
+    })
+    rl.question(question, (answer) => {
+      rl.close()
+      resolve(answer.trim())
+    })
+  })
+}
+
+function isYes(answer, defaultYes = false) {
+  if (answer === '') return defaultYes
+  return /^y(es)?$/i.test(answer)
+}
+
+// ─── .env helpers ─────────────────────────────────────────────────────────────
+function getEnvVal(content, key) {
+  const m = content.match(new RegExp(`^${key}=(.*)$`, 'm'))
+  return m ? m[1].trim() : null
+}
+
+function setEnvVal(content, key, value) {
+  const re = new RegExp(`^(${key}=).*$`, 'm')
+  if (re.test(content)) return content.replace(re, `$1${value}`)
+  return content + `\n${key}=${value}\n`
+}
+
+function isPlaceholder(val) {
+  return !val || val.startsWith('CHANGE_ME') || val.startsWith('sk_test_...') ||
+         val.startsWith('price_...') || val.startsWith('re_...') ||
+         val.startsWith('whsec_...') || val.startsWith('sk-ant-...') ||
+         val.startsWith('sk-...')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  MAIN
-// ═════════════════════════════════════════════════════════
-
+// ─────────────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('\n🦷 DentalIQ — Full Setup & Launch\n')
+  console.clear()
+  console.log(`
+${c.bold}${c.green}  ██████╗ ███████╗███╗   ██╗████████╗ █████╗ ██╗     ██╗ ██████╗
+  ██╔══██╗██╔════╝████╗  ██║╚══██╔══╝██╔══██╗██║     ██║██╔═══██╗
+  ██║  ██║█████╗  ██╔██╗ ██║   ██║   ███████║██║     ██║██║   ██║
+  ██║  ██║██╔══╝  ██║╚██╗██║   ██║   ██╔══██║██║     ██║██║▄▄ ██║
+  ██████╔╝███████╗██║ ╚████║   ██║   ██║  ██║███████╗██║╚██████╔╝
+  ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝ ╚══▀▀═╝ ${c.reset}
+${c.dim}  AI Insurance Intelligence Platform — Setup & Launch${c.reset}
+`)
 
-  // ──────────────────────────────────────────────────────
-  // 1. Prerequisites
-  // ──────────────────────────────────────────────────────
-  header('1 · Checking prerequisites')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 0 — Ask upfront questions
+  // ────────────────────────────────────────────────────────────────────────────
+  header('0 ·', 'Configuration')
 
-  // Homebrew (Optional for non-Mac)
-  const hasBrew = hasCmd('brew')
-  if (hasBrew) {
-    log('Homebrew found')
+  console.log(`
+  ${c.bold}AI Features${c.reset} (Ollama local LLM)
+  ${c.gray}──────────────────────────────────────────────────${c.reset}
+  Enables: pre-auth narrative drafting, claim explanations,
+  and Cortex agent intelligence.
+
+  ${c.yellow}Requires downloading a ~4 GB language model (llama3.1:8b).${c.reset}
+  Skip this if you just want to explore the UI without AI.
+`)
+
+  const aiAnswer = await ask(`  ${c.bold}Enable AI features?${c.reset} [y/N] › `)
+  const wantAI   = isYes(aiAnswer, false)
+
+  console.log()
+
+  if (wantAI) {
+    ok('AI features ENABLED — Ollama will be installed and the model pulled')
   } else {
-    warn('Homebrew not found — automatic dependency installation may fail on non-Mac systems.')
+    ok(`AI features SKIPPED — UI works fully; AI endpoints return graceful fallbacks`)
+    dim('You can enable AI later by installing Ollama and re-running: node setup.js')
   }
 
-  // Node.js
+  console.log()
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 1 — Prerequisites
+  // ────────────────────────────────────────────────────────────────────────────
+  header('1 ·', 'Prerequisites')
+
+  // Node.js ≥ 20
   if (!hasCmd('node')) {
-    if (hasBrew) {
-      info('Installing Node.js via Homebrew...')
-      run('brew install node')
-    } else {
-      console.error('❌ Node.js is missing. Please install it from https://nodejs.org')
-      process.exit(1)
-    }
+    err('Node.js is required. Install from https://nodejs.org (v20+)')
+    process.exit(1)
   }
-  const nodeV = runQuiet('node --version')
-  log(`Node.js ${nodeV}`)
+  const nodeVer = runQuiet('node --version')
+  const nodeMajor = parseInt((nodeVer || '').replace('v', '').split('.')[0], 10)
+  if (nodeMajor < 20) {
+    err(`Node.js v20+ required. Found: ${nodeVer}. Update at https://nodejs.org`)
+    process.exit(1)
+  }
+  ok(`Node.js ${nodeVer}`)
 
   // pnpm
   if (!hasCmd('pnpm')) {
-    if (hasBrew) {
-      info('Installing pnpm via Homebrew...')
+    info('Installing pnpm...')
+    if (isMac && hasCmd('brew')) {
       run('brew install pnpm')
     } else {
-      info('Installing pnpm via npm...')
-      run('npm install -g pnpm')
+      run('npm install -g pnpm@9')
     }
   }
-  const pnpmV = runQuiet('pnpm --version')
-  log(`pnpm ${pnpmV}`)
+  ok(`pnpm ${runQuiet('pnpm --version')}`)
 
-  // Docker (optional but recommended)
-  // Detect whether the system uses legacy 'docker-compose' or modern 'docker compose'
-  const dockerComposeCmd = hasCmd('docker-compose') ? 'docker-compose' : 'docker compose'
-  let hasDocker = hasCmd('docker')
-  if (hasDocker) {
-    const dockerRunning = runQuiet('docker info') !== null
-    if (!dockerRunning) {
-      warn('Docker daemon is not running. App will use SQLite.')
-      hasDocker = false
-    } else {
-      log('Docker found and running')
-    }
+  // Docker (optional — only used for mailpit email preview)
+  const dockerCmd    = hasCmd('docker-compose') ? 'docker-compose' : 'docker compose'
+  const dockerExists = hasCmd('docker')
+  const dockerRunning = dockerExists && runQuiet('docker info') !== null
+  if (dockerRunning) {
+    ok('Docker running')
   } else {
-    warn('Docker not found — app will use SQLite')
+    warn('Docker not running — email preview (Mailpit) will be unavailable')
+    dim('Install Docker Desktop from https://docker.com to enable email preview')
   }
 
-  // Ollama
-  if (!hasCmd('ollama')) {
-    if (hasBrew) {
-      info('Installing Ollama via Homebrew...')
-      run('brew install ollama')
-    } else if (isWin) {
-      info('Installing Ollama for Windows...')
-      try {
-        // Use PowerShell to download and run the installer silently
-        const installerPath = path.join(ROOT, 'OllamaSetup.exe')
-        run(`powershell -Command "Invoke-WebRequest -Uri https://ollama.com/download/OllamaSetup.exe -OutFile '${installerPath}'"`)
-        info('Running Ollama installer (this may take a minute)...')
-        run(`"${installerPath}" /silent`)
-        fs.unlinkSync(installerPath)
-        log('Ollama installed successfully')
-      } catch (e) {
-        warn(`Automatic Ollama installation failed: ${e.message}`)
-        warn('Please install it manually from https://ollama.com')
+  // Ollama (only when AI is wanted)
+  if (wantAI) {
+    if (!hasCmd('ollama')) {
+      info('Installing Ollama...')
+      if (isMac && hasCmd('brew')) {
+        run('brew install ollama')
+      } else if (isLinux) {
+        run('curl -fsSL https://ollama.com/install.sh | sh')
+      } else if (isWin) {
+        warn('Please install Ollama manually from https://ollama.com/download')
+        warn('Then re-run this script.')
+        process.exit(1)
+      } else {
+        warn('Could not auto-install Ollama. Get it at https://ollama.com')
       }
-    } else {
-      warn('Ollama not found. Please install it from https://ollama.com to use AI features.')
     }
-  } else {
-    log('Ollama found')
+    if (hasCmd('ollama')) {
+      ok(`Ollama ${runQuiet('ollama --version') || 'found'}`)
+    }
   }
 
-  // ──────────────────────────────────────────────────────
-  // 2. Environment file
-  // ──────────────────────────────────────────────────────
-  header('2 · Environment configuration')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 2 — Environment file
+  // ────────────────────────────────────────────────────────────────────────────
+  header('2 ·', 'Environment configuration')
 
-  const envPath = path.join(ROOT, '.env')
-  const envExamplePath = path.join(ROOT, '.env.example')
+  const envPath    = path.join(ROOT, '.env')
+  const examplePath = path.join(ROOT, '.env.example')
 
   if (!fs.existsSync(envPath)) {
-    let content = fs.readFileSync(envExamplePath, 'utf-8')
-    // Ensure all dev ports are allowed in CORS
-    content = content.replace('ALLOWED_ORIGINS=http://localhost:3000', 'ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3005')
-    fs.writeFileSync(envPath, content)
-    log('Created .env from .env.example (with multi-port CORS)')
+    fs.copyFileSync(examplePath, envPath)
+    info('Created .env from .env.example')
   } else {
-    // Failsafe: add 3005 if missing
-    let content = fs.readFileSync(envPath, 'utf-8')
-    if (content.includes('ALLOWED_ORIGINS=http://localhost:3000') && !content.includes('3005')) {
-      content = content.replace('ALLOWED_ORIGINS=http://localhost:3000', 'ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3005')
-      fs.writeFileSync(envPath, content)
-      log('Updated .env with port 3005 for Admin Portal')
-    } else {
-      log('.env already exists')
-    }
+    info('.env already exists — checking for missing values...')
   }
 
-  // Read .env to determine config
-  const envContent = fs.readFileSync(envPath, 'utf-8')
-  const getEnvVal = (key) => {
-    const match = envContent.match(new RegExp(`^${key}=(.*)$`, 'm'))
-    return match ? match[1].trim() : null
+  let envContent = fs.readFileSync(envPath, 'utf-8')
+
+  // Auto-generate JWT_SECRET if it's a placeholder
+  const jwtSecret = getEnvVal(envContent, 'JWT_SECRET')
+  if (isPlaceholder(jwtSecret)) {
+    const generated = crypto.randomBytes(64).toString('hex')
+    envContent = setEnvVal(envContent, 'JWT_SECRET', generated)
+    ok('Generated JWT_SECRET (random 128-char hex)')
+  } else {
+    ok('JWT_SECRET already set')
   }
 
-  const ollamaBaseUrl = getEnvVal('OLLAMA_BASE_URL') || 'http://localhost:11434'
-  const ollamaModel = getEnvVal('OLLAMA_MODEL') || 'phi3'
-
-  // Warn about default JWT secret
-  const jwtSecret = getEnvVal('JWT_SECRET')
-  if (jwtSecret && jwtSecret.startsWith('change-me')) {
-    warn('JWT_SECRET is still the default — update it in .env for production use')
+  // Auto-generate ADMIN_SECRET if placeholder
+  const adminSecret = getEnvVal(envContent, 'ADMIN_SECRET')
+  if (isPlaceholder(adminSecret) || !adminSecret) {
+    const generated = crypto.randomBytes(32).toString('hex')
+    envContent = setEnvVal(envContent, 'ADMIN_SECRET', generated)
+    ok('Generated ADMIN_SECRET')
   }
 
-  info(`Ollama model: ${ollamaModel}`)
-  info(`Ollama URL:   ${ollamaBaseUrl}`)
+  // Ensure ALLOWED_ORIGINS includes both ports
+  if (!envContent.includes('3005')) {
+    envContent = envContent.replace(
+      /^ALLOWED_ORIGINS=.*$/m,
+      'ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3005'
+    )
+    ok('Added port 3005 to ALLOWED_ORIGINS (Admin Portal)')
+  }
 
-  // ──────────────────────────────────────────────────────
-  // 3. Install dependencies
-  // ──────────────────────────────────────────────────────
-  header('3 · Installing dependencies')
+  // Set LLM mode based on user's choice
+  if (!wantAI) {
+    // Keep LLM_PROVIDER=ollama (default) but Ollama won't be running.
+    // Services fall back gracefully to static templates when Ollama is unreachable.
+    dim('LLM_PROVIDER left as "ollama" — AI endpoints return fallback responses when Ollama is not running')
+  } else {
+    ok(`LLM_PROVIDER: ${getEnvVal(envContent, 'LLM_PROVIDER') || 'ollama'}`)
+  }
+
+  fs.writeFileSync(envPath, envContent)
+  ok('.env saved')
+
+  // Warn about any remaining placeholders
+  const remaining = []
+  for (const key of ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY', 'RESEND_API_KEY', 'ANTHROPIC_API_KEY']) {
+    const val = getEnvVal(envContent, key)
+    if (val && isPlaceholder(val)) remaining.push(key)
+  }
+  if (remaining.length > 0) {
+    warn(`Optional keys still using placeholders (not required for dev):`)
+    remaining.forEach((k) => dim(k))
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 3 — Install dependencies
+  // ────────────────────────────────────────────────────────────────────────────
+  header('3 ·', 'Installing dependencies')
 
   run('pnpm install')
-  log('Dependencies installed')
+  ok('All workspace dependencies installed')
 
-  // ──────────────────────────────────────────────────────
-  // 4. Docker services (Postgres, Redis, Mailpit)
-  // ──────────────────────────────────────────────────────
-  header('4 · Docker infrastructure')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 4 — Docker (Mailpit email preview only)
+  // ────────────────────────────────────────────────────────────────────────────
+  header('4 ·', 'Email preview service (Mailpit)')
 
-  if (hasDocker) {
+  if (dockerRunning) {
     try {
-      run(`${dockerComposeCmd} up -d postgres redis mailpit`)
-      log('Docker services started (postgres, redis, mailpit)')
-      info('Postgres  → localhost:5432')
-      info('Redis     → localhost:6379')
-      info('Mailpit   → http://localhost:8025')
-
-      // Wait for Postgres to be ready before DB push
-      await waitForPort(5432, 'Postgres')
-    } catch (e) {
-      warn(`Could not start Docker services: ${e.message}`)
-      warn('Continuing without Docker — app will fall back to SQLite')
+      run(`${dockerCmd} up -d mailpit`)
+      ok('Mailpit started')
+      dim('Email UI → http://localhost:8025')
+      dim('Captured emails from all services appear here in dev mode')
+    } catch {
+      warn('Could not start Mailpit — emails will log to terminal instead')
     }
   } else {
-    info('Skipping Docker services (not available)')
-    info('App will use SQLite for the database')
+    info('Docker not available — emails will be logged to terminal (EMAIL_MODE=console)')
+    dim('This is fine for development. Open .env and set EMAIL_MODE=smtp to use Mailpit later.')
   }
 
-  // ──────────────────────────────────────────────────────
-  // 5. Ollama — start server + pull model
-  // ──────────────────────────────────────────────────────
-  header('5 · Ollama (local AI)')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 5 — Ollama (skipped when user opted out)
+  // ────────────────────────────────────────────────────────────────────────────
+  header('5 ·', wantAI ? 'Ollama — Local AI' : 'Ollama — SKIPPED (no AI mode)')
 
-  // Check if Ollama is already running
-  let ollamaAlreadyRunning = false
-  try {
-    const res = await fetch(`${ollamaBaseUrl}/api/tags`)
-    if (res.ok) ollamaAlreadyRunning = true
-  } catch { /* not running */ }
-
-  if (ollamaAlreadyRunning) {
-    log('Ollama is already running')
+  if (!wantAI) {
+    info('Skipping Ollama setup. AI features will return static fallback responses.')
+    dim('To enable AI later:')
+    dim('  1. Install Ollama → https://ollama.com')
+    dim('  2. Run: ollama pull llama3.1:8b')
+    dim('  3. Run: ollama serve')
+    dim('  4. Restart services: pnpm dev')
   } else {
-    info('Starting Ollama server...')
-
-    // Spawn ollama serve as a detached background process
-    const ollamaProc = spawn('ollama', ['serve'], {
-      detached: true,
-      stdio: 'ignore',
-      shell: isWin,
-      cwd: ROOT,
-    })
-    ollamaProc.unref()
-
-    // Wait for it to be ready
-    const ollamaReady = await waitForOllama(ollamaBaseUrl, 20)
-    if (ollamaReady) {
-      log('Ollama server started')
+    if (!hasCmd('ollama')) {
+      warn('Ollama not found — skipping AI setup. Install from https://ollama.com')
     } else {
-      warn('Ollama did not start in time — AI features will use fallback templates')
-    }
-  }
+      // Read model from .env (re-read in case it changed)
+      const freshEnv  = fs.readFileSync(envPath, 'utf-8')
+      const ollamaUrl   = getEnvVal(freshEnv, 'OLLAMA_BASE_URL') || 'http://localhost:11434'
+      const ollamaModel = getEnvVal(freshEnv, 'OLLAMA_MODEL')    || 'llama3.1:8b'
 
-  // Pull model if not already present
-  try {
-    const tagsRes = await fetch(`${ollamaBaseUrl}/api/tags`)
-    if (tagsRes.ok) {
-      const tags = await tagsRes.json()
-      const models = (tags.models || []).map((m) => m.name)
-      const modelInstalled = models.some(
-        (m) => m === ollamaModel || m.startsWith(`${ollamaModel}:`)
-      )
+      info(`Model: ${ollamaModel}`)
+      info(`URL:   ${ollamaUrl}`)
 
-      if (modelInstalled) {
-        log(`Model "${ollamaModel}" is already pulled`)
+      // Check if Ollama is already running
+      let ollamaUp = false
+      try { const r = await fetch(`${ollamaUrl}/api/tags`); ollamaUp = r.ok } catch {}
+
+      if (ollamaUp) {
+        ok('Ollama already running')
       } else {
-        info(`Pulling model "${ollamaModel}" — this may take a few minutes on first run...`)
-        run(`ollama pull ${ollamaModel}`)
-        log(`Model "${ollamaModel}" pulled successfully`)
+        info('Starting Ollama server in background...')
+        const proc = spawn('ollama', ['serve'], {
+          detached: true, stdio: 'ignore',
+          shell: isWin, cwd: ROOT,
+        })
+        proc.unref()
+        ollamaUp = await waitForHttp(`${ollamaUrl}/api/tags`, 25)
+        if (!ollamaUp) {
+          warn('Ollama did not start in time — AI will use fallback templates')
+        }
+      }
+
+      if (ollamaUp) {
+        // Pull model if not present
+        try {
+          const tagsRes = await fetch(`${ollamaUrl}/api/tags`)
+          if (tagsRes.ok) {
+            const { models = [] } = await tagsRes.json()
+            const installed = models.some(
+              (m) => m.name === ollamaModel || m.name.startsWith(`${ollamaModel}:`)
+            )
+            if (installed) {
+              ok(`Model "${ollamaModel}" already downloaded`)
+            } else {
+              console.log()
+              info(`Pulling model "${ollamaModel}" — this downloads ~4 GB on first run.`)
+              info('Grab a coffee ☕ — this only happens once.')
+              console.log()
+              run(`ollama pull ${ollamaModel}`)
+              ok(`Model "${ollamaModel}" ready`)
+            }
+          }
+        } catch {
+          warn('Could not verify/pull model — AI features may use fallback templates')
+        }
       }
     }
-  } catch {
-    warn('Could not check/pull Ollama model — AI features will use fallback templates')
   }
 
-  // ──────────────────────────────────────────────────────
-  // 6. Database schema
-  // ──────────────────────────────────────────────────────
-  header('6 · Database schema')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 6 — Database schema
+  // ────────────────────────────────────────────────────────────────────────────
+  header('6 ·', 'Database schema')
 
-  // Failsafe: Ensure drizzle dialect is sqlite (fix common setup issue)
+  // Ensure drizzle config uses sqlite dialect (common migration issue)
   try {
-    const drizzleConfPath = path.join(ROOT, 'packages/db/drizzle.config.ts')
-    if (fs.existsSync(drizzleConfPath)) {
-      let content = fs.readFileSync(drizzleConfPath, 'utf-8')
-      if (content.includes("dialect: 'turso'")) {
-        content = content.replace("dialect: 'turso'", "dialect: 'sqlite'")
-        fs.writeFileSync(drizzleConfPath, content)
-        log('Fixed Drizzle dialect (turso -> sqlite)')
+    const drizzleCfg = path.join(ROOT, 'packages/db/drizzle.config.ts')
+    if (fs.existsSync(drizzleCfg)) {
+      let cfg = fs.readFileSync(drizzleCfg, 'utf-8')
+      if (cfg.includes("dialect: 'turso'") || cfg.includes('dialect: "turso"')) {
+        cfg = cfg.replace(/dialect:\s*['"]turso['"]/g, "dialect: 'sqlite'")
+        fs.writeFileSync(drizzleCfg, cfg)
+        ok('Fixed Drizzle dialect (turso → sqlite)')
       }
     }
-  } catch { /* skip if fails */ }
+  } catch { /* non-fatal */ }
 
   try {
     run('pnpm db:push')
-    log('Database schema pushed')
+    ok('Database schema up to date')
+    dim('SQLite database: dentaliq.db (at repo root)')
   } catch {
-    warn('Could not push DB schema — run manually: pnpm db:push')
+    warn('db:push failed — run manually: pnpm db:push')
+    dim('This is usually fine if the schema already exists from a previous run.')
   }
 
-  // ──────────────────────────────────────────────────────
-  // 7. Seed demo data
-  // ──────────────────────────────────────────────────────
-  header('7 · Demo data')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 7 — Demo seed data
+  // ────────────────────────────────────────────────────────────────────────────
+  header('7 ·', 'Demo seed data')
 
   try {
     run('pnpm seed')
-    log('Demo data seeded')
-    info('Login: demo@dentaliq.dev / Demo1234!')
+    ok('Demo data seeded')
+    dim('Login: demo@dentaliq.dev  /  Demo1234!')
   } catch {
-    warn('Could not seed demo data — run manually: pnpm seed')
+    warn('Seed failed (DB may already have data) — continuing')
+    dim('To force re-seed: delete dentaliq.db then run: pnpm seed')
   }
 
-  // ──────────────────────────────────────────────────────
-  // 8. Launch all services
-  // ──────────────────────────────────────────────────────
-  header('8 · Launching DentalIQ')
+  // ────────────────────────────────────────────────────────────────────────────
+  // STEP 8 — Launch all services
+  // ────────────────────────────────────────────────────────────────────────────
+  header('8 ·', 'Launching DentalIQ')
 
-  console.log('')
-  console.log('  🚀 Starting all services...')
-  console.log('')
-  console.log('  ┌──────────────────────────────────────────┐')
-  console.log('  │  Frontend     → http://localhost:3000     │')
-  console.log('  │  Auth API     → http://localhost:3001     │')
-  console.log('  │  Tenant API   → http://localhost:3002     │')
-  console.log('  │  Estimate API → http://localhost:3004     │')
-  console.log('  │  Admin Portal → http://localhost:3005     │')
-  console.log('  │  Ollama LLM   → http://localhost:11434    │')
-  if (hasDocker) {
-    console.log('  │  Mailpit      → http://localhost:8025     │')
-  }
-  console.log('  │                                          │')
-  console.log('  │  Demo login: demo@dentaliq.dev            │')
-  console.log('  │  Password:   Demo1234!                    │')
-  console.log('  └──────────────────────────────────────────┘')
-  console.log('')
-  console.log('  Press Ctrl+C to stop all services.\n')
+  const aiStatus = wantAI
+    ? `${c.green}Enabled${c.reset} (${getEnvVal(fs.readFileSync(envPath,'utf-8'), 'OLLAMA_MODEL') || 'llama3.1:8b'})`
+    : `${c.yellow}Disabled${c.reset} (static fallbacks)`
+  const mailStatus = dockerRunning
+    ? `${c.green}http://localhost:8025${c.reset}`
+    : `${c.yellow}Terminal logs (no Docker)${c.reset}`
 
-  // Run pnpm dev in the foreground so Ctrl+C stops everything
-  const devProc = spawn('pnpm', ['dev'], {
-    stdio: 'inherit',
-    shell: isWin,
-    cwd: ROOT,
+  console.log(`
+${c.bold}  ┌─────────────────────────────────────────────────────┐
+  │                                                     │
+  │   🦷  DentalIQ is starting up...                   │
+  │                                                     │
+  │   Frontend      ${c.cyan}http://localhost:3000${c.reset}${c.bold}              │
+  │   Auth API      ${c.cyan}http://localhost:3001${c.reset}${c.bold}              │
+  │   Tenant API    ${c.cyan}http://localhost:3002${c.reset}${c.bold}              │
+  │   Estimate API  ${c.cyan}http://localhost:3004${c.reset}${c.bold}              │
+  │   Admin Portal  ${c.cyan}http://localhost:3005${c.reset}${c.bold}              │
+  │   Agent Manager ${c.cyan}http://localhost:3006${c.reset}${c.bold}              │
+  │                                                     │
+  │   AI features   ${aiStatus}${c.bold}
+  │   Email UI      ${mailStatus}${c.bold}
+  │                                                     │
+  │   Demo login    demo@dentaliq.dev                   │
+  │   Password      Demo1234!                           │
+  │                                                     │
+  │   Press  Ctrl+C  to stop all services.              │
+  │                                                     │
+  └─────────────────────────────────────────────────────┘${c.reset}
+`)
+
+  const dev = spawn('pnpm', ['dev'], {
+    stdio:  'inherit',
+    shell:  isWin,
+    cwd:    ROOT,
   })
 
-  devProc.on('close', (code) => {
-    console.log(`\n  DentalIQ stopped (exit code ${code}).`)
-    process.exit(code)
+  dev.on('close', (code) => {
+    console.log(`\n  DentalIQ stopped (exit ${code}).`)
+    process.exit(code ?? 0)
   })
 
-  // Forward Ctrl+C to the child process
-  process.on('SIGINT', () => {
-    devProc.kill('SIGINT')
-  })
-  process.on('SIGTERM', () => {
-    devProc.kill('SIGTERM')
-  })
+  process.on('SIGINT',  () => dev.kill('SIGINT'))
+  process.on('SIGTERM', () => dev.kill('SIGTERM'))
 }
 
-// ── Run ──────────────────────────────────────────────────
-
-main().catch((err) => {
-  console.error('\n❌ Setup failed:', err.message)
+// ─────────────────────────────────────────────────────────────────────────────
+main().catch((e) => {
+  console.error(`\n  ${c.red}✗${c.reset}  Setup failed: ${e.message}`)
   process.exit(1)
 })

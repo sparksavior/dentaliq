@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, Clock, Shield, Calendar, History, Phone, Mail, User, ChevronRight, Search, Plus, Filter, MoreHorizontal, Edit, Trash } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { useClinic } from '@/contexts/clinic-context'
 import { patientsApi, tenantsApi, type Patient, type CreatePatientInput, type Tenant } from '@/lib/api'
@@ -11,7 +9,6 @@ import { patientsApi, tenantsApi, type Patient, type CreatePatientInput, type Te
 interface ClinicLocation { id: string; name: string; status: string }
 
 const INSURERS = ['Sun Life Financial', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Desjardins', 'OTIP/RAEO', 'Empire Life']
-
 const emptyForm: CreatePatientInput = { firstName: '', lastName: '', dateOfBirth: '', phone: '', email: '', insuranceProvider: '' }
 
 function initials(first: string, last: string) {
@@ -27,21 +24,35 @@ function formatDob(dob?: string) {
   } catch { return dob }
 }
 
+const AVATAR_COLORS = [
+  { bg: 'linear-gradient(135deg, #0f766e, #0d9488)', text: '#fff' },
+  { bg: 'linear-gradient(135deg, #0e7490, #06b6d4)', text: '#fff' },
+  { bg: 'linear-gradient(135deg, #4f46e5, #7c3aed)', text: '#fff' },
+  { bg: 'linear-gradient(135deg, #059669, #10b981)', text: '#fff' },
+  { bg: 'linear-gradient(135deg, #b45309, #d97706)', text: '#fff' },
+]
+
+function avatarColor(name: string) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+}
+
 export default function PatientsPage() {
   const { accessToken } = useAuth()
   const [patients, setPatients] = useState<Patient[]>([])
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-
   const [showModal, setShowModal] = useState(false)
-
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<CreatePatientInput>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [clinics, setClinics] = useState<ClinicLocation[]>([])
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+  const [addBtnHover, setAddBtnHover] = useState(false)
 
   const { selectedClinicId } = useClinic()
   const load = useCallback(async () => {
@@ -62,7 +73,6 @@ export default function PatientsPage() {
   }, [accessToken, selectedClinicId])
 
   useEffect(() => { load() }, [load, selectedClinicId])
-
 
   const openAdd = () => {
     setEditingId(null)
@@ -116,176 +126,338 @@ export default function PatientsPage() {
       (p.insurance_plan_id ?? '').toLowerCase().includes(q)
   })
 
-  const inp: React.CSSProperties = { width: '100%', padding: '10px 12px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 9, fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-input-bg)', outline: 'none', boxSizing: 'border-box', fontFamily: 'system-ui', transition: 'border-color 0.15s' }
+  const inp: React.CSSProperties = {
+    width: '100%', padding: '10px 12px', border: '1.5px solid var(--color-border-secondary)',
+    borderRadius: 9, fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-input-bg)',
+    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+  }
+  const inpFocus = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+    e.currentTarget.style.borderColor = 'var(--color-accent)'
+    e.currentTarget.style.boxShadow = '0 0 0 3px var(--color-accent-subtle)'
+  }
+  const inpBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
+    e.currentTarget.style.borderColor = 'var(--color-border-secondary)'
+    e.currentTarget.style.boxShadow = 'none'
+  }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 1200, margin: '0 auto', color: 'var(--color-text-primary)' }}>
-      {/* Patients List */}
+    <div style={{ minHeight: '100vh', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)' }}>
 
-
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.03em', marginBottom: 4 }}>Patients</h1>
-          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)' }}>{loading ? '…' : `${patients.length} patient${patients.length !== 1 ? 's' : ''} registered`}</p>
+      {/* Premium page header */}
+      <div style={{
+        padding: '1.75rem 2rem 1.5rem',
+        background: 'linear-gradient(135deg, var(--color-background-primary) 0%, var(--color-accent-muted) 100%)',
+        borderBottom: '1px solid var(--color-border-secondary)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 14,
+            background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(15,118,110,0.3)', flexShrink: 0,
+          }}>
+            <svg width="22" height="22" fill="none" stroke="white" strokeWidth="1.8" viewBox="0 0 24 24">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.03em', margin: 0 }}>Patients</h1>
+            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '2px 0 0' }}>
+              {loading ? 'Loading…' : `${patients.length} patient${patients.length !== 1 ? 's' : ''} registered`}
+            </p>
+          </div>
         </div>
         <button
           onClick={openAdd}
-          style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+          onMouseEnter={() => setAddBtnHover(true)}
+          onMouseLeave={() => setAddBtnHover(false)}
+          style={{
+            padding: '10px 20px', borderRadius: 10, border: 'none',
+            background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff',
+            fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            boxShadow: addBtnHover ? '0 6px 20px rgba(15,118,110,0.45)' : '0 4px 14px rgba(15,118,110,0.3)',
+            transform: addBtnHover ? 'translateY(-1px)' : 'translateY(0)',
+            transition: 'all 0.18s ease',
+          }}
         >
-          + Add patient
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Add patient
         </button>
       </div>
 
-      {/* Search bar */}
-      <div style={{ marginBottom: '1.2rem', position: 'relative' }}>
-        <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', fontSize: 16 }}>⌕</div>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, phone, email, or insurance…"
-          style={{ width: '100%', padding: '10px 14px 10px 40px', border: '1.5px solid var(--color-border-secondary)', borderRadius: 10, fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-background-primary)', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-          onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
-          onBlur={e => e.target.style.borderColor = 'var(--color-border-secondary)'}
-        />
-      </div>
-
-      {/* Table */}
-      <div style={{ background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-        {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: 14 }}>Loading patients…</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-            <div style={{ fontSize: 48, marginBottom: 14 }}>👥</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>
-              {search ? 'No patients match your search' : 'No patients yet'}
-            </div>
-            <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 20, maxWidth: 320, margin: '0 auto 20px' }}>
-              {search ? 'Try a different search term.' : 'Add your first patient to start running estimates and tracking coverage.'}
-            </div>
-            {!search && (
-              <button onClick={openAdd} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: 'var(--color-accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                + Add first patient
-              </button>
-            )}
+      <div style={{ padding: '1.5rem 2rem', maxWidth: 1200, margin: '0 auto' }}>
+        {/* Search bar */}
+        <div style={{ marginBottom: '1.25rem', position: 'relative' }}>
+          <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)', pointerEvents: 'none' }}>
+            <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: 'var(--color-background-secondary)', borderBottom: '1px solid var(--color-border-secondary)' }}>
-                {['Patient', 'Date of Birth', 'Phone', 'Email', 'Insurance', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '11px 14px', textAlign: h === 'Actions' ? 'right' : 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border-tertiary)', transition: 'background 0.1s' }}>
-                  <td style={{ padding: '12px 14px' }}>
-                    <Link 
-                      href={`/dashboard/patients/${p.id}`}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', transition: 'opacity 0.2s' }}
-                      onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                    >
-                      <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--color-accent-muted)', color: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-                        {initials(p.first_name, p.last_name)}
-                      </div>
-                      <div style={{ fontWeight: 600, color: 'var(--color-accent)' }}>
-                        {p.first_name} {p.last_name}
-                      </div>
-                    </Link>
-                  </td>
-                  <td style={{ padding: '12px 14px', color: 'var(--color-text-secondary)' }}>{formatDob(p.date_of_birth)}</td>
-                  <td style={{ padding: '12px 14px', color: 'var(--color-text-secondary)' }}>{p.phone || '—'}</td>
-                  <td style={{ padding: '12px 14px', color: 'var(--color-text-secondary)' }}>{p.email || '—'}</td>
-                  <td style={{ padding: '12px 14px' }}>
-                    {p.insurance_plan_id ? (
-                      <span style={{ fontSize: 12, padding: '3px 10px', background: 'var(--color-accent-muted)', color: 'var(--color-accent)', borderRadius: 20, fontWeight: 500 }}>{p.insurance_plan_id}</span>
-                    ) : <span style={{ color: 'var(--color-text-secondary)' }}>—</span>}
-                  </td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={() => openEdit(p)}
-                        style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid var(--color-border-secondary)', background: 'var(--color-background-primary)', color: 'var(--color-text-primary)', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
-                      >Edit</button>
-                      <button
-                        onClick={() => setDeleteConfirm(p.id)}
-                        style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #fecaca', background: 'transparent', color: '#ef4444', fontSize: 12, fontWeight: 500, cursor: 'pointer' }}
-                      >Delete</button>
-                    </div>
-                  </td>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, phone, email, or insurance…"
+            style={{
+              width: '100%', padding: '11px 14px 11px 42px',
+              border: '1.5px solid var(--color-border-secondary)', borderRadius: 11,
+              fontSize: 14, color: 'var(--color-text-primary)', background: 'var(--color-background-primary)',
+              outline: 'none', boxSizing: 'border-box', transition: 'all 0.15s',
+              boxShadow: 'var(--shadow-xs)',
+            }}
+            onFocus={e => { e.target.style.borderColor = 'var(--color-accent)'; e.target.style.boxShadow = '0 0 0 3px var(--color-accent-subtle)' }}
+            onBlur={e => { e.target.style.borderColor = 'var(--color-border-secondary)'; e.target.style.boxShadow = 'var(--shadow-xs)' }}
+          />
+        </div>
+
+        {/* Table card */}
+        <div style={{
+          background: 'var(--color-background-primary)',
+          border: '1px solid var(--color-border-secondary)', borderRadius: 16,
+          overflow: 'hidden', boxShadow: 'var(--shadow-sm)',
+        }}>
+          {loading ? (
+            <div style={{ padding: '4rem', textAlign: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid var(--color-border-secondary)', borderTopColor: 'var(--color-accent)', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
+              <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: 0 }}>Loading patients…</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '4.5rem 2rem', animation: 'fadeIn 0.3s ease' }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 18,
+                background: 'var(--color-accent-muted)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px',
+              }}>
+                <svg width="28" height="28" fill="none" stroke="var(--color-accent)" strokeWidth="1.6" viewBox="0 0 24 24">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>
+                {search ? 'No patients match your search' : 'No patients yet'}
+              </div>
+              <div style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 22, maxWidth: 320, margin: '0 auto 22px' }}>
+                {search ? 'Try a different search term.' : 'Add your first patient to start running estimates and tracking coverage.'}
+              </div>
+              {!search && (
+                <button onClick={openAdd} style={{
+                  padding: '10px 24px', borderRadius: 10, border: 'none',
+                  background: 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff',
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(15,118,110,0.3)',
+                }}>
+                  + Add first patient
+                </button>
+              )}
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ background: 'var(--color-background-secondary)', borderBottom: '1px solid var(--color-border-secondary)' }}>
+                  {['Patient', 'Date of Birth', 'Phone', 'Email', 'Insurance', 'Actions'].map(h => (
+                    <th key={h} style={{
+                      padding: '11px 16px', textAlign: h === 'Actions' ? 'right' : 'left',
+                      fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)',
+                      textTransform: 'uppercase', letterSpacing: '0.06em',
+                    }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {filtered.map((p, idx) => {
+                  const color = avatarColor(p.first_name + p.last_name)
+                  const isHovered = hoveredRow === p.id
+                  return (
+                    <tr
+                      key={p.id}
+                      onMouseEnter={() => setHoveredRow(p.id)}
+                      onMouseLeave={() => setHoveredRow(null)}
+                      style={{
+                        borderBottom: '1px solid var(--color-border-tertiary)',
+                        background: isHovered ? 'var(--color-accent-muted)' : idx % 2 === 1 ? 'var(--color-background-secondary)' : 'transparent',
+                        transition: 'background 0.12s ease',
+                      }}
+                    >
+                      <td style={{ padding: '13px 16px' }}>
+                        <Link
+                          href={`/dashboard/patients/${p.id}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 11, textDecoration: 'none' }}
+                        >
+                          <div style={{
+                            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                            background: color.bg, color: color.text,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                          }}>
+                            {initials(p.first_name, p.last_name)}
+                          </div>
+                          <div style={{ fontWeight: 600, color: 'var(--color-accent)', fontSize: 14 }}>
+                            {p.first_name} {p.last_name}
+                          </div>
+                        </Link>
+                      </td>
+                      <td style={{ padding: '13px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>{formatDob(p.date_of_birth)}</td>
+                      <td style={{ padding: '13px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>{p.phone || '—'}</td>
+                      <td style={{ padding: '13px 16px', color: 'var(--color-text-secondary)', fontSize: 13 }}>{p.email || '—'}</td>
+                      <td style={{ padding: '13px 16px' }}>
+                        {p.insurance_plan_id ? (
+                          <span style={{
+                            fontSize: 12, padding: '3px 10px', background: 'var(--color-accent-muted)',
+                            color: 'var(--color-accent)', borderRadius: 20, fontWeight: 600,
+                            border: '1px solid var(--color-accent-subtle)',
+                          }}>{p.insurance_plan_id}</span>
+                        ) : <span style={{ color: 'var(--color-text-tertiary)', fontSize: 13 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '13px 16px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => openEdit(p)}
+                            style={{
+                              padding: '5px 13px', borderRadius: 7,
+                              border: '1px solid var(--color-border-secondary)',
+                              background: 'var(--color-background-primary)', color: 'var(--color-text-primary)',
+                              fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                              transition: 'all 0.12s',
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-accent)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-accent)' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-border-secondary)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-text-primary)' }}
+                          >Edit</button>
+                          <button
+                            onClick={() => setDeleteConfirm(p.id)}
+                            style={{
+                              padding: '5px 13px', borderRadius: 7,
+                              border: '1px solid #fecaca', background: 'transparent',
+                              color: '#ef4444', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                              transition: 'all 0.12s',
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef2f2' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                          >Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)' }} onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
-          <div style={{ background: 'var(--color-background-primary)', borderRadius: 16, padding: '2rem', width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.4)', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--color-border-secondary)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)' }}>{editingId ? 'Edit patient' : 'Add new patient'}</h2>
-              <button onClick={() => setShowModal(false)} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 100, backdropFilter: 'blur(6px)',
+        }} onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
+          <div style={{
+            background: 'var(--color-background-primary)', borderRadius: 20, width: '100%', maxWidth: 520,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.45)', maxHeight: '90vh', overflowY: 'auto',
+            border: '1px solid var(--color-border-secondary)', animation: 'slideIn 0.25s cubic-bezier(0.16,1,0.3,1)',
+          }}>
+            {/* Modal header with gradient stripe */}
+            <div style={{
+              padding: '1.25rem 1.75rem', borderBottom: '1px solid var(--color-border-secondary)',
+              background: 'linear-gradient(135deg, var(--color-background-secondary) 0%, var(--color-accent-muted) 100%)',
+              borderRadius: '20px 20px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 10,
+                  background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg width="15" height="15" fill="none" stroke="white" strokeWidth="2.2" viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </div>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                  {editingId ? 'Edit patient' : 'Add new patient'}
+                </h2>
+              </div>
+              <button onClick={() => setShowModal(false)} style={{
+                width: 30, height: 30, borderRadius: 8, border: '1px solid var(--color-border-secondary)',
+                background: 'var(--color-background-primary)', color: 'var(--color-text-secondary)',
+                fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>✕</button>
             </div>
 
-            {error && <div style={{ marginBottom: 14, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, fontSize: 13, color: '#dc2626' }}>{error}</div>}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>First name <span style={{ color: '#ef4444' }}>*</span></label>
-                <input style={inp} value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Last name <span style={{ color: '#ef4444' }}>*</span></label>
-                <input style={inp} value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Date of birth</label>
-                <input type="date" style={inp} value={form.dateOfBirth ?? ''} onChange={e => setForm(f => ({ ...f, dateOfBirth: e.target.value }))} />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Phone</label>
-                <input style={inp} placeholder="+1 (416) 555-0100" value={form.phone ?? ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-              </div>
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Email</label>
-                <input type="email" style={inp} value={form.email ?? ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-              </div>
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Insurance provider</label>
-                <select style={{ ...inp, cursor: 'pointer' }} value={form.insuranceProvider ?? ''} onChange={e => setForm(f => ({ ...f, insuranceProvider: e.target.value }))}>
-                  <option value="">— None —</option>
-                  {INSURERS.map(ins => <option key={ins} value={ins}>{ins}</option>)}
-                </select>
-              </div>
-              {tenant?.plan !== 'starter' && clinics.length > 1 && (
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>
-                    Clinic location {editingId ? <span style={{ color: '#0e7490' }}>(transfer patient)</span> : ''}
-                  </label>
-                  <select style={{ ...inp, cursor: 'pointer' }} value={form.clinicId ?? ''} onChange={e => setForm(f => ({ ...f, clinicId: e.target.value || undefined }))}>
-                    <option value="">— Select clinic —</option>
-                    {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+            <div style={{ padding: '1.5rem 1.75rem' }}>
+              {error && (
+                <div style={{
+                  marginBottom: 14, padding: '10px 14px',
+                  background: 'rgba(239,68,68,0.08)', border: '1px solid #fecaca',
+                  borderRadius: 9, fontSize: 13, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <span>⚠</span> {error}
                 </div>
               )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
-              <button onClick={() => setShowModal(false)} style={{ padding: '9px 18px', borderRadius: 9, border: '1.5px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', fontWeight: 500 }}>
-                Cancel
-              </button>
-              <button
-                onClick={save}
-                disabled={saving}
-                style={{ padding: '9px 22px', borderRadius: 9, border: 'none', background: saving ? 'var(--color-text-secondary)' : 'linear-gradient(135deg, #0f766e, #0d9488)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}
-              >
-                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add patient'}
-              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                {[
+                  { label: 'First name', key: 'firstName', required: true, placeholder: 'Jane' },
+                  { label: 'Last name', key: 'lastName', required: true, placeholder: 'Smith' },
+                  { label: 'Date of birth', key: 'dateOfBirth', type: 'date' },
+                  { label: 'Phone', key: 'phone', placeholder: '+1 (416) 555-0100' },
+                ].map(field => (
+                  <div key={field.key}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>
+                      {field.label} {field.required && <span style={{ color: '#ef4444' }}>*</span>}
+                    </label>
+                    <input
+                      type={field.type ?? 'text'}
+                      placeholder={field.placeholder}
+                      style={inp}
+                      value={(form as any)[field.key] ?? ''}
+                      onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
+                      onFocus={inpFocus} onBlur={inpBlur}
+                    />
+                  </div>
+                ))}
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Email</label>
+                  <input type="email" style={inp} value={form.email ?? ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onFocus={inpFocus} onBlur={inpBlur} />
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>Insurance provider</label>
+                  <select style={{ ...inp, cursor: 'pointer' }} value={form.insuranceProvider ?? ''} onChange={e => setForm(f => ({ ...f, insuranceProvider: e.target.value }))} onFocus={inpFocus} onBlur={inpBlur}>
+                    <option value="">— None —</option>
+                    {INSURERS.map(ins => <option key={ins} value={ins}>{ins}</option>)}
+                  </select>
+                </div>
+                {tenant?.plan !== 'starter' && clinics.length > 1 && (
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: 5 }}>
+                      Clinic location {editingId ? <span style={{ color: 'var(--color-accent)' }}>(transfer patient)</span> : ''}
+                    </label>
+                    <select style={{ ...inp, cursor: 'pointer' }} value={form.clinicId ?? ''} onChange={e => setForm(f => ({ ...f, clinicId: e.target.value || undefined }))} onFocus={inpFocus} onBlur={inpBlur}>
+                      <option value="">— Select clinic —</option>
+                      {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
+                <button onClick={() => setShowModal(false)} style={{
+                  padding: '9px 18px', borderRadius: 9,
+                  border: '1.5px solid var(--color-border-secondary)', background: 'transparent',
+                  color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', fontWeight: 500,
+                }}>Cancel</button>
+                <button onClick={save} disabled={saving} style={{
+                  padding: '9px 22px', borderRadius: 9, border: 'none',
+                  background: saving ? 'var(--color-text-secondary)' : 'linear-gradient(135deg, #0f766e, #0d9488)',
+                  color: '#fff', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
+                  boxShadow: saving ? 'none' : '0 4px 14px rgba(15,118,110,0.3)', transition: 'all 0.15s',
+                }}>
+                  {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add patient'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -293,20 +465,37 @@ export default function PatientsPage() {
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: 'var(--color-background-primary)', borderRadius: 16, padding: '2rem', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.4)', border: '1px solid var(--color-border-secondary)' }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: '1rem' }}>🗑</div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6 }}>Delete patient?</h3>
-            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem', lineHeight: 1.6 }}>
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 100, backdropFilter: 'blur(6px)',
+        }}>
+          <div style={{
+            background: 'var(--color-background-primary)', borderRadius: 20, padding: '2rem', width: '100%', maxWidth: 400,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.45)', border: '1px solid var(--color-border-secondary)',
+            animation: 'slideIn 0.25s cubic-bezier(0.16,1,0.3,1)',
+          }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 16,
+              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, marginBottom: '1.1rem',
+            }}>🗑</div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 6, margin: '0 0 6px' }}>Delete patient?</h3>
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: '1.5rem', lineHeight: 1.65 }}>
               This will permanently remove the patient and cannot be undone. Their estimate history will remain for audit purposes.
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setDeleteConfirm(null)} style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid var(--color-border-secondary)', background: 'transparent', color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', fontWeight: 500 }}>
-                Cancel
-              </button>
-              <button onClick={() => confirmDelete(deleteConfirm)} style={{ flex: 1, padding: '10px', borderRadius: 9, border: 'none', background: '#dc2626', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                Delete
-              </button>
+              <button onClick={() => setDeleteConfirm(null)} style={{
+                flex: 1, padding: '10px', borderRadius: 9,
+                border: '1.5px solid var(--color-border-secondary)', background: 'transparent',
+                color: 'var(--color-text-secondary)', fontSize: 14, cursor: 'pointer', fontWeight: 500,
+              }}>Cancel</button>
+              <button onClick={() => confirmDelete(deleteConfirm)} style={{
+                flex: 1, padding: '10px', borderRadius: 9, border: 'none',
+                background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+                color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(239,68,68,0.3)',
+              }}>Delete</button>
             </div>
           </div>
         </div>

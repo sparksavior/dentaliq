@@ -166,13 +166,15 @@ You need these installed before anything else. Each one is linked to its install
 | **pnpm**    | ≥ 9.0.0    | `pnpm --version` | `npm install -g pnpm`                           |
 | **Git**     | Any recent | `git --version`  | [git-scm.com](https://git-scm.com)              |
 
-### Required for AI Features
+### AI Features (Optional — the app works fully without AI)
 
 | Tool       | Version | How to Check       | Install                          |
 | ---------- | ------- | ------------------ | -------------------------------- |
 | **Ollama** | Any     | `ollama --version` | [ollama.com](https://ollama.com) |
 
-> **What is Ollama?** It runs large language models locally on your computer. DentalIQ uses it to generate AI explanations and pre-auth letters without sending patient data to an external API. If you don't want to run Ollama, you can use Claude or OpenAI instead by setting `LLM_PROVIDER=claude` or `LLM_PROVIDER=openai` with the corresponding API key.
+> **AI is entirely optional.** The setup wizard will ask "Enable AI features?" upfront. If you say No, Ollama is never downloaded and the app runs without any AI model. Estimates return results via the rules engine, and pre-auth letters are unavailable. You can enable AI at any time later.
+>
+> **What is Ollama?** It runs large language models locally on your machine. Patient data never leaves your infrastructure. Alternatively, use `LLM_PROVIDER=claude` or `LLM_PROVIDER=openai` with a cloud API key for faster responses.
 
 ### Optional (only needed for specific features)
 
@@ -185,86 +187,68 @@ You need these installed before anything else. Each one is linked to its install
 
 ## 5. First-Time Setup
 
-Follow these steps **exactly in order**. Every step is required.
+The easiest way to set up is the interactive setup wizard, which handles everything automatically.
 
-### Step 1 — Clone the Repository
+### Automated Setup (Recommended)
 
 ```bash
 git clone <your-repo-url>
 cd dentaliq
-```
-
-### Step 2 — Install Node.js Dependencies
-
-```bash
-pnpm install
-```
-
-This installs dependencies for all 11 packages/apps simultaneously via pnpm workspaces. It will take 1–3 minutes the first time.
-
-> **If you get an error about pnpm not being found:** Run `npm install -g pnpm` first, then retry.
-
-> **If you get an error about Node version:** Run `node --version`. You need ≥ 20. Use [nvm](https://github.com/nvm-sh/nvm) to install the right version: `nvm install 20 && nvm use 20`
-
-### Step 3 — Create Your Environment File
-
-```bash
-cp .env.example .env
-```
-
-Now open `.env` in a text editor. The **minimum** values you must change for local development:
-
-```bash
-# This is the ONLY value required to change for dev:
-JWT_SECRET=<paste a long random string here>
-
-# Generate one with:
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-```
-
-Everything else in `.env` has sensible defaults for local development. You do **not** need Stripe, email credentials, or PostgreSQL to start the app locally.
-
-> **Security note:** `.env` is listed in `.gitignore` and will never be committed. Never paste your `.env` into Slack, GitHub issues, or any public channel.
-
-### Step 4 — Pull the AI Model (Optional but Recommended)
-
-If you have Ollama installed:
-
-```bash
 node setup.js
 ```
 
-This pulls `llama3.1:8b` (~5 GB download). While it's downloading, continue to Step 5 — the app works without AI features until the model is ready.
+The wizard will guide you through:
 
-> **Skipping Ollama:** If you don't want to install Ollama right now, the app still works. Estimates will return results without AI explanations, and pre-auth letters will be unavailable. You can add an AI provider later.
+1. **AI choice** — "Enable AI features? [y/N]" — if No, Ollama is never downloaded
+2. **Dependency checks** — Node ≥ 20, pnpm, Docker status
+3. **Environment file** — Creates `.env` from `.env.example`, auto-generates `JWT_SECRET` and `ADMIN_SECRET`
+4. **Dependencies** — Runs `pnpm install`
+5. **Mailpit** — Starts email preview UI via Docker (if Docker is running)
+6. **Ollama** — Installs Ollama and pulls `llama3.1:8b` (only if AI was enabled in step 1)
+7. **Database** — Runs `pnpm db:push` to create the schema, then `pnpm seed`
+8. **Launch** — Starts `pnpm dev` automatically
 
-### Step 5 — Start the Development Server
+> **Node.js ≥ 20 required.** Check with `node --version`. Use [nvm](https://github.com/nvm-sh/nvm) to install: `nvm install 20 && nvm use 20`
+
+### Manual Setup
+
+If you prefer to set up step by step:
 
 ```bash
+# 1. Clone and enter the repo
+git clone <your-repo-url>
+cd dentaliq
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Create environment file
+cp .env.example .env
+
+# 4. Generate secrets (paste output into .env)
+node -e "console.log('JWT_SECRET=' + require('crypto').randomBytes(64).toString('hex'))"
+node -e "console.log('ADMIN_SECRET=' + require('crypto').randomBytes(32).toString('hex'))"
+
+# 5. Create the database schema
+pnpm db:push
+
+# 6. Seed demo data
+pnpm seed
+
+# 7. Start all services
 pnpm dev
 ```
 
-Turborepo will start all 6 services simultaneously. Wait until you see all of these:
+> **Security note:** `.env` is listed in `.gitignore` and will never be committed. Never share your `.env` file.
 
-```
-web:dev:     ✓ Ready in XXXms   → http://localhost:3000
-admin:dev:   ✓ Ready in XXXms   → http://localhost:3005
-auth-service:dev: listening on 0.0.0.0:3001
-tenant-service:dev: listening on 0.0.0.0:3002
-estimate-service:dev: listening on 0.0.0.0:3004
-agent-manager:dev: listening on 0.0.0.0:3006
-```
-
-Open **http://localhost:3000** in your browser. You should see the DentalIQ landing page.
-
-### Step 6 — Create Your First Account
+### Create Your First Account
 
 1. Go to http://localhost:3000/signup
 2. Fill in your name, clinic name, email, and password
 3. Click **Continue** through the signup wizard
 4. You'll land on the dashboard
 
-The database (`dentaliq.db`) is created automatically on first run. No migrations needed.
+The database (`dentaliq.db`) is created automatically. No migrations are needed in development.
 
 ### Verify Everything is Working
 
@@ -364,6 +348,11 @@ DATABASE_URL=postgresql://dentaliq:yourpassword@your-db-host:5432/dentaliq
 | Variable                        | Default                 | Description                                         |
 | ------------------------------- | ----------------------- | --------------------------------------------------- |
 | `APP_URL`                       | `http://localhost:3000` | Full URL of the web app (used in emails, redirects) |
+| `NEXT_PUBLIC_APP_URL`           | `http://localhost:3000` | App URL exposed to the browser                      |
+| `NEXT_PUBLIC_API_URL`           | `http://localhost:3001` | Auth service URL (browser-side API calls)           |
+| `NEXT_PUBLIC_AUTH_URL`          | `http://localhost:3001` | Auth service URL (same as `API_URL`)                |
+| `NEXT_PUBLIC_TENANT_URL`        | `http://localhost:3002` | Tenant service URL visible to the browser           |
+| `NEXT_PUBLIC_ESTIMATE_URL`      | `http://localhost:3004` | Estimate service URL visible to the browser         |
 | `NEXT_PUBLIC_AGENT_MANAGER_URL` | `http://localhost:3006` | Agent manager URL visible to the browser            |
 | `NEXT_PUBLIC_ENABLE_DEMO`       | _(unset)_               | Set to `true` to enable `/demo/*` routes            |
 
@@ -1293,7 +1282,7 @@ Or restart the services — they apply the schema automatically on startup in de
 ### Signup / Login not working
 
 1. Check that the auth-service is running: `curl http://localhost:3001/health`
-2. Check `NEXT_PUBLIC_API_URL` in your `.env` points to the right place
+2. Check `NEXT_PUBLIC_AUTH_URL` and `NEXT_PUBLIC_API_URL` in your `.env` both point to `http://localhost:3001`
 3. Check browser developer tools → Network tab for the failing request and the error message
 
 ### Cortex Agents not generating tasks
@@ -1319,18 +1308,25 @@ dentaliq/
 │
 ├── apps/                           # Deployable applications
 │   ├── web/                        # Next.js 16 web app (port 3000)
-│   │   └── src/app/
-│   │       ├── (auth)/             # Login, signup pages
-│   │       ├── (dashboard)/        # Protected clinic dashboard
-│   │       │   └── dashboard/
-│   │       │       ├── cortex/     # AI agent command center
-│   │       │       ├── estimates/  # CDT cost estimator
-│   │       │       ├── patients/   # Patient management
-│   │       │       ├── billing/    # Subscription management
-│   │       │       ├── settings/   # Clinic configuration
-│   │       │       └── support/    # Help desk
-│   │       ├── demo/[plan]/        # Marketing demos (no auth)
-│   │       └── page.tsx            # Landing page
+│   │   └── src/
+│   │       ├── app/
+│   │       │   ├── page.tsx            # Public landing page
+│   │       │   ├── pricing/            # Pricing plans + comparison table
+│   │       │   ├── cortex/             # Cortex AI marketing page
+│   │       │   ├── legal/              # Legal hub, privacy, terms
+│   │       │   ├── (auth)/             # Login, signup, forgot/reset password
+│   │       │   ├── (dashboard)/        # Protected clinic dashboard
+│   │       │   │   └── dashboard/
+│   │       │   │       ├── cortex/     # AI agent command center + inbox
+│   │       │   │       ├── estimates/  # CDT cost estimator
+│   │       │   │       ├── patients/   # Patient management
+│   │       │   │       ├── billing/    # Subscription management
+│   │       │   │       ├── settings/   # Clinic configuration
+│   │       │   │       └── support/    # Help desk + live chat
+│   │       │   └── demo/[plan]/        # Marketing demos (no auth, static data)
+│   │       ├── contexts/               # AuthContext, NotificationContext
+│   │       ├── components/             # ThemeToggle, shared components
+│   │       └── lib/api.ts              # Typed fetch wrapper for all services
 │   │
 │   ├── admin/                      # Admin portal (port 3005)
 │   │
@@ -1339,9 +1335,9 @@ dentaliq/
 │   │       ├── routes/             # auth, admin, support, users, mfa
 │   │       ├── controllers/        # authController, mfaController
 │   │       ├── middleware/         # requireAuth, errorHandler
-│   │       └── services/           # emailService, auditService, tenantService
+│   │       └── services/           # emailService, auditService
 │   │
-│   ├── tenant-service/             # Fastify — clinics, patients, PMS (port 3002)
+│   ├── tenant-service/             # Fastify — clinics, patients, billing (port 3002)
 │   │   └── src/routes/             # tenants, patients, billing, agents, clinics
 │   │
 │   ├── estimate-service/           # Fastify — CDT engine + LLM (port 3004)
@@ -1350,33 +1346,34 @@ dentaliq/
 │   └── agent-manager/              # Node HTTP — Cortex orchestration (port 3006)
 │       └── src/
 │           ├── agents/             # BillingAgent, RecallAgent, ReviewAgent, etc.
-│           └── index.ts            # Scheduler + HTTP API
+│           └── index.ts            # Cron scheduler + HTTP API
 │
-├── packages/                       # Shared libraries
-│   ├── db/                         # Drizzle ORM + schema definitions
+├── packages/                       # Shared internal libraries (no build step)
+│   ├── db/                         # Drizzle ORM + schema (single dentaliq.db)
 │   │   └── src/schema/             # tenants, users, audit, procedures, agentTasks, support
-│   ├── config/                     # Zod env validation
-│   ├── logger/                     # Pino structured logging
-│   ├── llm-interface/              # LLM abstraction (Ollama/Claude/OpenAI)
+│   ├── config/                     # Zod-validated env var schemas
+│   ├── logger/                     # Pino structured logging factory
+│   ├── llm-interface/              # LLM abstraction (Ollama/Claude/OpenAI/Gemini)
+│   ├── agent-core/                 # BaseAgent class + task helpers
 │   └── types/                      # Shared TypeScript types
 │
 ├── infra/
 │   ├── docker/
-│   │   ├── Dockerfile.production   # Multi-stage, multi-service Docker build
+│   │   ├── Dockerfile.production   # Multi-stage, APP_NAME parameterized build
 │   │   └── postgres-init.sql       # PostgreSQL initialization
-│   ├── helm/base-service/          # Kubernetes Helm chart
+│   ├── helm/base-service/          # Kubernetes Helm chart (HPA, probes)
 │   └── terraform/modules/          # Infrastructure as code (networking)
 │
 ├── docs/
-│   ├── ARCHITECTURE.md             # Deep-dive architecture documentation
-│   ├── FEATURES.md                 # Feature specifications
-│   └── AI_PATTERNS.md              # LLM integration patterns
+│   ├── ARCHITECTURE.md             # System architecture deep-dive
+│   ├── FEATURES.md                 # Plan tiers + feature specifications
+│   └── AI_PATTERNS.md              # LLM integration patterns + prompt guidelines
 │
-├── docker-compose.yml              # Local dev infrastructure (Postgres, Redis, Ollama, Mailpit)
+├── docker-compose.yml              # Local dev infrastructure (Mailpit)
 ├── turbo.json                      # Turborepo task pipeline
 ├── pnpm-workspace.yaml             # pnpm monorepo configuration
 ├── .env.example                    # Environment variable reference (copy to .env)
-├── setup.js                        # Ollama model initialization helper
+├── setup.js                        # Interactive first-run setup wizard (AI/no-AI choice)
 └── package.json                    # Root scripts and dev dependencies
 ```
 

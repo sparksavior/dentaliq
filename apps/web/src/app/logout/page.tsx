@@ -1,83 +1,100 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { LogOut, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { useAuth } from '@/contexts/auth-context'
+import { useTheme } from '@/hooks/useTheme'
 
 export default function LogoutPage() {
   const router = useRouter()
-  const [countdown, setCountdown] = useState(5)
+  // Ensure we clear the session on this page too, just in case
+  const { clearSession } = useAuth()
+  useTheme('diq_pub_theme')
 
   useEffect(() => {
-    if (countdown <= 0) {
-      router.push('/login')
-    }
-  }, [countdown, router])
+    // Redirect after a short delay
+    const timer = setTimeout(() => {
+      router.replace('/login')
+    }, 2200)
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 0) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [])
+    return () => clearTimeout(timer)
+  }, [router])
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-background-primary)', padding: '2rem' }}>
-      <div style={{ maxWidth: 450, width: '100%', textAlign: 'center' }}>
-        <div style={{ 
-          width: 80, height: 80, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2rem',
-          color: '#10b981'
-        }}>
-          <CheckCircle2 size={40} />
-        </div>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'var(--background)',
+      color: 'var(--foreground)',
+      textAlign: 'center',
+      padding: '20px',
+    }}>
+      <div style={{
+        width: 68,
+        height: 68,
+        borderRadius: 22,
+        background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 34,
+        fontWeight: 800,
+        color: '#fff',
+        boxShadow: '0 12px 30px rgba(15,118,110,0.25)',
+        marginBottom: 32,
+        animation: 'popIn 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
+      }}>
+        +
+      </div>
+      
+      <h1 style={{ 
+        fontSize: 26, 
+        fontWeight: 800, 
+        letterSpacing: '-0.04em',
+        marginBottom: 12,
+        animation: 'fadeInUp 0.6s ease-out'
+      }}>
+        Signing you out
+      </h1>
+      
+      <p style={{ 
+        fontSize: 16, 
+        color: 'var(--color-text-secondary)',
+        marginBottom: 36,
+        animation: 'fadeInUp 0.7s ease-out',
+        maxWidth: 320,
+        lineHeight: 1.5
+      }}>
+        Thank you for choosing DentalIQ. Your session is being securely closed.
+      </p>
 
-        <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--color-text-primary)', marginBottom: '1rem', letterSpacing: '-0.03em' }}>
-          See you soon!
-        </h1>
-        
-        <p style={{ fontSize: 16, color: 'var(--color-text-secondary)', marginBottom: '2.5rem', lineHeight: 1.6 }}>
-          You have been safely signed out of your DentalIQ account. 
-          Redirecting to login in {countdown} seconds...
-        </p>
+      {/* Loading Spinner */}
+      <div style={{
+        width: 32,
+        height: 32,
+        border: '3px solid var(--color-border-secondary)',
+        borderTopColor: 'var(--color-accent)',
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+      }} />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Link 
-            href="/login"
-            style={{ 
-              padding: '14px', borderRadius: 12, background: 'var(--color-accent)', color: '#fff',
-              fontSize: 15, fontWeight: 600, textDecoration: 'none', transition: 'transform 0.2s',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-            }}
-          >
-            <LogOut size={18} /> Sign back in
-          </Link>
-          
-          <Link 
-            href="/"
-            style={{ 
-              padding: '14px', borderRadius: 12, border: '1.5px solid var(--color-border-secondary)',
-              color: 'var(--color-text-primary)', fontSize: 15, fontWeight: 600, textDecoration: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-            }}
-          >
-            <ArrowLeft size={18} /> Back to homepage
-          </Link>
-        </div>
-
-        <div style={{ marginTop: '4rem', padding: '2rem', borderRadius: 24, background: 'var(--color-background-secondary)', border: '1px solid var(--color-border-secondary)' }}>
-          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
-            "DentalIQ — Precision in every estimate, care in every interaction."
-          </p>
-        </div>
+      {/* Background Decor */}
+      <div style={{
+        position: 'absolute',
+        bottom: '8%',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        fontSize: 11,
+        color: 'var(--color-text-tertiary)',
+        fontWeight: 600,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        opacity: 0.6
+      }}>
+        DentalIQ Security Protocol
       </div>
     </div>
   )

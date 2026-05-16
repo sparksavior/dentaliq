@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, Suspense, type FormEvent } from "react";
+import { useState, useEffect, useRef, Suspense, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { authApi, tenantsApi, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -165,6 +166,25 @@ function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+
+  useEffect(() => {
+    if (step !== 1 || !sessionToken || emailVerified) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const user = await authApi.me(sessionToken);
+        if (user.emailVerified) {
+          setEmailVerified(true);
+        }
+      } catch {
+        // ignore
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [step, sessionToken, emailVerified]);
 
   const set =
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -571,6 +591,21 @@ function SignupPage() {
                             ? "var(--color-accent-muted)"
                             : "var(--color-background-primary)",
                         transition: "all 0.2s",
+                        boxShadow: plan === p.id ? "0 4px 14px rgba(15,118,110,0.15)" : "none",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (plan !== p.id) {
+                          e.currentTarget.style.borderColor = "var(--color-accent)";
+                          e.currentTarget.style.transform = "translateY(-1px)";
+                          e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.1)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (plan !== p.id) {
+                          e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+                          e.currentTarget.style.transform = "";
+                          e.currentTarget.style.boxShadow = "none";
+                        }
                       }}
                     >
                       {p.popular && (
@@ -876,23 +911,6 @@ function SignupPage() {
               </div>
             </div>
 
-            <div
-              style={{
-                marginTop: 12,
-                padding: "10px 16px",
-                background: "var(--color-background-primary)",
-                border: "1px solid var(--color-border-secondary)",
-                borderRadius: 10,
-                fontSize: 12,
-                color: "var(--color-text-secondary)",
-                lineHeight: 1.6,
-              }}
-            >
-              By continuing you agree to our Terms of Service and Privacy
-              Policy. Health data is stored exclusively on Canadian
-              infrastructure (AWS ca-central-1) and is PHIPA-compliant.
-            </div>
-
             <button
               type="submit"
               disabled={
@@ -921,6 +939,29 @@ function SignupPage() {
                 fontWeight: 600,
                 cursor: "pointer",
                 letterSpacing: "-0.01em",
+                transition: "all 0.2s",
+                boxShadow:
+                  loading ||
+                  !form.name ||
+                  !form.clinic ||
+                  !form.email ||
+                  !form.password
+                    ? "none"
+                    : "0 4px 14px rgba(15,118,110,0.3)",
+              }}
+              onMouseEnter={(e) => {
+                const disabled =
+                  loading || !form.name || !form.clinic || !form.email || !form.password;
+                if (!disabled) {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                const disabled =
+                  loading || !form.name || !form.clinic || !form.email || !form.password;
+                e.currentTarget.style.boxShadow = disabled ? "none" : "0 4px 14px rgba(15,118,110,0.3)";
               }}
             >
               {loading ? "Creating account…" : "Continue →"}
@@ -1011,8 +1052,25 @@ function SignupPage() {
                     opacity: agent.status === "coming_soon" ? 0.5 : 1,
                     cursor:
                       agent.status === "available" ? "pointer" : "not-allowed",
-                    transition: "all 0.15s",
+                    transition: "all 0.2s",
                     position: "relative",
+                    boxShadow: selectedAgents.includes(agent.id)
+                      ? "0 4px 14px rgba(99,102,241,0.2)"
+                      : "none",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (agent.status === "available" && !selectedAgents.includes(agent.id)) {
+                      e.currentTarget.style.borderColor = "#6366f150";
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.boxShadow = "0 8px 20px rgba(99,102,241,0.15)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!selectedAgents.includes(agent.id)) {
+                      e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+                      e.currentTarget.style.transform = "";
+                      e.currentTarget.style.boxShadow = "none";
+                    }
                   }}
                   onClick={() => {
                     if (agent.status !== "available") return;
@@ -1192,6 +1250,15 @@ function SignupPage() {
                 fontWeight: 600,
                 cursor: "pointer",
                 boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow = "0 8px 24px rgba(99,102,241,0.45)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                e.currentTarget.style.boxShadow = "0 4px 14px rgba(99,102,241,0.3)";
               }}
             >
               Continue with {selectedAgents.length} agent
@@ -1253,92 +1320,59 @@ function SignupPage() {
 
             <div
               style={{
-                display: "flex",
-                gap: 8,
-                justifyContent: "center",
+                background: "var(--color-accent-muted)",
+                border: "1px solid var(--color-border-secondary)",
+                borderRadius: 12,
+                padding: "20px",
                 marginBottom: "1.5rem",
+                textAlign: "center",
               }}
             >
-              {verifyCode.map((v, i) => (
-                <input
-                  key={i}
-                  id={`vc-${i}`}
-                  maxLength={1}
-                  value={v}
-                  onChange={(e) => {
-                    if (!/^\d?$/.test(e.target.value)) return;
-                    const next = [...verifyCode];
-                    next[i] = e.target.value;
-                    setVerifyCode(next);
-                    if (e.target.value && i < 5)
-                      (
-                        document.getElementById(`vc-${i + 1}`) as HTMLElement
-                      )?.focus();
-                  }}
-                  style={{
-                    width: 52,
-                    height: 60,
-                    textAlign: "center",
-                    fontSize: 24,
-                    border: "1.5px solid var(--color-border-secondary)",
-                    borderRadius: 12,
-                    background: "var(--color-input-bg)",
-                    color: "var(--color-text-primary)",
-                    fontFamily: "monospace",
-                    outline: "none",
-                    transition: "border-color 0.15s, box-shadow 0.15s",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "var(--color-accent)";
-                    e.target.style.boxShadow =
-                      "0 0 0 3px var(--color-accent-subtle)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor =
-                      "var(--color-border-secondary)";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-              ))}
-            </div>
-
-            <div
-              style={{
-                background: "#fffbeb",
-                border: "1px solid #fde68a",
-                borderRadius: 10,
-                padding: "12px 16px",
-                marginBottom: "1.5rem",
-                fontSize: 13,
-                color: "#92400e",
-                display: "flex",
-                gap: 8,
-                alignItems: "flex-start",
-              }}
-            >
-              <span style={{ flexShrink: 0 }}>💡</span>
-              <span>
-                <strong>Dev mode:</strong> Check your terminal for the
-                verification link. Or click Continue to skip email verification.
-              </span>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-primary)", fontWeight: 500 }}>
+                Please check your inbox for a magic link.
+              </p>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+                Click the link in the email to securely verify your account, then return here to complete your setup.
+              </p>
             </div>
 
             <button
               onClick={handleVerify}
+              disabled={!emailVerified}
               style={{
                 width: "100%",
                 padding: "13px",
                 borderRadius: 10,
                 border: "none",
-                background: "linear-gradient(135deg, #0f766e, #0d9488)",
+                background: !emailVerified ? "var(--color-text-secondary)" : "linear-gradient(135deg, #0f766e, #0d9488)",
                 color: "#fff",
                 fontSize: 15,
                 fontWeight: 600,
-                cursor: "pointer",
+                cursor: !emailVerified ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
+                boxShadow: !emailVerified ? "none" : "0 4px 14px rgba(15,118,110,0.3)",
+              }}
+              onMouseEnter={(e) => {
+                if (emailVerified) {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                if (emailVerified) {
+                  e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
+                }
               }}
             >
-              Continue →
+              {emailVerified ? "Continue →" : "Waiting for verification..."}
             </button>
+
+            {!emailVerified && (
+              <p style={{ marginTop: "12px", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+                You can continue further once your email is verified.
+              </p>
+            )}
           </div>
         )}
 
@@ -1506,6 +1540,16 @@ function SignupPage() {
                 fontSize: 15,
                 fontWeight: 600,
                 cursor: "pointer",
+                transition: "all 0.2s",
+                boxShadow: "0 4px 14px rgba(15,118,110,0.3)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
               }}
             >
               Continue →
@@ -1629,11 +1673,21 @@ function SignupPage() {
                       padding: "10px",
                       borderRadius: 8,
                       border: "none",
-                      background: "var(--color-accent)",
+                      background: "linear-gradient(135deg, #0f766e, #0d9488)",
                       color: "#fff",
                       fontSize: 14,
                       fontWeight: 600,
                       cursor: "pointer",
+                      transition: "all 0.2s",
+                      boxShadow: "0 3px 10px rgba(15,118,110,0.3)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.boxShadow = "0 6px 16px rgba(15,118,110,0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "";
+                      e.currentTarget.style.boxShadow = "0 3px 10px rgba(15,118,110,0.3)";
                     }}
                   >
                     Connect Open Dental →
@@ -1841,6 +1895,16 @@ function SignupPage() {
                     fontSize: 15,
                     fontWeight: 600,
                     cursor: "pointer",
+                    transition: "all 0.2s",
+                    boxShadow: "0 4px 14px rgba(15,118,110,0.3)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "";
+                    e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
                   }}
                 >
                   Continue to security setup →
@@ -2029,6 +2093,18 @@ function SignupPage() {
                 fontSize: 15,
                 fontWeight: 600,
                 cursor: loading ? "not-allowed" : "pointer",
+                transition: "all 0.2s",
+                boxShadow: loading ? "none" : "0 4px 14px rgba(15,118,110,0.3)",
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                e.currentTarget.style.boxShadow = loading ? "none" : "0 4px 14px rgba(15,118,110,0.3)";
               }}
             >
               {loading
@@ -2203,23 +2279,75 @@ function SignupPage() {
                 ))}
               </div>
 
+              <div style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", gap: 10, textAlign: "left" }}>
+                <input
+                  type="checkbox"
+                  id="terms"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  style={{
+                    marginTop: 4,
+                    width: 16,
+                    height: 16,
+                    cursor: "pointer",
+                    accentColor: "var(--color-accent)",
+                  }}
+                />
+                <label
+                  htmlFor="terms"
+                  style={{
+                    fontSize: 13,
+                    color: "var(--color-text-secondary)",
+                    lineHeight: 1.5,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  I agree to the{" "}
+                  <Link href="/terms" target="_blank" style={{ color: "var(--color-accent)", fontWeight: 600, textDecoration: "none" }}>
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" target="_blank" style={{ color: "var(--color-accent)", fontWeight: 600, textDecoration: "none" }}>
+                    Privacy Policy
+                  </Link>
+                  . I understand that DentalIQ is an administrative assistant tool and I remain responsible for verifying all AI-generated content before submission.
+                </label>
+              </div>
+
               <button
                 onClick={goToDashboard}
+                disabled={!termsAccepted}
                 style={{
                   width: "100%",
                   padding: "14px",
                   borderRadius: 10,
                   border: "none",
-                  background: "linear-gradient(135deg, #0f766e, #0d9488)",
+                  background: termsAccepted
+                    ? "linear-gradient(135deg, #0f766e, #0d9488)"
+                    : "var(--color-text-tertiary)",
                   color: "#fff",
                   fontSize: 16,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: termsAccepted ? "pointer" : "not-allowed",
                   letterSpacing: "-0.01em",
-                  boxShadow: "0 4px 14px rgba(15,118,110,0.3)",
+                  boxShadow: termsAccepted ? "0 4px 14px rgba(15,118,110,0.3)" : "none",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  if (termsAccepted) {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "";
+                  if (termsAccepted) {
+                    e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
+                  }
                 }}
               >
-                Open Dashboard →
+                Launch Dashboard →
               </button>
             </div>
           </div>

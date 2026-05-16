@@ -1,33 +1,55 @@
 # DentalIQ Platform Documentation
 
-Welcome to the DentalIQ developer documentation. DentalIQ is a multi-tenant, AI-powered SaaS platform designed specifically for dental clinics. It provides intelligent billing, patient scheduling, automated pre-authorization narratives, and autonomous "Cortex Agents" that act as a digital workforce for the clinic.
+Welcome to the DentalIQ developer documentation. DentalIQ is a multi-tenant, AI-powered SaaS platform for dental clinics — providing intelligent insurance estimation, autonomous AI agents (Cortex), and a full clinic management dashboard.
 
 ## Documentation Index
 
-This `docs` folder contains comprehensive guides on the internal workings, architecture, and design patterns used across the DentalIQ platform. Whether you are a new engineer onboarding onto the team or a stakeholder reviewing the technical design, these documents provide the context you need.
-
 ### 1. [System Architecture](./ARCHITECTURE.md)
 
-A high-level overview of the entire monorepo, including the Next.js frontend, Express microservices (Auth, Tenant, Estimate), the Agent Manager, database schema (Drizzle ORM), and deployment strategy.
+Deep-dive into the monorepo structure, service topology, data flow, database schema, authentication architecture, and Cortex agent lifecycle. Start here if you're onboarding to the codebase.
 
-### 2. [Features Overview](./FEATURES.md)
+### 2. [Platform Features](./FEATURES.md)
 
-Detailed breakdown of the core platform features, including the multi-tier pricing plans (Starter, Pro, Cortex), the Demo Engine, Stripe Billing, and the real-time Cortex Command Center.
+Complete breakdown of the four pricing tiers (Starter, Pro, Cortex, Enterprise), feature gating, the Demo Engine, Stripe billing, Cortex agent roster, and analytics.
 
 ### 3. [AI & Agent Patterns](./AI_PATTERNS.md)
 
-In-depth explanation of how AI is integrated into DentalIQ. Covers the local LLM setup (Ollama/Phi-3), generative UI patterns, streaming chat integrations, and the autonomous multi-agent system (Cortex Agents).
+How AI is integrated across the platform: the `llm-interface` package, automatic provider fallback chain, local Ollama setup, context-aware AI Copilot, pre-auth narrative generation, and autonomous agent architecture.
 
 ---
 
 ## Getting Started
 
-If you are setting up the project for the first time, please refer to the root `README.md` for quickstart commands (e.g., `pnpm install`, `pnpm dev`, and `node setup.js` for Ollama).
+If you're setting up the project for the first time, run the interactive setup wizard:
 
-## Design Philosophy
+```bash
+git clone <repo-url>
+cd dentaliq
+node setup.js
+```
 
-DentalIQ is built with a focus on:
+The wizard will:
+1. Ask if you want AI features enabled
+2. Check Node.js version and install pnpm if needed
+3. Create `.env` from `.env.example` with auto-generated secrets
+4. Start Mailpit (email preview UI) via Docker
+5. Install and start Ollama + pull the AI model (if AI enabled)
+6. Run `pnpm install` and `pnpm db:push`
+7. Seed the database with demo data
+8. Launch `pnpm dev`
 
-1. **High-Fidelity UI**: Using "vibrant, modern, and dynamic" design principles with smooth gradients, glassmorphism, and micro-animations.
-2. **Data Isolation**: Strict multi-tenant boundaries enforced at the API layer.
-3. **Agentic Autonomy**: Moving beyond simple chat interfaces into autonomous background agents that execute tasks and request approval via an "Approval Inbox".
+For full documentation including production deployment, environment variables, and troubleshooting, see the root [README.md](../README.md).
+
+---
+
+## Design Principles
+
+1. **Human-in-the-loop AI** — Agents propose, humans approve. No automated actions without explicit staff approval.
+
+2. **Privacy by default** — Defaults to local Ollama inference. Patient data never leaves the clinic's infrastructure unless you explicitly configure a cloud LLM.
+
+3. **Graceful degradation** — Every AI feature has a working non-AI fallback. The platform is fully functional without any LLM running.
+
+4. **Single database, shared schema** — One `dentaliq.db` file in development. Same Drizzle schema targets PostgreSQL in production with no code changes.
+
+5. **No build step for packages** — Internal packages run TypeScript directly via `tsx`. No compiled artifacts to maintain.

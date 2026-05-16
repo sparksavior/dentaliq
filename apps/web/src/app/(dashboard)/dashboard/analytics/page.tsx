@@ -226,70 +226,52 @@ export default function AnalyticsPage() {
   return (
     <div
       style={{
-        padding: "2rem",
-        maxWidth: 1300,
-        margin: "0 auto",
         color: "var(--color-text-primary)",
         animation: "fadeInUp 0.35s ease-out",
       }}
     >
-      {/* ── Header ─────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: "2rem",
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              margin: 0,
-              letterSpacing: "-0.03em",
-            }}
-          >
-            Practice Analytics
-          </h1>
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: 14,
-              color: "var(--color-text-secondary)",
-            }}
-          >
-            Live metrics from your patient and estimate data
-          </p>
+      {/* ── Premium page header ─────────────────────────────── */}
+      <div style={{
+        padding: "1.75rem 2rem 1.5rem",
+        background: "linear-gradient(135deg, var(--color-background-primary) 0%, var(--color-accent-muted) 100%)",
+        borderBottom: "1px solid var(--color-border-secondary)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 14,
+            background: "linear-gradient(135deg, #0f766e, #0d9488)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 4px 14px rgba(15,118,110,0.3)", flexShrink: 0,
+          }}>
+            <BarChart3 size={22} color="white" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: "-0.03em" }}>Practice Analytics</h1>
+            <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+              Live metrics from your patient and estimate data
+            </p>
+          </div>
         </div>
         <button
           onClick={() => load(true)}
           disabled={refreshing}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            padding: "8px 16px",
-            background: "var(--color-background-primary)",
-            border: "1px solid var(--color-border-secondary)",
-            borderRadius: 10,
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
-            color: "var(--color-text-secondary)",
-            transition: "all 0.2s",
+            display: "flex", alignItems: "center", gap: 7, padding: "9px 16px",
+            background: "var(--color-background-primary)", border: "1px solid var(--color-border-secondary)",
+            borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer",
+            color: "var(--color-text-secondary)", transition: "all 0.15s",
+            boxShadow: "var(--shadow-xs)",
           }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-accent)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--color-accent)" }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-border-secondary)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-secondary)" }}
         >
-          <RefreshCw
-            size={14}
-            style={{
-              animation: refreshing ? "spin 0.7s linear infinite" : "none",
-            }}
-          />
+          <RefreshCw size={14} style={{ animation: refreshing ? "spin 0.7s linear infinite" : "none" }} />
           Refresh
         </button>
       </div>
+
+      <div style={{ padding: "1.75rem 2rem", maxWidth: 1300, margin: "0 auto" }}>
 
       {/* ── Summary KPI row ─────────────────────────────────── */}
       <div
@@ -309,7 +291,11 @@ export default function AnalyticsPage() {
             padding: "1.4rem",
             position: "relative",
             overflow: "hidden",
+            transition: "all 0.18s ease",
+            boxShadow: "var(--shadow-sm)",
           }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(-2px)"; el.style.boxShadow = "var(--shadow-md)" }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = "translateY(0)"; el.style.boxShadow = "var(--shadow-sm)" }}
         >
           <div
             style={{
@@ -797,6 +783,7 @@ export default function AnalyticsPage() {
         based on patient-responsible cost from estimates with no pre-auth on
         file — not actual payment records.
       </p>
+      </div>
     </div>
   );
 }

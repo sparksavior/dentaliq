@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/contexts/auth-context";
+import { NotificationProvider } from "@/contexts/notification-context";
 import { ClinicProvider } from "@/contexts/clinic-context";
 import "./globals.css";
 
@@ -37,7 +38,9 @@ export default function RootLayout({
       </head>
       <body className="h-full">
         <AuthProvider>
-          <ClinicProvider>{children}</ClinicProvider>
+          <NotificationProvider>
+            <ClinicProvider>{children}</ClinicProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

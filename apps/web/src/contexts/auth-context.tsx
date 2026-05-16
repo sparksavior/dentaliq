@@ -38,11 +38,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    authApi.logout().catch(() => null)
-    setState({ user: null, accessToken: null, loading: false })
-    window.location.href = '/logout'
-  }, [])
+    localStorage.removeItem(TOKEN_KEY);
+    authApi.logout().catch(() => null);
+    window.location.href = "/logout";
+  }, []);
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -65,6 +64,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
       })
   }, [setSession])
+
+  // Proactive silent refresh — renew 1 min before the 15-min access token expires
+  useEffect(() => {
+    if (!state.accessToken) return
+    const id = setInterval(async () => {
+      try {
+        const { accessToken } = await authApi.refresh()
+        const user = await authApi.me(accessToken)
+        setSession(accessToken, user)
+      } catch {
+        // Refresh token also expired — force logout
+        clearSession()
+      }
+    }, 14 * 60 * 1000) // every 14 minutes
+    return () => clearInterval(id)
+  }, [state.accessToken, setSession, clearSession])
 
   return (
     <AuthContext.Provider value={{ ...state, setSession, clearSession }}>

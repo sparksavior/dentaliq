@@ -276,35 +276,30 @@ export default function BillingPage() {
     : null;
 
   return (
-    <div
-      style={{
-        padding: "2rem",
-        maxWidth: 1000,
-        margin: "0 auto",
-        color: "var(--color-text-primary)",
-      }}
-    >
-      <div style={{ marginBottom: "2rem" }}>
-        <h1
-          style={{
-            fontSize: 32,
-            fontWeight: 800,
-            margin: "0 0 8px 0",
-            letterSpacing: "-0.03em",
-          }}
-        >
-          Billing & Subscriptions
-        </h1>
-        <p
-          style={{
-            color: "var(--color-text-secondary)",
-            margin: 0,
-            fontSize: 16,
-          }}
-        >
-          Manage automated billing, payment methods, and tax receipts.
-        </p>
+    <div style={{ color: "var(--color-text-primary)", minHeight: "100vh" }}>
+      {/* Premium page header */}
+      <div style={{
+        padding: "1.75rem 2rem 1.5rem",
+        background: "linear-gradient(135deg, var(--color-background-primary) 0%, var(--color-accent-muted) 100%)",
+        borderBottom: "1px solid var(--color-border-secondary)",
+        display: "flex", alignItems: "center", gap: 14,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 14,
+          background: "linear-gradient(135deg, #0f766e, #0d9488)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 4px 14px rgba(15,118,110,0.3)", flexShrink: 0,
+        }}>
+          <CreditCard size={22} color="white" />
+        </div>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: "-0.03em" }}>Billing & Subscriptions</h1>
+          <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
+            Manage automated billing, payment methods, and tax receipts.
+          </p>
+        </div>
       </div>
+      <div style={{ padding: "2rem", maxWidth: 1000, margin: "0 auto" }}>
 
       <div
         style={{
@@ -1219,6 +1214,7 @@ export default function BillingPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
