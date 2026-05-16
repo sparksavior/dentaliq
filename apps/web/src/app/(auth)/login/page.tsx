@@ -32,7 +32,6 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      sessionStorage.setItem("diq_fresh_login", "1");
       setSession(result.accessToken, result.user);
       router.push("/dashboard");
     } catch (err) {
@@ -614,6 +613,16 @@ export default function LoginPage() {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 8,
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading) {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.boxShadow = loading ? "none" : "var(--shadow-accent)";
                 }}
               >
                 {loading ? (

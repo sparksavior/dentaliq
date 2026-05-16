@@ -222,7 +222,7 @@ async function main() {
     );
     logger.info(`  ✓ Database       → dentaliq.db (SQLite)`);
     logger.info(
-      `  ✓ Email mode     → ${env.EMAIL_MODE} (emails print to terminal)\n`,
+      `  ✓ Email mode     → ${env.EMAIL_MODE} ${env.EMAIL_MODE === "console" ? "(emails print to terminal)" : "(REAL EMAILS ENABLED)"}\n`,
     );
   } catch (err) {
     logger.fatal({ err }, "Failed to start");

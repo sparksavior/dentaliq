@@ -27,6 +27,7 @@ export interface AuthUser {
   role: "admin" | "dentist" | "front_desk";
   tenantId: string;
   mfaEnabled: boolean;
+  emailVerified: boolean;
   plan?: "starter" | "pro" | "enterprise" | "cortex";
   status?: "trial" | "active" | "suspended";
 }
@@ -226,11 +227,12 @@ export const authApi = {
       { method: "POST", body: JSON.stringify(input) },
     ),
 
-  logout: () => authRequest("/auth/logout", { method: "POST" }),
+  logout: () => authRequest("/auth/logout", { method: "POST", body: JSON.stringify({}) }),
 
   refresh: () =>
     authRequest<{ accessToken: string; expiresIn: number }>("/auth/refresh", {
       method: "POST",
+      body: JSON.stringify({}),
     }),
 
   me: (token: string) =>
@@ -242,6 +244,13 @@ export const authApi = {
     authRequest("/auth/forgot-password", {
       method: "POST",
       body: JSON.stringify({ email }),
+    }),
+
+  triggerWelcomeEmail: (token: string) =>
+    authRequest<{ success: boolean; message: string }>("/users/welcome", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({}),
     }),
 };
 

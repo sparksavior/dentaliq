@@ -205,35 +205,67 @@ export default function HireAgentsPage() {
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: 1000, margin: "0 auto" }}>
-      <div style={{ marginBottom: "2rem" }}>
+    <div style={{ padding: 0, maxWidth: 1000, margin: "0 auto", color: "var(--color-text-primary)" }}>
+      {/* Premium header */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, var(--color-background-primary) 0%, rgba(99,102,241,0.06) 100%)",
+          borderBottom: "1px solid var(--color-border-secondary)",
+          padding: "1.75rem 2rem",
+          marginBottom: "2rem",
+        }}
+      >
         <button
           onClick={() => router.push("/dashboard/cortex")}
           style={{
-            background: "transparent",
+            background: "none",
             border: "none",
             color: "var(--color-text-secondary)",
             cursor: "pointer",
+            fontSize: 13,
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
             marginBottom: 16,
+            padding: 0,
+            transition: "color 0.15s",
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-accent)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-secondary)")}
         >
-          ← Back to Command Center
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
+          Back to Command Center
         </button>
-        <h1
-          style={{
-            fontSize: 28,
-            fontWeight: 800,
-            margin: 0,
-            color: "var(--color-text-primary)",
-          }}
-        >
-          Hire Digital Employees
-        </h1>
-        <p style={{ color: "var(--color-text-secondary)", marginTop: 8 }}>
-          Check agents to deploy, uncheck to remove. Changes save when you click
-          below.
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 13,
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 22,
+              boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
+              flexShrink: 0,
+            }}
+          >
+            🧠
+          </div>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-0.03em" }}>
+              Hire Digital Employees
+            </h1>
+            <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: 14 }}>
+              Select agents to deploy across your clinic locations. Changes save when you click below.
+            </p>
+          </div>
+        </div>
       </div>
+
+      <div style={{ padding: "0 2rem 2rem" }}>
 
       <div
         style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "2rem" }}
@@ -247,6 +279,18 @@ export default function HireAgentsPage() {
                 border: "1px solid var(--color-border-secondary)",
                 borderRadius: 16,
                 padding: "1.5rem",
+                transition: "all 0.25s ease",
+                boxShadow: "var(--shadow-sm)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.borderColor = `${agent.color}50`;
+                e.currentTarget.style.boxShadow = `0 12px 32px ${agent.color}25`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+                e.currentTarget.style.boxShadow = "var(--shadow-sm)";
               }}
             >
               <div
@@ -562,18 +606,46 @@ export default function HireAgentsPage() {
         <div>
           <div
             style={{
-              background:
-                "linear-gradient(135deg, rgba(99,102,241,0.05), rgba(139,92,246,0.05))",
-              border: "1px solid var(--color-border-secondary)",
+              background: "var(--color-background-primary)",
+              border: "1px solid rgba(99,102,241,0.2)",
               borderRadius: 16,
-              padding: "1.5rem",
+              overflow: "hidden",
               position: "sticky",
               top: "2rem",
+              boxShadow: "0 4px 24px rgba(99,102,241,0.1)",
             }}
           >
-            <h3 style={{ marginTop: 0, color: "var(--color-text-primary)" }}>
-              Order Summary
-            </h3>
+            {/* Header stripe */}
+            <div
+              style={{
+                padding: "1.25rem 1.5rem",
+                background: "linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.06) 100%)",
+                borderBottom: "1px solid rgba(99,102,241,0.15)",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 9,
+                  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  flexShrink: 0,
+                }}
+              >
+                💳
+              </div>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--color-text-primary)" }}>
+                Order Summary
+              </h3>
+            </div>
+            <div style={{ padding: "1.5rem" }}>
 
             <div
               style={{
@@ -690,19 +762,45 @@ export default function HireAgentsPage() {
               disabled={!hasChanges || isSubmitting}
               style={{
                 width: "100%",
-                padding: "12px",
-                borderRadius: 8,
+                padding: "13px",
+                borderRadius: 10,
                 border: "none",
                 background:
                   !hasChanges || isSubmitting
-                    ? "var(--color-text-secondary)"
+                    ? "var(--color-text-tertiary)"
                     : toRemove.length > 0 && toAdd.length === 0
-                      ? "#ef4444"
-                      : "#6366f1",
+                      ? "linear-gradient(135deg,#ef4444,#dc2626)"
+                      : "linear-gradient(135deg,#6366f1,#4f46e5)",
                 color: "#fff",
-                fontWeight: 600,
+                fontWeight: 700,
+                fontSize: 14,
                 cursor: !hasChanges || isSubmitting ? "not-allowed" : "pointer",
-                transition: "background 0.2s",
+                transition: "all 0.2s",
+                letterSpacing: "-0.01em",
+                boxShadow:
+                  !hasChanges || isSubmitting
+                    ? "none"
+                    : toRemove.length > 0 && toAdd.length === 0
+                      ? "0 4px 14px rgba(239,68,68,0.3)"
+                      : "0 4px 14px rgba(99,102,241,0.35)",
+              }}
+              onMouseEnter={(e) => {
+                if (hasChanges && !isSubmitting) {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow =
+                    toRemove.length > 0 && toAdd.length === 0
+                      ? "0 8px 24px rgba(239,68,68,0.4)"
+                      : "0 8px 24px rgba(99,102,241,0.45)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "";
+                e.currentTarget.style.boxShadow =
+                  !hasChanges || isSubmitting
+                    ? "none"
+                    : toRemove.length > 0 && toAdd.length === 0
+                      ? "0 4px 14px rgba(239,68,68,0.3)"
+                      : "0 4px 14px rgba(99,102,241,0.35)";
               }}
             >
               {isSubmitting
@@ -715,9 +813,11 @@ export default function HireAgentsPage() {
                       ? `Hire ${toAdd.length} Agent${toAdd.length > 1 ? "s" : ""}`
                       : `Remove ${toRemove.length} Agent${toRemove.length > 1 ? "s" : ""}`}
             </button>
+            </div>{/* closes padding div */}
           </div>
         </div>
       </div>
     </div>
+  </div>
   );
 }

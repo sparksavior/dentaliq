@@ -183,20 +183,33 @@ export default function CortexInbox() {
         animation: "fadeInUp 0.35s ease-out",
       }}
     >
-      {/* Header */}
-      <div style={{ marginBottom: "1.75rem" }}>
+      {/* Premium Header */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, var(--color-background-primary) 0%, rgba(99,102,241,0.05) 100%)",
+          borderBottom: "1px solid var(--color-border-secondary)",
+          padding: "1.75rem 2rem",
+          marginBottom: "1.75rem",
+          marginLeft: "-2rem",
+          marginRight: "-2rem",
+          marginTop: "-2rem",
+        }}
+      >
         <Link
           href="/dashboard/cortex"
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 6,
+            gap: 5,
             fontSize: 12,
             color: "var(--color-text-secondary)",
             textDecoration: "none",
             marginBottom: 16,
             fontWeight: 500,
+            transition: "color 0.15s",
           }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#6366f1")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "var(--color-text-secondary)")}
         >
           <ArrowLeft size={13} /> Cortex Command Center
         </Link>
@@ -211,15 +224,16 @@ export default function CortexInbox() {
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 15,
+                width: 48,
+                height: 48,
+                borderRadius: 14,
                 background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
-                fontSize: 24,
+                fontSize: 22,
+                flexShrink: 0,
               }}
             >
               📥
@@ -227,10 +241,14 @@ export default function CortexInbox() {
             <div>
               <h1
                 style={{
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: 800,
                   margin: "0 0 3px",
                   letterSpacing: "-0.03em",
+                  background: "linear-gradient(135deg, var(--color-text-primary) 60%, #6366f1)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
                 }}
               >
                 Approval Inbox
@@ -265,15 +283,14 @@ export default function CortexInbox() {
               transition: "all 0.15s",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background =
-                "var(--color-background-primary)";
+              e.currentTarget.style.background = "var(--color-background-primary)";
               e.currentTarget.style.borderColor = "var(--color-border-primary)";
+              e.currentTarget.style.transform = "translateY(-1px)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background =
-                "var(--color-background-secondary)";
-              e.currentTarget.style.borderColor =
-                "var(--color-border-secondary)";
+              e.currentTarget.style.background = "var(--color-background-secondary)";
+              e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+              e.currentTarget.style.transform = "";
             }}
           >
             <RefreshCw
@@ -500,15 +517,29 @@ export default function CortexInbox() {
                 key={item.id}
                 style={{
                   background: "var(--color-background-primary)",
-                  border: "1px solid var(--color-border-secondary)",
+                  border: `1px solid ${isExpanded ? `${meta.color}30` : "var(--color-border-secondary)"}`,
                   borderRadius: 18,
                   overflow: "hidden",
                   boxShadow: isExpanded
-                    ? "var(--shadow-md)"
+                    ? `var(--shadow-md), 0 0 0 1px ${meta.color}15`
                     : "var(--shadow-xs)",
-                  transition: "box-shadow 0.2s ease",
+                  transition: "all 0.25s ease",
                   animation: `fadeInUp 0.35s ease-out ${idx * 0.05}s both`,
                   position: "relative",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isExpanded) {
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = `var(--shadow-md)`;
+                    e.currentTarget.style.borderColor = `${meta.color}30`;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isExpanded) {
+                    e.currentTarget.style.transform = "";
+                    e.currentTarget.style.boxShadow = "var(--shadow-xs)";
+                    e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+                  }
                 }}
               >
                 {/* Left accent bar — color-coded by agent type */}

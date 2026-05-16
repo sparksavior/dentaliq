@@ -42,6 +42,17 @@ coverage/
 *.db
 *.sqlite
 
+# Compiled TypeScript artifacts from internal packages
+# (packages use "main": "./src/index.ts" — tsx runs them directly, no build needed)
+packages/*/src/*.js
+packages/*/src/*.js.map
+packages/*/src/*.d.ts
+packages/*/src/*.d.ts.map
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+
 # Scratch / local experiments
 scratch/
 

@@ -280,170 +280,90 @@ export default function DemoPage() {
         </Link>
       </div>
 
-      {/* Sidebar - EXACT REPLICA OF DashboardLayout */}
+      {/* Sidebar — dark narrow icon design */}
       <aside
         style={{
-          width: 228,
+          width: 72,
           display: "flex",
           flexDirection: "column",
-          borderRight: "1px solid var(--color-border-secondary)",
-          background: "var(--color-background-primary)",
+          background: "#111110",
           flexShrink: 0,
+          alignItems: "center",
           marginTop: 36,
         }}
       >
+        {/* Logo */}
         <div
           style={{
-            padding: "0 16px",
-            height: 60,
+            height: 64,
             display: "flex",
             alignItems: "center",
-            borderBottom: "1px solid var(--color-border-tertiary)",
-            gap: 10,
+            justifyContent: "center",
+            width: "100%",
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
             flexShrink: 0,
           }}
         >
           <div
             style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
+              width: 34,
+              height: 34,
+              borderRadius: 9,
               background: "linear-gradient(135deg, #0f766e, #0d9488)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 15,
-              fontWeight: 700,
+              fontSize: 18,
+              fontWeight: 800,
               color: "#fff",
-              flexShrink: 0,
+              boxShadow: "0 2px 8px rgba(15,118,110,0.4)",
             }}
           >
             +
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 700,
-                color: "var(--color-text-primary)",
-                letterSpacing: "-0.02em",
-                lineHeight: 1.2,
-              }}
-            >
-              Dental<span style={{ color: "var(--color-accent)" }}>IQ</span>
-            </div>
-          </div>
         </div>
 
-        {planName === "starter" ? (
-          <div style={{ padding: "12px 16px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderRadius: 10,
-                background: "var(--color-background-secondary)",
-                border: "1px solid var(--color-border-secondary)",
-              }}
-            >
-              <Building2 size={16} color="var(--color-accent)" />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--color-text-secondary)",
-                    fontWeight: 500,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Location
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--color-text-primary)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Demo Clinic
-                </div>
-              </div>
-            </div>
-            <div
-              style={{
-                display: "block",
-                marginTop: 8,
-                fontSize: 11,
-                color: "var(--color-accent)",
-                textDecoration: "none",
-                fontWeight: 500,
-              }}
-            >
-              Upgrade to Pro for multi-clinic →
-            </div>
-          </div>
-        ) : (
-          <div style={{ padding: "12px 16px", position: "relative" }}>
-            <button
-              onClick={() => setIsClinicMenuOpen(!isClinicMenuOpen)}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderRadius: 10,
-                background: "var(--color-background-secondary)",
-                border: "1px solid var(--color-border-secondary)",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <Building2 size={16} color="var(--color-accent)" />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--color-text-secondary)",
-                    fontWeight: 500,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Clinic
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--color-text-primary)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Demo Clinic HQ
-                </div>
-              </div>
-              <ChevronDown size={14} color="var(--color-text-secondary)" />
-            </button>
-          </div>
-        )}
+        {/* Clinic icon */}
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            justifyContent: "center",
+            padding: "10px 0",
+            borderBottom: "1px solid rgba(255,255,255,0.05)",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            title="Demo Clinic"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "#0d9488",
+            }}
+          >
+            <Building2 size={17} />
+          </button>
+        </div>
 
+        {/* Nav icons */}
         <nav
           style={{
             flex: 1,
             overflowY: "auto",
-            padding: "10px 10px",
+            padding: "10px 0",
             display: "flex",
             flexDirection: "column",
+            alignItems: "center",
             gap: 2,
+            width: "100%",
           }}
         >
           {NAV.map((item) => {
@@ -453,40 +373,37 @@ export default function DemoPage() {
               <button
                 key={item.id}
                 onClick={() => !isLocked && setActiveTab(item.id)}
+                title={item.label}
                 style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 11,
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "8px 10px",
-                  borderRadius: 9,
-                  fontSize: 14,
+                  justifyContent: "center",
+                  background: isActive ? "rgba(13,148,136,0.15)" : "transparent",
+                  color: isActive ? "#0d9488" : "rgba(255,255,255,0.38)",
                   border: "none",
-                  textAlign: "left",
-                  fontWeight: isActive ? 600 : 400,
-                  transition: "all 0.15s",
                   cursor: isLocked ? "not-allowed" : "pointer",
-                  background: isActive
-                    ? "var(--color-accent-muted)"
-                    : "transparent",
-                  color: isActive
-                    ? "var(--color-accent)"
-                    : isLocked
-                      ? "var(--color-text-secondary)"
-                      : "var(--color-text-secondary)",
-                  opacity: isLocked ? 0.4 : 1,
+                  transition: "all 0.13s",
+                  opacity: isLocked ? 0.35 : 1,
+                  position: "relative",
                 }}
               >
-                <span
-                  style={{
-                    color: isActive
-                      ? "var(--color-accent)"
-                      : "var(--color-text-secondary)",
-                    flexShrink: 0,
-                  }}
-                >
-                  {item.icon}
-                </span>
-                {item.label}
+                {isActive && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: -2,
+                      top: "22%",
+                      bottom: "22%",
+                      width: 3,
+                      borderRadius: 99,
+                      background: "#0d9488",
+                    }}
+                  />
+                )}
+                {item.icon}
               </button>
             );
           })}
@@ -495,16 +412,13 @@ export default function DemoPage() {
             <>
               <div
                 style={{
-                  padding: "12px 10px 4px",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: "#8b5cf6",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
+                  width: 28,
+                  height: 1,
+                  background: "rgba(255,255,255,0.08)",
+                  margin: "6px 0",
+                  flexShrink: 0,
                 }}
-              >
-                Cortex Agents
-              </div>
+              />
               {[
                 { id: "cortex_cmd", label: "Command Center", icon: "🧠" },
                 { id: "cortex_inbox", label: "Approval Inbox", icon: "📥" },
@@ -514,30 +428,23 @@ export default function DemoPage() {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id)}
+                    title={item.label}
                     style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 11,
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
-                      padding: "8px 10px",
-                      borderRadius: 9,
-                      fontSize: 14,
+                      justifyContent: "center",
+                      background: isActive ? "rgba(99,102,241,0.15)" : "transparent",
+                      color: isActive ? "#818cf8" : "rgba(255,255,255,0.38)",
                       border: "none",
-                      textAlign: "left",
-                      fontWeight: isActive ? 600 : 400,
-                      transition: "all 0.15s",
                       cursor: "pointer",
-                      background: isActive
-                        ? "rgba(99,102,241,0.1)"
-                        : "transparent",
-                      color: isActive
-                        ? "#6366f1"
-                        : "var(--color-text-secondary)",
+                      transition: "all 0.13s",
+                      fontSize: 18,
                     }}
                   >
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>
-                      {item.icon}
-                    </span>
-                    {item.label}
+                    {item.icon}
                   </button>
                 );
               })}
@@ -545,61 +452,36 @@ export default function DemoPage() {
           )}
         </nav>
 
+        {/* User avatar */}
         <div
           style={{
-            borderTop: "1px solid var(--color-border-tertiary)",
-            padding: "10px 10px",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            padding: "12px 0",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            flexShrink: 0,
           }}
         >
           <div
+            title="Demo User · admin"
             style={{
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #0f766e, #0d9488)",
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "8px 10px",
-              borderRadius: 9,
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#fff",
+              boxShadow: "0 2px 8px rgba(15,118,110,0.3)",
+              cursor: "default",
             }}
           >
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, #0f766e, #0d9488)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#fff",
-                flexShrink: 0,
-              }}
-            >
-              D
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--color-text-primary)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Demo User
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--color-text-secondary)",
-                  textTransform: "capitalize",
-                }}
-              >
-                admin
-              </div>
-            </div>
+            D
           </div>
         </div>
       </aside>

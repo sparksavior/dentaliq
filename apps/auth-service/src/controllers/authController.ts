@@ -78,10 +78,10 @@ export class AuthController {
         })
         .returning();
 
-      // Send email (non-blocking)
+      // Send verification email (non-blocking)
       this.emailService
         .sendVerificationEmail(user.email, user.name, emailVerifyToken)
-        .catch((err) => logger.error({ err }, "Email failed"));
+        .catch((err) => logger.error({ err }, "Verification email failed"));
 
       logger.info(
         { userId: user.id, tenantId: tenant.id },
@@ -258,6 +258,8 @@ export class AuthController {
       .update(users)
       .set({ emailVerified: true, emailVerifyToken: null })
       .where(eq(users.id, user.id));
+
+
   }
 
   // ── Forgot password ───────────────────────────────────────
@@ -330,6 +332,10 @@ export class AuthController {
           eq(refreshTokens.revokedAt, null as any),
         ),
       );
+
+    this.emailService
+      .sendPasswordChangedEmail(user.email, user.name)
+      .catch((err) => logger.error({ err }, "Password changed email failed"));
   }
 
   // ── Issue JWT + refresh token ─────────────────────────────

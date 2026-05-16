@@ -21,9 +21,15 @@
   --color-accent-hover: #0d9488;
   --color-accent-muted: #f0fdfa;
   --color-accent-subtle: rgba(15, 118, 110, 0.08);
+  --color-sidebar-bg: #1e1b18; /* Rich dark brown for light mode */
+  --color-sidebar-text: rgba(255, 255, 255, 0.7);
+  --color-sidebar-active: #14b8a6;
 
   /* Nav bar background (blur overlay) */
   --color-nav-bg: rgba(255, 255, 255, 0.88);
+
+  /* Warm dashboard background */
+  --color-bg-dashboard: #f0ede8;
 
   /* Elevation */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -78,6 +84,8 @@
     /* Nav bar background (blur overlay) */
     --color-nav-bg: rgba(10, 10, 10, 0.88);
 
+    --color-bg-dashboard: #0a0a0a;
+
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.25);
@@ -111,7 +119,12 @@ html.dark {
   --color-accent-hover: #2dd4bf;
   --color-accent-muted: #042f2e;
   --color-accent-subtle: rgba(20, 184, 166, 0.08);
+  --color-sidebar-bg: #111111;
+  --color-sidebar-text: rgba(255, 255, 255, 0.5);
+  --color-sidebar-active: #2dd4bf;
   --color-nav-bg: rgba(10, 10, 10, 0.88);
+
+  --color-bg-dashboard: #0a0a0a;
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -247,6 +260,17 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -386,6 +410,44 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── Premium interaction utilities ── */
+@keyframes slideUpIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(15, 118, 110, 0.12);
+  }
+}
+
+@keyframes borderFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 /* ── Skeleton loader ── */

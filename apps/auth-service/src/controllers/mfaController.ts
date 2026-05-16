@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import { getDb, users } from '@dentaliq/db'
 import { getEnv } from '@dentaliq/config'
 import { eq } from 'drizzle-orm'
+import { EmailService } from '../services/emailService'
 
 // ─────────────────────────────────────────────────────────
 // MFA Controller — TOTP (RFC 6238)
@@ -14,6 +15,7 @@ import { eq } from 'drizzle-orm'
 export class MfaController {
   private db = getDb()
   private env = getEnv()
+  private emailService = new EmailService()
 
   // ── Generate TOTP secret + QR code ───────────────────────
   async setupMfa(userId: string, email: string) {
@@ -51,6 +53,20 @@ export class MfaController {
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId))
+
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+    
+    if (user) {
+      console.log(`[MfaController] Triggering MFA enabled email for ${user.email}`)
+      this.emailService
+        .sendMfaEnabledEmail(user.email, user.name)
+        .then(() => console.log(`[MfaController] MFA email successfully sent to ${user.email}`))
+        .catch((err) => console.error(`[MfaController] MFA email failed for ${user.email}:`, err))
+    }
   }
 
   // ── Disable MFA ───────────────────────────────────────────
