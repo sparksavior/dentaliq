@@ -16,6 +16,7 @@ import * as supportTicketsSchema from "./schema/supportTickets";
 import * as cdtUploadsSchema from "./schema/cdtUploads";
 import * as cdtSupplyMapSchema from "./schema/cdtSupplyMap";
 import * as inviteTokensSchema from "./schema/inviteTokens";
+import * as mfaDevicesSchema from "./schema/mfaDevices";
 
 export const schema = {
   ...tenantsSchema,
@@ -27,6 +28,7 @@ export const schema = {
   ...cdtUploadsSchema,
   ...cdtSupplyMapSchema,
   ...inviteTokensSchema,
+  ...mfaDevicesSchema,
 };
 
 export type Db = ReturnType<typeof getDb>;
@@ -83,3 +85,4 @@ export * from "./schema/supportTickets";
 export * from "./schema/cdtUploads";
 export * from "./schema/cdtSupplyMap";
 export * from "./schema/inviteTokens";
+export * from "./schema/mfaDevices";

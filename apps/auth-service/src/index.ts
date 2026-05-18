@@ -74,13 +74,32 @@ async function initDb() {
   `),
   );
 
-  // Add columns for existing DBs that predate this migration
+  // Add columns for existing DBs that predate these migrations
   for (const col of [
     `ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE users ADD COLUMN invited_by TEXT`,
+    `ALTER TABLE users ADD COLUMN mfa_method TEXT NOT NULL DEFAULT 'totp'`,
+    `ALTER TABLE users ADD COLUMN mfa_methods TEXT NOT NULL DEFAULT '[]'`,
+    `ALTER TABLE users ADD COLUMN phone_number TEXT`,
+    `ALTER TABLE users ADD COLUMN mfa_otp_code TEXT`,
+    `ALTER TABLE users ADD COLUMN mfa_otp_expires TEXT`,
+    `ALTER TABLE invite_tokens ADD COLUMN mfa_method TEXT NOT NULL DEFAULT 'totp'`,
   ]) {
     try { await db.run(sql.raw(col)) } catch { /* column already exists */ }
   }
+
+  await db.run(
+    sql.raw(`
+    CREATE TABLE IF NOT EXISTS mfa_devices (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label TEXT NOT NULL DEFAULT 'Authenticator',
+      secret TEXT NOT NULL,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `),
+  );
 
   await db.run(
     sql.raw(`

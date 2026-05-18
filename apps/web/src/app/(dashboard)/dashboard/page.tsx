@@ -1578,7 +1578,7 @@ export default function OverviewPage() {
           >
             Update Your Security
           </Link>
-          {tenant?.plan !== "starter" && (
+          {tenant?.plan === "cortex" && (
             <Link
               href="/dashboard/cortex"
               style={{
