@@ -132,25 +132,25 @@ The "Cortex" tier activates 6 AI agents that run automatically every night at 2:
 
 ## 3. Tech Stack
 
-| Layer               | Technology                                 | Why                                                              |
-| ------------------- | ------------------------------------------ | ---------------------------------------------------------------- |
-| **Frontend**        | Next.js 16.2.4 (App Router)                | SSR, file-based routing, React Server Components                 |
-| **Monorepo**        | Turborepo + pnpm workspaces                | Parallel builds, shared packages, incremental caching            |
-| **Backend**         | Fastify 4 (Node.js)                        | 2-3× faster than Express, schema validation, plugin ecosystem    |
-| **Database ORM**    | Drizzle ORM                                | Type-safe SQL, SQLite and PostgreSQL with same codebase          |
-| **Database (dev)**  | SQLite via libsql                          | Zero-config, file-based, no Docker required                      |
-| **Database (prod)** | PostgreSQL 16                              | ACID compliant, connection pooling, multi-instance safe          |
-| **AI / LLM**        | Ollama (local) + Claude/OpenAI fallback    | Offline-capable, no API key required to develop                  |
-| **Auth**            | JWT + Refresh tokens + TOTP MFA            | Stateless, PHIPA-suitable, secure refresh rotation               |
-| **Styling**         | CSS custom properties + Tailwind utilities | Design token system, dark mode, no CSS-in-JS overhead            |
-| **Icons**           | Lucide React                               | Consistent, tree-shakeable icon set                              |
-| **Charts**          | Recharts                                   | Composable, React-native chart library                           |
-| **Payments**        | Stripe (optional)                          | SetupIntents + Subscriptions, PCI-safe card tokenization         |
-| **Email**           | Nodemailer / Resend                        | Pluggable, console mode for development                          |
-| **Logging**         | Pino                                       | Structured JSON logs, sub-millisecond overhead                   |
-| **Validation**      | Zod                                        | Runtime + compile-time type safety for env vars and API payloads |
-| **Testing**         | Vitest                                     | Fast, ESM-native, compatible with Node and jsdom                 |
-| **Container**       | Docker multi-stage builds                  | Minimal image size, non-root user, health checks                 |
+| Layer               | Technology                                 | Why                                                                                  |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| **Frontend**        | Next.js 16.2.4 (App Router)                | SSR, file-based routing, React Server Components                                     |
+| **Monorepo**        | Turborepo + pnpm workspaces                | Parallel builds, shared packages, incremental caching                                |
+| **Backend**         | Fastify 4 (Node.js)                        | 2-3× faster than Express, schema validation, plugin ecosystem                        |
+| **Database ORM**    | Drizzle ORM                                | Type-safe SQL, SQLite and PostgreSQL with same codebase                              |
+| **Database (dev)**  | SQLite via libsql                          | Zero-config, file-based, no Docker required                                          |
+| **Database (prod)** | PostgreSQL 16                              | ACID compliant, connection pooling, multi-instance safe                              |
+| **AI / LLM**        | Ollama (local) + Claude/OpenAI fallback    | Offline-capable, no API key required to develop                                      |
+| **Auth**            | JWT + Refresh tokens + multi-method MFA    | TOTP (authenticator app), email OTP, and SMS OTP (Twilio). PHIPA-suitable, stateless |
+| **Styling**         | CSS custom properties + Tailwind utilities | Design token system, dark mode, no CSS-in-JS overhead                                |
+| **Icons**           | Lucide React                               | Consistent, tree-shakeable icon set                                                  |
+| **Charts**          | Recharts                                   | Composable, React-native chart library                                               |
+| **Payments**        | Stripe (optional)                          | SetupIntents + Subscriptions, PCI-safe card tokenization                             |
+| **Email**           | Nodemailer / Resend                        | Pluggable, console mode for development                                              |
+| **Logging**         | Pino                                       | Structured JSON logs, sub-millisecond overhead                                       |
+| **Validation**      | Zod                                        | Runtime + compile-time type safety for env vars and API payloads                     |
+| **Testing**         | Vitest                                     | Fast, ESM-native, compatible with Node and jsdom                                     |
+| **Container**       | Docker multi-stage builds                  | Minimal image size, non-root user, health checks                                     |
 
 ---
 
@@ -321,6 +321,16 @@ DATABASE_URL=postgresql://dentaliq:yourpassword@your-db-host:5432/dentaliq
 | `SMTP_USER`      | _(none)_            | SMTP username                               |
 | `SMTP_PASS`      | _(none)_            | SMTP password                               |
 | `RESEND_API_KEY` | _(none)_            | Resend API key (when `EMAIL_MODE=resend`)   |
+
+### Twilio (SMS 2FA — Optional)
+
+Required only if you want SMS text-message two-factor authentication. If these variables are not set, the SMS option is hidden in settings and users can still use authenticator-app or email 2FA.
+
+| Variable             | Default  | Description                                                       |
+| -------------------- | -------- | ----------------------------------------------------------------- |
+| `TWILIO_ACCOUNT_SID` | _(none)_ | Account SID from [console.twilio.com](https://console.twilio.com) |
+| `TWILIO_AUTH_TOKEN`  | _(none)_ | Auth token from Twilio console                                    |
+| `TWILIO_FROM_NUMBER` | _(none)_ | Twilio phone number in E.164 format, e.g. `+16475550100`          |
 
 ### Stripe (Payments — Optional)
 
@@ -1115,7 +1125,8 @@ Complete every item before going live with real clinic data.
 - [ ] `ADMIN_SECRET` is set — without it the admin portal is unprotected
 - [ ] `ALLOWED_ORIGINS` is set to your exact production domain(s) only
 - [ ] Admin portal (`port 3005`) is NOT exposed to the public internet (restrict by IP or VPN)
-- [ ] MFA is encouraged for all admin users
+- [ ] MFA is required for all users who access PHI — users can choose TOTP (authenticator app), email OTP, or SMS OTP (requires Twilio)
+- [ ] If using SMS 2FA, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER` are set in production
 
 ### Network
 
@@ -1420,29 +1431,29 @@ pnpm --filter @dentaliq/auth-service dev
 
 This section explains how DentalIQ meets production-grade SaaS criteria out of the box.
 
-| Criteria                     | Implementation                                                               | Status |
-| ---------------------------- | ---------------------------------------------------------------------------- | ------ |
-| **Multi-tenancy**            | Per-tenant JWT, rate limiting keyed by tenantId, isolated data access        | ✅     |
-| **Authentication**           | JWT + refresh token rotation, TOTP MFA, email verification, password reset   | ✅     |
-| **Authorization**            | Role-based (admin, dentist, front_desk), per-route middleware                | ✅     |
-| **Input validation**         | Zod schemas on all API endpoints, typed env vars                             | ✅     |
-| **SQL injection prevention** | Drizzle ORM parameterized queries — no raw SQL anywhere                      | ✅     |
-| **XSS prevention**           | React's built-in escaping, Helmet security headers                           | ✅     |
-| **CSRF prevention**          | SameSite cookie policy, CORS allowlist                                       | ✅     |
-| **Rate limiting**            | Per-tenant rate limiting on all backend services                             | ✅     |
-| **Security headers**         | Fastify Helmet on all services (CSP, HSTS, X-Frame-Options, etc.)            | ✅     |
-| **Structured logging**       | Pino JSON logging on all services                                            | ✅     |
-| **Health checks**            | `/health` endpoint on every service, Docker HEALTHCHECK configured           | ✅     |
-| **Graceful shutdown**        | SIGINT/SIGTERM handlers — no abrupt connection drops                         | ✅     |
-| **Environment validation**   | Zod schema validates all env vars on startup                                 | ✅     |
-| **PCI compliance**           | Stripe.js card tokenization — no raw card data touches the server            | ✅     |
-| **PHIPA audit logging**      | Append-only `audit_logs` table captures all user actions                     | ✅     |
-| **Database flexibility**     | SQLite for development, PostgreSQL for production — same codebase            | ✅     |
-| **LLM resilience**           | Automatic fallback chain ensures estimates work even if AI is down           | ✅     |
-| **Container support**        | Multi-stage Dockerfile, non-root user, HEALTHCHECK                           | ✅     |
-| **Kubernetes ready**         | Helm chart with HPA, liveness/readiness probes                               | ✅     |
-| **CI/CD ready**              | Turborepo caching, build outputs defined, image tag parameterized            | ✅     |
-| **Human-in-the-loop AI**     | Cortex agents generate pending tasks — no automated actions without approval | ✅     |
+| Criteria                     | Implementation                                                                                                  | Status |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- | ------ |
+| **Multi-tenancy**            | Per-tenant JWT, rate limiting keyed by tenantId, isolated data access                                           | ✅     |
+| **Authentication**           | JWT + refresh token rotation, multi-method MFA (TOTP / email OTP / SMS OTP), email verification, password reset | ✅     |
+| **Authorization**            | Role-based (admin, dentist, front_desk), per-route middleware                                                   | ✅     |
+| **Input validation**         | Zod schemas on all API endpoints, typed env vars                                                                | ✅     |
+| **SQL injection prevention** | Drizzle ORM parameterized queries — no raw SQL anywhere                                                         | ✅     |
+| **XSS prevention**           | React's built-in escaping, Helmet security headers                                                              | ✅     |
+| **CSRF prevention**          | SameSite cookie policy, CORS allowlist                                                                          | ✅     |
+| **Rate limiting**            | Per-tenant rate limiting on all backend services                                                                | ✅     |
+| **Security headers**         | Fastify Helmet on all services (CSP, HSTS, X-Frame-Options, etc.)                                               | ✅     |
+| **Structured logging**       | Pino JSON logging on all services                                                                               | ✅     |
+| **Health checks**            | `/health` endpoint on every service, Docker HEALTHCHECK configured                                              | ✅     |
+| **Graceful shutdown**        | SIGINT/SIGTERM handlers — no abrupt connection drops                                                            | ✅     |
+| **Environment validation**   | Zod schema validates all env vars on startup                                                                    | ✅     |
+| **PCI compliance**           | Stripe.js card tokenization — no raw card data touches the server                                               | ✅     |
+| **PHIPA audit logging**      | Append-only `audit_logs` table captures all user actions                                                        | ✅     |
+| **Database flexibility**     | SQLite for development, PostgreSQL for production — same codebase                                               | ✅     |
+| **LLM resilience**           | Automatic fallback chain ensures estimates work even if AI is down                                              | ✅     |
+| **Container support**        | Multi-stage Dockerfile, non-root user, HEALTHCHECK                                                              | ✅     |
+| **Kubernetes ready**         | Helm chart with HPA, liveness/readiness probes                                                                  | ✅     |
+| **CI/CD ready**              | Turborepo caching, build outputs defined, image tag parameterized                                               | ✅     |
+| **Human-in-the-loop AI**     | Cortex agents generate pending tasks — no automated actions without approval                                    | ✅     |
 
 ---
 

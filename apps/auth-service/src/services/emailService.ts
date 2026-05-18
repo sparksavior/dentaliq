@@ -51,7 +51,12 @@ export class EmailService {
     });
   }
 
-  async sendWelcomeEmail(email: string, name: string, clinicName: string, plan: string) {
+  async sendWelcomeEmail(
+    email: string,
+    name: string,
+    clinicName: string,
+    plan: string,
+  ) {
     const dashboardUrl = `${this.env.APP_URL}/dashboard`;
     await this.send({
       to: email,
@@ -61,7 +66,11 @@ export class EmailService {
     });
   }
 
-  async sendAgentTaskNotification(email: string, clinicName: string, taskCount: number) {
+  async sendAgentTaskNotification(
+    email: string,
+    clinicName: string,
+    taskCount: number,
+  ) {
     const url = `${this.env.APP_URL}/dashboard/cortex/inbox`;
     await this.send({
       to: email,
@@ -71,7 +80,13 @@ export class EmailService {
     });
   }
 
-  async sendInviteEmail(email: string, name: string, clinicName: string, adminName: string, inviteUrl: string) {
+  async sendInviteEmail(
+    email: string,
+    name: string,
+    clinicName: string,
+    adminName: string,
+    inviteUrl: string,
+  ) {
     await this.send({
       to: email,
       subject: `${adminName} has invited you to ${clinicName} on DentalIQ`,
@@ -90,9 +105,26 @@ export class EmailService {
     });
   }
 
+  async sendMfaOtpEmail(
+    email: string,
+    name: string,
+    code: string,
+    method: "email" | "sms" = "email",
+  ) {
+    await this.send({
+      to: email,
+      subject: "Your DentalIQ verification code",
+      html: mfaOtpEmailHtml(name, code),
+      text: `Hi ${name},\n\nYour DentalIQ verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\nIf you didn't request this, contact security@dentaliq.ca immediately.\n\n— The DentalIQ Team`,
+    });
+  }
+
   private async send(payload: EmailPayload) {
     const mode = this.env.EMAIL_MODE ?? "console";
-    logger.info({ to: payload.to, subject: payload.subject, mode }, "Attempting to send email");
+    logger.info(
+      { to: payload.to, subject: payload.subject, mode },
+      "Attempting to send email",
+    );
     try {
       if (mode === "resend") {
         await this.sendViaResend(payload);
@@ -104,7 +136,10 @@ export class EmailService {
       }
       this.printToConsole(payload);
     } catch (err) {
-      logger.error({ err, to: payload.to, subject: payload.subject }, "Email send failed");
+      logger.error(
+        { err, to: payload.to, subject: payload.subject },
+        "Email send failed",
+      );
       throw err;
     }
   }
@@ -128,7 +163,12 @@ export class EmailService {
       text: payload.text,
     });
     logger.info(
-      { to: payload.to, subject: payload.subject, messageId: info.messageId, response: info.response },
+      {
+        to: payload.to,
+        subject: payload.subject,
+        messageId: info.messageId,
+        response: info.response,
+      },
       "Email sent via SMTP",
     );
   }
@@ -151,14 +191,21 @@ export class EmailService {
         text: payload.text,
       }),
     });
-    if (!res.ok) throw new Error(`Resend API error ${res.status}: ${await res.text()}`);
-    logger.info({ to: payload.to, subject: payload.subject }, "Email sent via Resend");
+    if (!res.ok)
+      throw new Error(`Resend API error ${res.status}: ${await res.text()}`);
+    logger.info(
+      { to: payload.to, subject: payload.subject },
+      "Email sent via Resend",
+    );
   }
 
   private printToConsole(payload: EmailPayload) {
     const line = "─".repeat(60);
     logger.info(
-      `\n${line}\n📧  EMAIL (console mode)\n    To:      ${payload.to}\n    Subject: ${payload.subject}\n\n${payload.text.split("\n").map((l) => "    " + l).join("\n")}\n${line}`,
+      `\n${line}\n📧  EMAIL (console mode)\n    To:      ${payload.to}\n    Subject: ${payload.subject}\n\n${payload.text
+        .split("\n")
+        .map((l) => "    " + l)
+        .join("\n")}\n${line}`,
     );
   }
 }
@@ -167,7 +214,12 @@ export class EmailService {
 // BASE TEMPLATE
 // ─────────────────────────────────────────────────────────────
 
-function baseTemplate(preheader: string, title: string, accentColor: string, body: string) {
+function baseTemplate(
+  preheader: string,
+  title: string,
+  accentColor: string,
+  body: string,
+) {
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -504,7 +556,12 @@ function mfaEnabledEmailHtml(name: string) {
 // WELCOME EMAIL
 // ─────────────────────────────────────────────────────────────
 
-function welcomeEmailHtml(name: string, clinicName: string, plan: string, dashboardUrl: string) {
+function welcomeEmailHtml(
+  name: string,
+  clinicName: string,
+  plan: string,
+  dashboardUrl: string,
+) {
   const firstName = name.split(" ")[0];
 
   type PlanConfig = {
@@ -524,11 +581,24 @@ function welcomeEmailHtml(name: string, clinicName: string, plan: string, dashbo
       accentColor: "#0f766e",
       accentGrad: "linear-gradient(135deg,#0f766e,#14b8a6)",
       icon: "📊",
-      objective: "Produce accurate, professional cost estimates in seconds — and eliminate billing disputes before they start.",
+      objective:
+        "Produce accurate, professional cost estimates in seconds — and eliminate billing disputes before they start.",
       features: [
-        { icon: "⚡", title: "Instant Insurance Verification", desc: "Fetch live coverage details without calling the insurer." },
-        { icon: "✓", title: "Error-Free Estimates", desc: "99% accurate cost breakdowns that reduce disputes and chargebacks." },
-        { icon: "🖨️", title: "Branded Patient Summaries", desc: "Print polished treatment cost summaries that help patients say yes." },
+        {
+          icon: "⚡",
+          title: "Instant Insurance Verification",
+          desc: "Fetch live coverage details without calling the insurer.",
+        },
+        {
+          icon: "✓",
+          title: "Error-Free Estimates",
+          desc: "99% accurate cost breakdowns that reduce disputes and chargebacks.",
+        },
+        {
+          icon: "🖨️",
+          title: "Branded Patient Summaries",
+          desc: "Print polished treatment cost summaries that help patients say yes.",
+        },
       ],
     },
     pro: {
@@ -537,12 +607,29 @@ function welcomeEmailHtml(name: string, clinicName: string, plan: string, dashbo
       accentColor: "#7c3aed",
       accentGrad: "linear-gradient(135deg,#7c3aed,#a78bfa)",
       icon: "🛡️",
-      objective: "Maximize reimbursement, catch denials before they happen, and recover every dollar your practice is owed.",
+      objective:
+        "Maximize reimbursement, catch denials before they happen, and recover every dollar your practice is owed.",
       features: [
-        { icon: "🧠", title: "Predictive Risk Engine", desc: "Identify high-risk claims before submission and fix issues proactively." },
-        { icon: "✍️", title: "AI Narrative Assistant", desc: "Generate clinical narratives for major work in under 3 seconds." },
-        { icon: "📈", title: "Multi-Clinic Analytics", desc: "Unified revenue dashboards across your entire practice group." },
-        { icon: "🔄", title: "Denial Recovery Tracker", desc: "Automated dashboard to track, appeal, and recover denied claims." },
+        {
+          icon: "🧠",
+          title: "Predictive Risk Engine",
+          desc: "Identify high-risk claims before submission and fix issues proactively.",
+        },
+        {
+          icon: "✍️",
+          title: "AI Narrative Assistant",
+          desc: "Generate clinical narratives for major work in under 3 seconds.",
+        },
+        {
+          icon: "📈",
+          title: "Multi-Clinic Analytics",
+          desc: "Unified revenue dashboards across your entire practice group.",
+        },
+        {
+          icon: "🔄",
+          title: "Denial Recovery Tracker",
+          desc: "Automated dashboard to track, appeal, and recover denied claims.",
+        },
       ],
     },
     cortex: {
@@ -551,23 +638,44 @@ function welcomeEmailHtml(name: string, clinicName: string, plan: string, dashbo
       accentColor: "#6366f1",
       accentGrad: "linear-gradient(135deg,#6366f1,#8b5cf6)",
       icon: "🧠",
-      objective: "Your practice runs itself. Six autonomous AI agents handle the back office around the clock — so you can focus on patients.",
+      objective:
+        "Your practice runs itself. Six autonomous AI agents handle the back office around the clock — so you can focus on patients.",
       features: [
-        { icon: "🤖", title: "24/7 AI Workforce", desc: "Six autonomous agents managing recalls, billing, and communications while you sleep." },
-        { icon: "📅", title: "Autonomous Recall", desc: "Agents proactively find and re-schedule overdue patients — zero staff effort." },
-        { icon: "🏛️", title: "CDCP Specialist Agent", desc: "A dedicated agent navigating complex government dental plans on your behalf." },
-        { icon: "📥", title: "Smart Approval Inbox", desc: "Only review items requiring clinical judgment — everything else is handled." },
+        {
+          icon: "🤖",
+          title: "24/7 AI Workforce",
+          desc: "Six autonomous agents managing recalls, billing, and communications while you sleep.",
+        },
+        {
+          icon: "📅",
+          title: "Autonomous Recall",
+          desc: "Agents proactively find and re-schedule overdue patients — zero staff effort.",
+        },
+        {
+          icon: "🏛️",
+          title: "CDCP Specialist Agent",
+          desc: "A dedicated agent navigating complex government dental plans on your behalf.",
+        },
+        {
+          icon: "📥",
+          title: "Smart Approval Inbox",
+          desc: "Only review items requiring clinical judgment — everything else is handled.",
+        },
       ],
     },
   };
 
   const cfg = planConfig[plan] ?? planConfig["starter"];
 
-  const featuresHtml = cfg.features.map((f) => `
+  const featuresHtml = cfg.features
+    .map(
+      (f) => `
     <div class="feature-item">
       <strong>${f.title}:</strong> ${f.desc}
     </div>
-  `).join("");
+  `,
+    )
+    .join("");
 
   return baseTemplate(
     `Your ${clinicName} workspace is live on DentalIQ ${cfg.label}.`,
@@ -758,11 +866,16 @@ function agreementEmailHtml(name: string, appUrl: string) {
   );
 }
 
-function inviteEmailHtml(name: string, clinicName: string, adminName: string, inviteUrl: string) {
+function inviteEmailHtml(
+  name: string,
+  clinicName: string,
+  adminName: string,
+  inviteUrl: string,
+) {
   return baseTemplate(
     `${adminName} has invited you to join ${clinicName} on DentalIQ`,
     `You've been invited to ${clinicName}`,
-    '#0d9488',
+    "#0d9488",
     `
     <h1>You've been invited to ${clinicName}</h1>
     <p style="font-size:16px;color:#334155;margin:0 0 24px;">
@@ -794,6 +907,28 @@ function inviteEmailHtml(name: string, clinicName: string, adminName: string, in
     </div>
     <p class="muted">This invitation link expires in <strong>7 days</strong>. If it expires, ask ${adminName} to send a new invite.</p>
     <p class="muted">If you weren't expecting this invitation or don't know who ${adminName} is, you can safely ignore this email. No account will be created.</p>
+    `,
+  );
+}
+
+function mfaOtpEmailHtml(name: string, code: string) {
+  return wrap(
+    "Your DentalIQ verification code",
+    `
+    <p>Hi <strong>${name}</strong>,</p>
+    <p style="color:#475569;font-size:15px;line-height:1.6;">
+      Use the code below to verify your identity. It expires in <strong>10 minutes</strong>.
+    </p>
+    <div style="text-align:center;margin:32px 0;">
+      <div style="display:inline-block;background:linear-gradient(135deg,rgba(15,118,110,0.08),rgba(13,148,136,0.04));border:2px solid rgba(15,118,110,0.25);border-radius:16px;padding:20px 40px;">
+        <div style="font-size:11px;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">Verification Code</div>
+        <div style="font-size:42px;font-weight:800;letter-spacing:0.25em;color:#0f172a;font-family:'Courier New',monospace;">${code}</div>
+      </div>
+    </div>
+    <div style="background:#fefce8;border:1px solid #fde047;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:13px;color:#854d0e;"><strong>⚠ Never share this code.</strong> DentalIQ staff will never ask for it. If you didn't request this, contact security@dentaliq.ca immediately.</p>
+    </div>
+    <p class="muted">This code is valid for 10 minutes and can only be used once.</p>
     `,
   );
 }

@@ -103,10 +103,10 @@ const CORTEX_AGENTS = [
 
 const ALL_STEPS = [
   { id: "name", label: "Name", cortexOnly: false },
+  { id: "plan", label: "Plan", cortexOnly: false },
   { id: "credentials", label: "Account", cortexOnly: false },
   { id: "verify", label: "Verify", cortexOnly: false },
   { id: "phone", label: "Phone", cortexOnly: false },
-  { id: "plan", label: "Plan", cortexOnly: false },
   { id: "clinic", label: "Clinic", cortexOnly: false },
   { id: "agents", label: "Agents", cortexOnly: true },
   { id: "security", label: "Security", cortexOnly: false },
@@ -349,8 +349,10 @@ function SignupPage() {
   const [mfaData, setMfaData] = useState<{
     secret: string;
     qrCodeDataUrl: string;
+    backupCodes?: string[];
   } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [mfaLoadError, setMfaLoadError] = useState(false);
   const [pmsStatus, setPmsStatus] = useState<
     "idle" | "connecting" | "connected"
   >("idle");
@@ -364,6 +366,7 @@ function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [showLaunch, setShowLaunch] = useState(false);
+  const [direction, setDirection] = useState<"forward" | "back">("forward");
 
   // Poll email verification
   useEffect(() => {
@@ -380,6 +383,7 @@ function SignupPage() {
   // Load MFA QR when entering security step
   useEffect(() => {
     if (currentId !== "security" || !sessionToken || mfaData) return;
+    setMfaLoadError(false);
     (async () => {
       try {
         const res = await fetch(
@@ -391,10 +395,16 @@ function SignupPage() {
           },
         );
         const json = await res.json();
-        if (json.success) setMfaData(json.data);
-      } catch {}
+        if (json.success) {
+          setMfaData(json.data);
+        } else {
+          setMfaLoadError(true);
+        }
+      } catch {
+        setMfaLoadError(true);
+      }
     })();
-  }, [currentId, sessionToken]);
+  }, [currentId, sessionToken, mfaLoadError]);
 
   const setF =
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -402,10 +412,12 @@ function SignupPage() {
 
   const advance = () => {
     setError("");
+    setDirection("forward");
     setStepIdx((i) => Math.min(i + 1, steps.length - 1));
   };
   const goBack = () => {
     setError("");
+    setDirection("back");
     setStepIdx((i) => Math.max(i - 1, 0));
   };
 
@@ -1711,10 +1723,13 @@ function SignupPage() {
                 </div>
                 <FancyInput
                   value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
+                  onChange={(e) =>
+                    setMfaCode(e.target.value.replace(/\D/g, ""))
+                  }
                   placeholder="Enter 6-digit code"
                   maxLength={6}
                   inputMode="numeric"
+                  autoFocus
                   style={{
                     textAlign: "center",
                     letterSpacing: "0.35em",
@@ -1723,6 +1738,104 @@ function SignupPage() {
                     padding: "14px",
                   }}
                 />
+
+                {mfaData.backupCodes && mfaData.backupCodes.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 18,
+                      padding: "14px 16px",
+                      background: "var(--color-background-secondary)",
+                      borderRadius: 10,
+                      border: "1px solid var(--color-border-secondary)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "var(--color-text-secondary)",
+                        marginBottom: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <span>🔑</span> Backup codes — save these somewhere safe
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "4px 12px",
+                      }}
+                    >
+                      {mfaData.backupCodes.map((code, i) => (
+                        <code
+                          key={i}
+                          style={{
+                            fontSize: 12,
+                            color: "var(--color-text-primary)",
+                            letterSpacing: "0.1em",
+                            fontFamily: "monospace",
+                            padding: "2px 0",
+                          }}
+                        >
+                          {code}
+                        </code>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : mfaLoadError ? (
+              <div
+                style={{
+                  background: "rgba(239,68,68,0.06)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  borderRadius: 14,
+                  padding: "28px 24px",
+                  marginBottom: 20,
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 32, marginBottom: 10 }}>⚠️</div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "var(--color-text-primary)",
+                    marginBottom: 6,
+                  }}
+                >
+                  Couldn't load authenticator setup
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--color-text-secondary)",
+                    marginBottom: 16,
+                  }}
+                >
+                  {sessionToken
+                    ? "There was a problem reaching the server."
+                    : "Your session may have expired — please go back and log in again."}
+                </div>
+                {sessionToken && (
+                  <button
+                    onClick={() => setMfaLoadError(false)}
+                    style={{
+                      padding: "9px 20px",
+                      borderRadius: 8,
+                      border: "1.5px solid var(--color-border-secondary)",
+                      background: "transparent",
+                      color: "var(--color-text-secondary)",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             ) : (
               <div
@@ -2342,6 +2455,14 @@ function SignupPage() {
           from { opacity: 0; transform: translateY(14px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(56px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideInLeft {
+          from { opacity: 0; transform: translateX(-56px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
       `}</style>
 
       {/* Background animated orbs */}
@@ -2534,10 +2655,9 @@ function SignupPage() {
         </div>
       </div>
 
-      {/* Slide carousel
-          Strategy: track width = N × 100% of outer; each slide = 1/N of track = 100% of outer.
-          translateX is applied to the track: moving by -(i/N × 100%) = exactly i slide widths.
-          This avoids 100vw (scrollbar gap) and works correctly on resize. */}
+      {/* Step renderer — one step at a time, slides in/out on button click only.
+          No percentage-based carousel track so resizing the browser never causes
+          an unwanted slide transition. */}
       <div
         style={{
           position: "relative",
@@ -2547,32 +2667,19 @@ function SignupPage() {
         }}
       >
         <div
+          key={stepIdx}
           style={{
             display: "flex",
-            width: `${steps.length * 100}%`,
-            transform: `translateX(${-(stepIdx / steps.length) * 100}%)`,
-            transition: "transform 0.48s cubic-bezier(0.4,0,0.2,1)",
-            willChange: "transform",
+            justifyContent: "center",
+            alignItems: "flex-start",
+            padding: "36px 16px 72px",
+            minHeight: "calc(100vh - 142px)",
+            animation: `${direction === "back" ? "slideInLeft" : "slideInRight"} 0.38s cubic-bezier(0.4,0,0.2,1) both`,
           }}
         >
-          {steps.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                width: `${100 / steps.length}%`,
-                flexShrink: 0,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "flex-start",
-                padding: "36px 16px 72px",
-                minHeight: "calc(100vh - 142px)",
-              }}
-            >
-              <div style={{ maxWidth: 480, width: "100%" }}>
-                {renderStep(s.id as StepId)}
-              </div>
-            </div>
-          ))}
+          <div style={{ maxWidth: 480, width: "100%" }}>
+            {renderStep(currentId as StepId)}
+          </div>
         </div>
       </div>
     </div>

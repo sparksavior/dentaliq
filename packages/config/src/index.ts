@@ -73,6 +73,11 @@ const envSchema = z.object({
   // Admin portal auth token (set a long random string in production)
   ADMIN_SECRET: z.string().optional(),
 
+  // Twilio — SMS for MFA (all optional; SMS 2FA disabled if not set)
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM_NUMBER: z.string().optional(),
+
   // Frontend
   APP_URL: z.string().default("http://localhost:3000"),
   NEXT_PUBLIC_ENABLE_DEMO: z.string().optional(),

@@ -9,7 +9,9 @@ function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "success" | "error">(
+    "loading",
+  );
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -20,7 +22,7 @@ function VerifyEmailContent() {
     }
 
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001";
-    
+
     fetch(`${authUrl}/auth/verify-email`, {
       method: "POST",
       headers: {
@@ -101,7 +103,8 @@ function VerifyEmailContent() {
             border: "1px solid var(--color-border-secondary)",
             borderRadius: 16,
             padding: "2.5rem 2rem",
-            boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
+            boxShadow:
+              "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
             textAlign: "center",
           }}
         >
@@ -123,7 +126,9 @@ function VerifyEmailContent() {
               >
                 ⏳
               </div>
-              <h2 style={{ margin: "0 0 10px", fontSize: 22 }}>Verifying your email...</h2>
+              <h2 style={{ margin: "0 0 10px", fontSize: 22 }}>
+                Verifying your email...
+              </h2>
               <p style={{ color: "var(--color-text-secondary)", fontSize: 14 }}>
                 Please wait while we confirm your email address.
               </p>
@@ -148,12 +153,21 @@ function VerifyEmailContent() {
               >
                 ✓
               </div>
-              <h2 style={{ margin: "0 0 10px", fontSize: 22 }}>Email Verified!</h2>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: "1.5rem" }}>
-                Your email has been successfully verified. You can now access your dashboard.
+              <h2 style={{ margin: "0 0 10px", fontSize: 22 }}>
+                Email Verified!
+              </h2>
+              <p
+                style={{
+                  color: "var(--color-text-secondary)",
+                  fontSize: 14,
+                  marginBottom: "1.5rem",
+                }}
+              >
+                Your email has been successfully verified. You can now access
+                your dashboard.
               </p>
               <button
-                onClick={() => router.push("/login")}
+                onClick={() => router.push("/signup")}
                 style={{
                   width: "100%",
                   padding: "12px",
@@ -166,7 +180,7 @@ function VerifyEmailContent() {
                   cursor: "pointer",
                 }}
               >
-                Go to Login
+                Continue setup →
               </button>
             </>
           )}
@@ -189,8 +203,16 @@ function VerifyEmailContent() {
               >
                 ✕
               </div>
-              <h2 style={{ margin: "0 0 10px", fontSize: 22 }}>Verification Failed</h2>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: 14, marginBottom: "1.5rem" }}>
+              <h2 style={{ margin: "0 0 10px", fontSize: 22 }}>
+                Verification Failed
+              </h2>
+              <p
+                style={{
+                  color: "var(--color-text-secondary)",
+                  fontSize: 14,
+                  marginBottom: "1.5rem",
+                }}
+              >
                 {errorMsg}
               </p>
               <button

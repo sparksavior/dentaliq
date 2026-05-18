@@ -26,6 +26,7 @@
     "nodemailer": "^6.9.13",
     "otplib": "^12.0.1",
     "qrcode": "^1.5.3",
+    "twilio": "^6.0.2",
     "zod": "^3.23.0"
   },
   "devDependencies": {
