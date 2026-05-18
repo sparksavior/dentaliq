@@ -130,6 +130,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
 
+  // ── Forced MFA setup state (admins who skipped during signup) ──
+  const [mfaSetupData, setMfaSetupData] = useState<{ secret: string; qrCodeDataUrl: string; backupCodes: string[] } | null>(null);
+  const [mfaSetupCode, setMfaSetupCode] = useState("");
+  const [mfaSetupSaved, setMfaSetupSaved] = useState(false);
+  const [mfaSetupStep, setMfaSetupStep] = useState<"scan" | "verify" | "done">("scan");
+  const [mfaSetupLoading, setMfaSetupLoading] = useState(false);
+  const [mfaSetupError, setMfaSetupError] = useState("");
+
   useTheme("diq_dash_theme");
 
   useEffect(() => {
@@ -147,6 +155,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         })
         .catch(() => {});
     }
+  }, [accessToken]);
+
+  // Refresh clinic list + tenant when clinic name is saved in settings
+  useEffect(() => {
+    const handler = () => {
+      if (!accessToken) return;
+      tenantsApi.getTenant(accessToken).then(setTenant).catch(() => {});
+      tenantsApi.getClinics(accessToken).then(setClinics).catch(() => {});
+    };
+    window.addEventListener("diq_clinic_updated", handler);
+    return () => window.removeEventListener("diq_clinic_updated", handler);
   }, [accessToken]);
 
   useEffect(() => {
@@ -200,6 +219,204 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       setChatLoading(false);
     }
   };
+
+  // Fetch MFA setup data when admin hasn't set up MFA yet
+  useEffect(() => {
+    if (!accessToken || !user || user.mfaEnabled || user.role !== 'admin') return;
+    if (mfaSetupData) return;
+    fetch(`${process.env.NEXT_PUBLIC_AUTH_URL ?? 'http://localhost:3001'}/auth/mfa/setup`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      credentials: 'include',
+    })
+      .then(r => r.json())
+      .then(j => { if (j.success) setMfaSetupData(j.data) })
+      .catch(() => {});
+  }, [accessToken, user, mfaSetupData]);
+
+  async function handleMfaSetupVerify() {
+    if (!accessToken || !mfaSetupData || mfaSetupCode.length !== 6) return;
+    setMfaSetupLoading(true);
+    setMfaSetupError("");
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_AUTH_URL ?? 'http://localhost:3001'}/auth/mfa/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        credentials: 'include',
+        body: JSON.stringify({ code: mfaSetupCode, secret: mfaSetupData.secret }),
+      });
+      const j = await r.json();
+      if (!j.success) { setMfaSetupError("That code didn't match — try again."); return; }
+      setMfaSetupStep("done");
+      // Refresh session so mfaEnabled flips to true
+      setTimeout(() => window.location.reload(), 1800);
+    } catch {
+      setMfaSetupError("Something went wrong. Please try again.");
+    } finally {
+      setMfaSetupLoading(false);
+    }
+  }
+
+  // Show forced MFA setup interstitial for admins who skipped it during signup
+  if (!loading && user && user.role === 'admin' && !user.mfaEnabled) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--color-bg-dashboard, #0f172a)', padding: 24,
+      }}>
+        <style>{`
+          @keyframes mfaPopIn { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+          @keyframes spin { to { transform: rotate(360deg) } }
+        `}</style>
+        <div style={{
+          background: 'var(--color-surface, #1a2332)',
+          border: '1px solid var(--color-border, rgba(255,255,255,0.08))',
+          borderRadius: 24, padding: '40px 36px 32px',
+          maxWidth: 460, width: '100%', textAlign: 'center',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
+          animation: 'mfaPopIn 0.4s cubic-bezier(0.16,1,0.3,1)',
+        }}>
+          {mfaSetupStep === "done" ? (
+            <>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary, #f1f5f9)', margin: '0 0 10px' }}>
+                You're all set!
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--color-text-secondary, #94a3b8)', lineHeight: 1.6 }}>
+                Two-factor authentication is now active on your account. Loading your dashboard…
+              </p>
+              <div style={{ marginTop: 20, width: 28, height: 28, border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#0d9488', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '20px auto 0' }} />
+            </>
+          ) : (
+            <>
+              {/* Header */}
+              <div style={{
+                width: 64, height: 64, borderRadius: 20,
+                background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 30, margin: '0 auto 20px',
+                boxShadow: '0 8px 24px rgba(15,118,110,0.3)',
+              }}>🔐</div>
+
+              <div style={{ display: 'inline-block', padding: '4px 12px', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 20, fontSize: 12, fontWeight: 600, color: '#f59e0b', marginBottom: 14 }}>
+                Action required
+              </div>
+
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary, #f1f5f9)', margin: '0 0 10px', letterSpacing: '-0.02em' }}>
+                Set up two-factor authentication
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--color-text-secondary, #94a3b8)', lineHeight: 1.6, margin: '0 0 28px' }}>
+                As the account admin, two-factor authentication is required to protect your clinic's patient data. This only takes a minute.
+              </p>
+
+              {mfaSetupStep === "scan" && (
+                <>
+                  {mfaSetupData ? (
+                    <>
+                      <div style={{ background: '#fff', borderRadius: 12, padding: 12, display: 'inline-block', marginBottom: 16 }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={mfaSetupData.qrCodeDataUrl} alt="MFA QR Code" style={{ width: 160, height: 160, display: 'block' }} />
+                      </div>
+                      <p style={{ fontSize: 13, color: 'var(--color-text-secondary, #94a3b8)', marginBottom: 8 }}>
+                        Scan with Google Authenticator, Authy, or any TOTP app.
+                      </p>
+                      <p style={{ fontSize: 12, color: 'var(--color-text-tertiary, #64748b)', marginBottom: 20 }}>
+                        Can't scan? Use this code manually:
+                        <span style={{ display: 'block', fontFamily: 'monospace', fontSize: 13, letterSpacing: '0.08em', color: 'var(--color-text-primary, #f1f5f9)', marginTop: 4 }}>
+                          {mfaSetupData.secret}
+                        </span>
+                      </p>
+
+                      {/* Backup codes */}
+                      <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px 16px', marginBottom: 20, textAlign: 'left' }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary, #94a3b8)', margin: '0 0 8px' }}>
+                          Save these backup codes somewhere safe — you'll need one if you lose your phone.
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                          {mfaSetupData.backupCodes.map((c, i) => (
+                            <span key={i} style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--color-text-primary, #f1f5f9)', padding: '2px 0' }}>{c}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 20, justifyContent: 'center' }}>
+                        <input type="checkbox" checked={mfaSetupSaved} onChange={e => setMfaSetupSaved(e.target.checked)}
+                          style={{ width: 16, height: 16, accentColor: '#0d9488', cursor: 'pointer' }} />
+                        <span style={{ fontSize: 13, color: 'var(--color-text-secondary, #94a3b8)' }}>I've saved my backup codes</span>
+                      </label>
+
+                      <button
+                        onClick={() => { if (mfaSetupSaved) setMfaSetupStep("verify"); }}
+                        disabled={!mfaSetupSaved}
+                        style={{
+                          width: '100%', padding: '12px 0',
+                          background: mfaSetupSaved ? 'linear-gradient(135deg, #0f766e, #0d9488)' : 'rgba(255,255,255,0.06)',
+                          color: mfaSetupSaved ? '#fff' : 'var(--color-text-tertiary, #64748b)',
+                          border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 600,
+                          cursor: mfaSetupSaved ? 'pointer' : 'not-allowed',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        I've scanned the QR code →
+                      </button>
+                    </>
+                  ) : (
+                    <div style={{ padding: '24px 0', display: 'flex', justifyContent: 'center' }}>
+                      <div style={{ width: 28, height: 28, border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#0d9488', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {mfaSetupStep === "verify" && (
+                <>
+                  <p style={{ fontSize: 14, color: 'var(--color-text-secondary, #94a3b8)', marginBottom: 20 }}>
+                    Enter the 6-digit code from your authenticator app to confirm it's working.
+                  </p>
+                  <input
+                    type="text" inputMode="numeric" maxLength={6}
+                    placeholder="000000"
+                    value={mfaSetupCode}
+                    onChange={e => setMfaSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    style={{
+                      width: '100%', padding: '14px 16px', textAlign: 'center',
+                      fontSize: 24, fontFamily: 'monospace', letterSpacing: '0.2em',
+                      background: 'rgba(255,255,255,0.05)',
+                      border: `1.5px solid ${mfaSetupError ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
+                      borderRadius: 12, color: 'var(--color-text-primary, #f1f5f9)',
+                      outline: 'none', boxSizing: 'border-box', marginBottom: 8,
+                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleMfaSetupVerify(); }}
+                    autoFocus
+                  />
+                  {mfaSetupError && <p style={{ fontSize: 13, color: '#ef4444', marginBottom: 12 }}>{mfaSetupError}</p>}
+                  <button
+                    onClick={handleMfaSetupVerify}
+                    disabled={mfaSetupCode.length !== 6 || mfaSetupLoading}
+                    style={{
+                      width: '100%', padding: '12px 0', marginTop: 8,
+                      background: mfaSetupCode.length === 6 ? 'linear-gradient(135deg, #0f766e, #0d9488)' : 'rgba(255,255,255,0.06)',
+                      color: mfaSetupCode.length === 6 ? '#fff' : 'var(--color-text-tertiary, #64748b)',
+                      border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 600,
+                      cursor: mfaSetupCode.length === 6 ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {mfaSetupLoading ? 'Verifying…' : 'Activate two-factor auth'}
+                  </button>
+                  <button
+                    onClick={() => { setMfaSetupStep("scan"); setMfaSetupCode(""); setMfaSetupError(""); }}
+                    style={{ marginTop: 10, background: 'none', border: 'none', color: 'var(--color-text-tertiary, #64748b)', fontSize: 13, cursor: 'pointer' }}
+                  >
+                    ← Back to QR code
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !user) {
     return (
@@ -347,187 +564,335 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Clinic selector */}
-        <div
-          style={{
-            width: "100%",
-            display: "flex",
-            justifyContent: "center",
-            padding: isSidebarExpanded ? "12px 16px" : "12px 0",
-            position: "relative",
-            flexShrink: 0,
-          }}
-        >
-          <button
-            onClick={() => setIsClinicMenuOpen(!isClinicMenuOpen)}
-            title={isSidebarExpanded ? undefined : (clinics.find((c) => c.id === selectedClinicId)?.name || "Select Clinic")}
-            style={{
-              width: isSidebarExpanded ? "100%" : 42,
-              height: 42,
-              borderRadius: 12,
-              background: isClinicMenuOpen ? "rgba(15,118,110,0.25)" : "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              display: "flex",
-              alignItems: "center",
-              padding: isSidebarExpanded ? "0 12px" : "0",
-              justifyContent: isSidebarExpanded ? "flex-start" : "center",
-              gap: 10,
-              cursor: "pointer",
-              color: isClinicMenuOpen ? "#14b8a6" : "rgba(255,255,255,0.5)",
-              transition: "all 0.15s",
-            }}
-          >
-            <Building2 size={18} style={{ flexShrink: 0 }} />
-            {isSidebarExpanded && (
-              <>
-                <span style={{ 
-                  fontSize: 13, 
-                  fontWeight: 600, 
-                  color: "#fff", 
-                  whiteSpace: "nowrap", 
-                  overflow: "hidden", 
-                  textOverflow: "ellipsis",
-                  textAlign: "left",
-                  flex: 1
-                }}>
-                  {clinics.find((c) => c.id === selectedClinicId)?.name || "Select Clinic"}
-                </span>
-                <ChevronDown size={14} style={{ opacity: 0.5, transform: isClinicMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-              </>
-            )}
-          </button>
-
-          {/* Clinic dropdown — floats to the right of the sidebar */}
-          {isClinicMenuOpen && (
+        {(() => {
+          const activeClinic = clinics.find((c) => c.id === selectedClinicId);
+          const clinicInitials = (name: string) =>
+            name
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((w) => w[0]?.toUpperCase() ?? "")
+              .join("");
+          // Deterministic pastel colour per clinic name
+          const clinicColor = (name: string) => {
+            const palette = [
+              { bg: "#0d9488", text: "#fff" },
+              { bg: "#7c3aed", text: "#fff" },
+              { bg: "#b45309", text: "#fff" },
+              { bg: "#0369a1", text: "#fff" },
+              { bg: "#be185d", text: "#fff" },
+              { bg: "#065f46", text: "#fff" },
+            ];
+            let h = 0;
+            for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+            return palette[h % palette.length];
+          };
+          return (
             <div
               style={{
-                position: "absolute",
-                top: 8,
-                left: 76,
-                zIndex: 1000,
-                background: "var(--color-background-primary)",
-                border: "1px solid var(--color-border-secondary)",
-                borderRadius: 14,
-                boxShadow: "var(--shadow-lg)",
-                overflow: "hidden",
-                minWidth: 200,
-                animation: "slideInRight 0.18s ease-out",
+                width: "100%",
+                padding: isSidebarExpanded ? "8px 12px" : "8px 0",
+                display: "flex",
+                justifyContent: "center",
+                position: "relative",
+                flexShrink: 0,
               }}
             >
-              <div
+              {/* Trigger button */}
+              <button
+                onClick={() => setIsClinicMenuOpen(!isClinicMenuOpen)}
+                title={isSidebarExpanded ? undefined : (activeClinic?.name || "Select Clinic")}
                 style={{
-                  padding: "10px 14px 6px",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: "var(--color-text-tertiary)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.07em",
+                  width: isSidebarExpanded ? "100%" : 42,
+                  height: isSidebarExpanded ? 52 : 42,
+                  borderRadius: 12,
+                  background: isClinicMenuOpen
+                    ? "rgba(15,118,110,0.2)"
+                    : "rgba(255,255,255,0.05)",
+                  border: isClinicMenuOpen
+                    ? "1px solid rgba(20,184,166,0.35)"
+                    : "1px solid rgba(255,255,255,0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: isSidebarExpanded ? "0 10px" : "0",
+                  justifyContent: isSidebarExpanded ? "flex-start" : "center",
+                  gap: 10,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  outline: "none",
                 }}
               >
-                Your Clinics
-              </div>
-              {clinics.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => {
-                    setSelectedClinicId(c.id);
-                    setIsClinicMenuOpen(false);
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "9px 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    border: "none",
-                    background:
-                      selectedClinicId === c.id
-                        ? "var(--color-accent-subtle)"
-                        : "transparent",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "background 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedClinicId !== c.id)
-                      e.currentTarget.style.background = "var(--color-background-secondary)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedClinicId !== c.id)
-                      e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <Building2
-                    size={13}
-                    color={selectedClinicId === c.id ? "var(--color-accent)" : "var(--color-text-tertiary)"}
-                  />
-                  <span
+                {/* Avatar */}
+                {activeClinic ? (
+                  <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: selectedClinicId === c.id ? 600 : 400,
-                      color:
-                        selectedClinicId === c.id
-                          ? "var(--color-accent)"
-                          : "var(--color-text-primary)",
-                    }}
-                  >
-                    {c.name}
-                  </span>
-                  {selectedClinicId === c.id && (
-                    <svg
-                      style={{ marginLeft: "auto" }}
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="var(--color-accent)"
-                      strokeWidth="2.5"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </button>
-              ))}
-              {tenant?.plan !== "starter" &&
-                clinics.length < (tenant?.plan === "pro" ? 3 : 999) && (
-                  <Link
-                    href="/dashboard/settings?tab=clinics"
-                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      background: clinicColor(activeClinic.name).bg,
+                      color: clinicColor(activeClinic.name).text,
                       display: "flex",
                       alignItems: "center",
-                      gap: 9,
-                      padding: "9px 14px",
-                      borderTop: "1px solid var(--color-border-tertiary)",
-                      color: "var(--color-accent)",
-                      textDecoration: "none",
-                      fontSize: 13,
-                      fontWeight: 500,
+                      justifyContent: "center",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                      letterSpacing: "-0.01em",
                     }}
-                    onClick={() => setIsClinicMenuOpen(false)}
                   >
-                    <span style={{ fontSize: 16, fontWeight: 600 }}>+</span>
-                    Add Location
-                  </Link>
+                    {clinicInitials(activeClinic.name) || "?"}
+                  </div>
+                ) : (
+                  <Building2 size={18} style={{ flexShrink: 0, color: "rgba(255,255,255,0.4)" }} />
                 )}
-              {tenant?.plan === "starter" && (
-                <Link
-                  href="/dashboard/settings"
+
+                {/* Name + subtitle */}
+                {isSidebarExpanded && (
+                  <>
+                    <div style={{ flex: 1, textAlign: "left", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#fff",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          lineHeight: "1.2",
+                        }}
+                      >
+                        {activeClinic?.name || "Select Clinic"}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.4)",
+                          marginTop: 2,
+                          lineHeight: "1",
+                        }}
+                      >
+                        {clinics.length === 1
+                          ? "1 location"
+                          : `${clinics.length} locations`}
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={13}
+                      style={{
+                        color: "rgba(255,255,255,0.35)",
+                        transform: isClinicMenuOpen ? "rotate(180deg)" : "none",
+                        transition: "transform 0.2s ease",
+                        flexShrink: 0,
+                      }}
+                    />
+                  </>
+                )}
+              </button>
+
+              {/* Dropdown */}
+              {isClinicMenuOpen && (
+                <div
                   style={{
-                    display: "block",
-                    padding: "8px 14px",
-                    borderTop: "1px solid var(--color-border-tertiary)",
-                    color: "var(--color-accent)",
-                    textDecoration: "none",
-                    fontSize: 11,
-                    fontWeight: 500,
+                    position: "absolute",
+                    ...(isSidebarExpanded
+                      ? { top: "calc(100% - 4px)", left: 12, right: 12 }
+                      : { top: 0, left: "calc(100% + 8px)" }),
+                    zIndex: 1000,
+                    background: "#1a1f2e",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 14,
+                    boxShadow: "0 16px 48px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)",
+                    overflow: "hidden",
+                    minWidth: isSidebarExpanded ? undefined : 220,
+                    animation: isSidebarExpanded
+                      ? "ddFadeDown 0.15s ease-out"
+                      : "ddFadeRight 0.15s ease-out",
                   }}
-                  onClick={() => setIsClinicMenuOpen(false)}
                 >
-                  ↑ Upgrade for multi-clinic
-                </Link>
+                  {/* Header */}
+                  <div
+                    style={{
+                      padding: "10px 14px 8px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.3)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    Locations
+                  </div>
+
+                  {/* Clinic list */}
+                  <div style={{ padding: "6px 6px" }}>
+                    {clinics.map((c) => {
+                      const col = clinicColor(c.name);
+                      const isActive = selectedClinicId === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setSelectedClinicId(c.id);
+                            setIsClinicMenuOpen(false);
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "8px 10px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            border: "none",
+                            borderRadius: 9,
+                            background: isActive
+                              ? "rgba(15,118,110,0.18)"
+                              : "transparent",
+                            cursor: "pointer",
+                            textAlign: "left",
+                            transition: "background 0.1s",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive)
+                              e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive)
+                              e.currentTarget.style.background = "transparent";
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 8,
+                              background: col.bg,
+                              color: col.text,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {clinicInitials(c.name) || "?"}
+                          </div>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isActive ? 600 : 400,
+                              color: isActive ? "#fff" : "rgba(255,255,255,0.75)",
+                              flex: 1,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {c.name}
+                          </span>
+                          {isActive && (
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#14b8a6"
+                              strokeWidth="2.5"
+                              style={{ flexShrink: 0 }}
+                            >
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    {tenant?.plan !== "starter" &&
+                    clinics.length < (tenant?.plan === "pro" ? 3 : 999) ? (
+                      <Link
+                        href="/dashboard/settings?tab=clinics"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 16px",
+                          color: "#14b8a6",
+                          textDecoration: "none",
+                          fontSize: 13,
+                          fontWeight: 500,
+                        }}
+                        onClick={() => setIsClinicMenuOpen(false)}
+                      >
+                        <div
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 6,
+                            background: "rgba(20,184,166,0.15)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 14,
+                            fontWeight: 700,
+                            lineHeight: 1,
+                          }}
+                        >
+                          +
+                        </div>
+                        Add Location
+                      </Link>
+                    ) : tenant?.plan === "starter" ? (
+                      <Link
+                        href="/dashboard/settings"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "10px 16px",
+                          textDecoration: "none",
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: "rgba(255,255,255,0.4)",
+                        }}
+                        onClick={() => setIsClinicMenuOpen(false)}
+                      >
+                        <div
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 6,
+                            background: "rgba(255,255,255,0.07)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 12,
+                          }}
+                        >
+                          ↑
+                        </div>
+                        Upgrade for multi-location
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
               )}
+
+              {/* Dropdown animations */}
+              <style>{`
+                @keyframes ddFadeDown {
+                  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+                  to   { opacity: 1; transform: translateY(0)   scale(1); }
+                }
+                @keyframes ddFadeRight {
+                  from { opacity: 0; transform: translateX(-6px) scale(0.97); }
+                  to   { opacity: 1; transform: translateX(0)    scale(1); }
+                }
+              `}</style>
             </div>
-          )}
-        </div>
+          );
+        })()}
 
         {/* Nav icons */}
         <nav
@@ -699,7 +1064,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
           {/* Logout */}
           <button
-            onClick={clearSession}
+            onClick={() => clearSession()}
             title={isSidebarExpanded ? undefined : "Sign out"}
             style={{
               width: isSidebarExpanded ? "100%" : 42,
@@ -872,7 +1237,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   Contact Support to Activate
                 </a>
                 <button
-                  onClick={clearSession}
+                  onClick={() => clearSession()}
                   style={{
                     background: "transparent",
                     color: "var(--color-text-secondary)",

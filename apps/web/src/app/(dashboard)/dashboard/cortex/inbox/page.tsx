@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { tenantsApi } from "@/lib/api";
 import {
   Sparkles,
   Check,
@@ -105,7 +107,17 @@ interface AgentTask {
 }
 
 export default function CortexInbox() {
+  const router = useRouter();
   const { accessToken, user } = useAuth();
+
+  // ── Cortex plan guard ─────────────────────────────────────
+  useEffect(() => {
+    if (!accessToken) return;
+    tenantsApi.getTenant(accessToken).then(t => {
+      if (t?.plan !== 'cortex') router.replace('/dashboard');
+    }).catch(() => router.replace('/dashboard'));
+  }, [accessToken, router]);
+
   const [items, setItems] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

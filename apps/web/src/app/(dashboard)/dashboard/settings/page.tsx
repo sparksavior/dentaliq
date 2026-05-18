@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Building2, Settings2, MapPin, Plug, ShieldCheck, User, Sliders, Users, Mail, Trash2, Pencil, X, Check, Clock } from "lucide-react";
+import { Building2, Settings2, MapPin, Plug, ShieldCheck, User, Sliders, Users, Mail, Trash2, Pencil, X, Check, Clock, Smartphone, Monitor } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { tenantsApi, insurancePlansApi, teamApi, type Tenant, type InsurancePlan, type CreateInsurancePlanInput, type TeamMember, type PendingInvite, type PermissionKey, ALL_PERMISSIONS, PERMISSION_LABELS } from "@/lib/api";
+import { tenantsApi, insurancePlansApi, teamApi, mfaApi, type Tenant, type InsurancePlan, type CreateInsurancePlanInput, type TeamMember, type PendingInvite, type PermissionKey, type MfaDevice, type MfaMethodType, ALL_PERMISSIONS, PERMISSION_LABELS } from "@/lib/api";
 
 const PMS_LABELS: Record<string, string> = {
   open_dental: "Open Dental",
@@ -105,6 +105,40 @@ export default function SettingsPage() {
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [saveBtnHover, setSaveBtnHover] = useState(false);
 
+  // ── Security (MFA) tab state ────────────────────────────────
+  const [mfaDevices, setMfaDevices] = useState<MfaDevice[]>([]);
+  const [mfaEnabledMethods, setMfaEnabledMethods] = useState<MfaMethodType[]>([]);
+  const [mfaSecurityLoading, setMfaSecurityLoading] = useState(false);
+  // Add method flow (opens pick → setup/verify)
+  const [showChangeMfa, setShowChangeMfa] = useState(false);
+  const [changeMfaMethod, setChangeMfaMethod] = useState<MfaMethodType>("totp");
+  const [changeMfaSubStep, setChangeMfaSubStep] = useState<"pick" | "setup" | "verify">("pick");
+  const [changeMfaData, setChangeMfaData] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null);
+  const [changeMfaCode, setChangeMfaCode] = useState("");
+  const [changeMfaLoading, setChangeMfaLoading] = useState(false);
+  const [changeMfaError, setChangeMfaError] = useState("");
+  const [changeMfaResendCooldown, setChangeMfaResendCooldown] = useState(0);
+  // Disable single method flow
+  const [showDisableMethod, setShowDisableMethod] = useState(false);
+  const [disableMethodTarget, setDisableMethodTarget] = useState<MfaMethodType | null>(null);
+  const [disableMethodPassword, setDisableMethodPassword] = useState("");
+  const [disableMethodCode, setDisableMethodCode] = useState("");
+  const [disableMethodLoading, setDisableMethodLoading] = useState(false);
+  const [disableMethodError, setDisableMethodError] = useState("");
+  // Add device flow
+  const [showAddDevice, setShowAddDevice] = useState(false);
+  const [addDeviceData, setAddDeviceData] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null);
+  const [addDeviceCode, setAddDeviceCode] = useState("");
+  const [addDeviceLabel, setAddDeviceLabel] = useState("Authenticator");
+  const [addDeviceLoading, setAddDeviceLoading] = useState(false);
+  const [addDeviceError, setAddDeviceError] = useState("");
+  // Backup codes
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [backupCodesPassword, setBackupCodesPassword] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [backupCodesLoading, setBackupCodesLoading] = useState(false);
+  const [backupCodesError, setBackupCodesError] = useState("");
+
   // ── Team tab state ──────────────────────────────────────────
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -136,6 +170,147 @@ export default function SettingsPage() {
       setLoading(false);
     }
   }, [accessToken]);
+
+  // ── MFA Security actions ─────────────────────────────────
+  const loadMfaDevices = useCallback(async () => {
+    if (!accessToken) return;
+    setMfaSecurityLoading(true);
+    try {
+      const [devices, status] = await Promise.all([
+        mfaApi.listDevices(accessToken).catch(() => [] as MfaDevice[]),
+        mfaApi.getStatus(accessToken).catch(() => null),
+      ]);
+      setMfaDevices(devices);
+      if (status?.methods) setMfaEnabledMethods(status.methods);
+    } finally {
+      setMfaSecurityLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => { if (activeTab === 'account') loadMfaDevices(); }, [activeTab, loadMfaDevices]);
+
+  async function startChangeMfaMethod(method: MfaMethodType) {
+    if (!accessToken) return;
+    setChangeMfaMethod(method);
+    setChangeMfaError("");
+    setChangeMfaCode("");
+    setChangeMfaLoading(true);
+    try {
+      if (method === "totp") {
+        const data = await mfaApi.setupTotp(accessToken);
+        setChangeMfaData(data);
+        setChangeMfaSubStep("setup");
+      } else if (method === "email") {
+        await mfaApi.setupEmail(accessToken);
+        setChangeMfaResendCooldown(30);
+        const t = setInterval(() => setChangeMfaResendCooldown(c => { if (c <= 1) { clearInterval(t); return 0; } return c - 1; }), 1000);
+        setChangeMfaSubStep("verify");
+      }
+    } catch (err: any) {
+      setChangeMfaError(err?.message ?? "Failed to start setup");
+    } finally {
+      setChangeMfaLoading(false);
+    }
+  }
+
+  async function confirmChangeMfa() {
+    if (!accessToken || !changeMfaCode || changeMfaCode.length < 6) return;
+    setChangeMfaLoading(true);
+    setChangeMfaError("");
+    try {
+      if (changeMfaMethod === "totp" && changeMfaData) {
+        await mfaApi.verifyTotp(accessToken, changeMfaCode, changeMfaData.secret);
+      } else if (changeMfaMethod === "email") {
+        await mfaApi.verifyEmailSetup(accessToken, changeMfaCode);
+      }
+      setShowChangeMfa(false);
+      setChangeMfaSubStep("pick");
+      setChangeMfaData(null);
+      setChangeMfaCode("");
+      // Refresh so user context reflects new mfaMethods
+      window.location.reload();
+    } catch (err: any) {
+      setChangeMfaError(err?.message ?? "Invalid code. Please try again.");
+    } finally {
+      setChangeMfaLoading(false);
+    }
+  }
+
+  async function startAddDevice() {
+    if (!accessToken) return;
+    setAddDeviceError("");
+    setAddDeviceCode("");
+    setAddDeviceLoading(true);
+    try {
+      const data = await mfaApi.initiateAddDevice(accessToken);
+      setAddDeviceData(data);
+      setShowAddDevice(true);
+    } catch (err: any) {
+      setAddDeviceError(err?.message ?? "Failed to start device setup");
+    } finally {
+      setAddDeviceLoading(false);
+    }
+  }
+
+  async function confirmAddDevice() {
+    if (!accessToken || !addDeviceData || addDeviceCode.length !== 6) return;
+    setAddDeviceLoading(true);
+    setAddDeviceError("");
+    try {
+      await mfaApi.confirmAddDevice(accessToken, addDeviceData.secret, addDeviceCode, addDeviceLabel);
+      setShowAddDevice(false);
+      setAddDeviceData(null);
+      setAddDeviceCode("");
+      setAddDeviceLabel("Authenticator");
+      await loadMfaDevices();
+    } catch (err: any) {
+      setAddDeviceError(err?.message ?? "Invalid code. Please try again.");
+    } finally {
+      setAddDeviceLoading(false);
+    }
+  }
+
+  async function removeDevice(deviceId: string) {
+    if (!accessToken) return;
+    try {
+      await mfaApi.removeDevice(accessToken, deviceId);
+      await loadMfaDevices();
+    } catch { /* ignore */ }
+  }
+
+  async function regenBackupCodes() {
+    if (!accessToken || !backupCodesPassword) return;
+    setBackupCodesLoading(true);
+    setBackupCodesError("");
+    try {
+      const res = await mfaApi.regenerateBackupCodes(accessToken, backupCodesPassword);
+      setBackupCodes(res.backupCodes);
+      setBackupCodesPassword("");
+    } catch (err: any) {
+      setBackupCodesError(err?.message ?? "Incorrect password");
+    } finally {
+      setBackupCodesLoading(false);
+    }
+  }
+
+  async function disableSingleMethod() {
+    if (!accessToken || !disableMethodTarget || !disableMethodPassword || disableMethodCode.length < 6) return;
+    setDisableMethodLoading(true);
+    setDisableMethodError("");
+    try {
+      await mfaApi.disableMethod(accessToken, disableMethodTarget, disableMethodPassword, disableMethodCode);
+      setShowDisableMethod(false);
+      setDisableMethodTarget(null);
+      setDisableMethodPassword("");
+      setDisableMethodCode("");
+      await loadMfaDevices();
+      window.location.reload(); // refresh user context so mfaEnabled/mfaMethods update
+    } catch (err: any) {
+      setDisableMethodError(err?.message ?? "Incorrect password or code.");
+    } finally {
+      setDisableMethodLoading(false);
+    }
+  }
 
   const loadTeam = useCallback(async () => {
     if (!accessToken || user?.role !== 'admin') return;
@@ -199,6 +374,8 @@ export default function SettingsPage() {
     try {
       await tenantsApi.updateTenant(accessToken, { name: clinicName.trim() });
       setClinicMsg("Saved!"); setTimeout(() => setClinicMsg(""), 2500); await load();
+      // Tell the sidebar to refresh its clinic list immediately
+      window.dispatchEvent(new CustomEvent("diq_clinic_updated"));
     } catch (err: any) {
       setClinicMsg("Error: " + (err.message ?? "Save failed"));
     } finally { setSavingClinic(false); }
@@ -515,7 +692,9 @@ export default function SettingsPage() {
                           Select exactly what this team member can see in the dashboard. Billing and team management are always restricted to admins.
                         </p>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          {ALL_PERMISSIONS.map(perm => {
+                          {ALL_PERMISSIONS
+                            .filter(p => (p !== 'cortex_agents' && p !== 'cortex_inbox') || tenant?.plan === 'cortex')
+                            .map(perm => {
                             const isChecked = inviteForm.permissions.includes(perm);
                             return (
                               <label key={perm} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "9px 11px", borderRadius: 9, border: `1.5px solid ${isChecked ? "var(--color-accent)" : "var(--color-border-secondary)"}`, background: isChecked ? "var(--color-accent-muted)" : "var(--color-background-secondary)", transition: "all 0.15s" }}>
@@ -563,7 +742,9 @@ export default function SettingsPage() {
                     {teamMembers.find(m => m.id === editPermsFor)?.name} — update their dashboard access.
                   </p>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
-                    {ALL_PERMISSIONS.map(perm => {
+                    {ALL_PERMISSIONS
+                      .filter(p => (p !== 'cortex_agents' && p !== 'cortex_inbox') || tenant?.plan === 'cortex')
+                      .map(perm => {
                       const isChecked = editPerms.includes(perm);
                       return (
                         <label key={perm} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "9px 11px", borderRadius: 9, border: `1.5px solid ${isChecked ? "var(--color-accent)" : "var(--color-border-secondary)"}`, background: isChecked ? "var(--color-accent-muted)" : "var(--color-background-secondary)", transition: "all 0.15s" }}>
@@ -907,38 +1088,340 @@ export default function SettingsPage() {
           </Section>
         )}
 
-        {/* Account tab */}
+        {/* Account / Security tab */}
         {activeTab === "account" && (
-          <Section title="Account" desc="Your user account details." icon={User}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {[
-                ["Name", user?.name ?? "—"],
-                ["Email", user?.email ?? "—"],
-                ["Role", (user?.role ?? "").replace("_", " ")],
-                ["MFA", user?.mfaEnabled ? "✓ Enabled" : "⚠ Not enabled"],
-              ].map(([label, value]) => (
-                <div key={label} style={{
-                  padding: "13px 15px", background: "var(--color-background-secondary)",
-                  borderRadius: 10, border: "1px solid var(--color-border-secondary)",
-                }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-                  <div style={{
-                    fontSize: 14, fontWeight: 600,
-                    color: label === "MFA" && value === "⚠ Not enabled" ? "#f59e0b" : label === "MFA" ? "#10b981" : "var(--color-text-primary)",
-                  }}>{value}</div>
+          <>
+            {/* Account details */}
+            <Section title="Account" desc="Your user account details." icon={User}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[
+                  ["Name", user?.name ?? "—"],
+                  ["Email", user?.email ?? "—"],
+                  ["Role", (user?.role ?? "").replace("_", " ")],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ padding: "13px 15px", background: "var(--color-background-secondary)", borderRadius: 10, border: "1px solid var(--color-border-secondary)" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            {/* Two-factor authentication panel */}
+            <Section title="Two-factor authentication" desc="Protect your account with an additional verification step each sign-in." icon={ShieldCheck}>
+
+              {/* Current status row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: "var(--color-background-secondary)", borderRadius: 12, border: "1px solid var(--color-border-secondary)", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: user?.mfaEnabled ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                    {user?.mfaEnabled ? "🛡️" : "⚠️"}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>
+                      {user?.mfaEnabled ? "2FA is active" : "2FA is not enabled"}
+                    </div>
+                    {user?.mfaEnabled && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+                        {(mfaEnabledMethods.length > 0 ? mfaEnabledMethods : (user.mfaMethods ?? [])).map(m => (
+                          <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, padding: "2px 9px", borderRadius: 20, background: "rgba(13,148,136,0.1)", color: "var(--color-accent)", border: "1px solid rgba(13,148,136,0.2)", fontWeight: 600 }}>
+                            {m === "totp" ? "📱 Authenticator" : m === "email" ? "✉️ Email" : "💬 SMS"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {!user?.mfaEnabled && (
+                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                        PHIPA recommends MFA for all PHI access
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
-            {!user?.mfaEnabled && (
-              <div style={{
-                marginTop: 12, padding: "11px 14px",
-                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
-                borderRadius: 10, fontSize: 13, color: "#f59e0b",
-              }}>
-                <strong>PHIPA reminder:</strong> Enable two-factor authentication to secure access to patient health information.
+                <button onClick={() => { setShowChangeMfa(true); setChangeMfaSubStep("pick"); }}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+                  {user?.mfaEnabled ? "Add method" : "Enable 2FA"}
+                </button>
+              </div>
+
+              {/* Not enabled warning */}
+              {!user?.mfaEnabled && (
+                <div style={{ padding: "12px 14px", background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)", borderRadius: 10, fontSize: 13, color: "#f59e0b", marginBottom: 16 }}>
+                  <strong>PHIPA reminder:</strong> Enable 2FA to secure access to patient health information.
+                </div>
+              )}
+
+              {/* Per-method rows with individual remove buttons */}
+              {user?.mfaEnabled && (mfaEnabledMethods.length > 0 ? mfaEnabledMethods : (user.mfaMethods ?? [])).length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Active methods</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(mfaEnabledMethods.length > 0 ? mfaEnabledMethods : (user.mfaMethods ?? [])).map(m => (
+                      <div key={m} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "var(--color-background-secondary)", borderRadius: 10, border: "1px solid var(--color-border-secondary)" }}>
+                        <span style={{ fontSize: 20 }}>{m === "totp" ? "📱" : m === "email" ? "✉️" : "💬"}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>
+                            {m === "totp" ? "Authenticator app" : m === "email" ? "Email code" : "SMS code"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                            {m === "totp" ? "Time-based one-time password" : m === "email" ? `Code sent to ${user?.email}` : "Code sent via SMS"}
+                          </div>
+                        </div>
+                        {(mfaEnabledMethods.length > 0 ? mfaEnabledMethods : (user.mfaMethods ?? [])).length > 1 && (
+                          <button
+                            onClick={() => { setDisableMethodTarget(m); setShowDisableMethod(true); setDisableMethodPassword(""); setDisableMethodCode(""); setDisableMethodError(""); }}
+                            style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "transparent", color: "#ef4444", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {(mfaEnabledMethods.length > 0 ? mfaEnabledMethods : (user.mfaMethods ?? [])).length === 1 && (
+                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(16,185,129,0.1)", color: "#10b981", fontWeight: 600, flexShrink: 0 }}>Primary</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Authenticator devices (only shown when TOTP method is active) */}
+              {user?.mfaEnabled && (mfaEnabledMethods.includes("totp") || user.mfaMethod === "totp" || (!user.mfaMethod && user.mfaEnabled)) && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Trusted devices</div>
+                  {mfaSecurityLoading ? (
+                    <div style={{ padding: "12px 0", fontSize: 13, color: "var(--color-text-secondary)" }}>Loading…</div>
+                  ) : (
+                    <>
+                      {/* Primary device */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "var(--color-background-secondary)", borderRadius: 10, border: "1px solid var(--color-border-secondary)", marginBottom: 6 }}>
+                        <Smartphone size={16} style={{ color: "var(--color-accent)", flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>Primary authenticator</div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>Added at signup</div>
+                        </div>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "rgba(16,185,129,0.1)", color: "#10b981", fontWeight: 600 }}>Primary</span>
+                      </div>
+                      {/* Additional devices */}
+                      {mfaDevices.map(d => (
+                        <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "var(--color-background-secondary)", borderRadius: 10, border: "1px solid var(--color-border-secondary)", marginBottom: 6 }}>
+                          <Monitor size={16} style={{ color: "var(--color-text-secondary)", flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>{d.label}</div>
+                            <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                              Added {new Date(d.createdAt).toLocaleDateString()}
+                              {d.lastUsedAt ? ` · Last used ${new Date(d.lastUsedAt).toLocaleDateString()}` : ""}
+                            </div>
+                          </div>
+                          <button onClick={() => removeDevice(d.id)} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "transparent", color: "#ef4444", fontSize: 11, cursor: "pointer" }}>Remove</button>
+                        </div>
+                      ))}
+                      <button onClick={startAddDevice} disabled={addDeviceLoading} style={{ marginTop: 6, padding: "9px 14px", borderRadius: 8, border: "1.5px dashed var(--color-border-secondary)", background: "transparent", color: "var(--color-accent)", fontSize: 13, fontWeight: 600, cursor: "pointer", width: "100%" }}>
+                        + Add another device
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Backup codes */}
+              {user?.mfaEnabled && (
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Backup codes</div>
+                  {backupCodes.length > 0 ? (
+                    <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+                      <p style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600, margin: "0 0 10px" }}>⚠️ Save these now — they won't be shown again</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                        {backupCodes.map((c, i) => <span key={i} style={{ fontFamily: "monospace", fontSize: 13, color: "var(--color-text-primary)" }}>{c}</span>)}
+                      </div>
+                      <button onClick={() => setBackupCodes([])} style={{ marginTop: 12, fontSize: 12, background: "none", border: "none", color: "var(--color-text-tertiary)", cursor: "pointer" }}>Hide codes</button>
+                    </div>
+                  ) : (
+                    <div style={{ padding: "12px 14px", background: "var(--color-background-secondary)", border: "1px solid var(--color-border-secondary)", borderRadius: 10 }}>
+                      {showBackupCodes ? (
+                        <div>
+                          <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 10px" }}>Enter your password to generate new backup codes. Your old codes will be invalidated.</p>
+                          <input type="password" placeholder="Your password" value={backupCodesPassword} onChange={e => setBackupCodesPassword(e.target.value)}
+                            style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid var(--color-border-secondary)", background: "var(--color-input-bg)", color: "var(--color-text-primary)", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                          {backupCodesError && <p style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{backupCodesError}</p>}
+                          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                            <button onClick={() => { setShowBackupCodes(false); setBackupCodesPassword(""); setBackupCodesError(""); }}
+                              style={{ flex: 1, padding: "8px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>
+                              Cancel
+                            </button>
+                            <button onClick={regenBackupCodes} disabled={backupCodesLoading || !backupCodesPassword}
+                              style={{ flex: 2, padding: "8px", borderRadius: 8, border: "none", background: backupCodesPassword ? "linear-gradient(135deg, #0f766e, #0d9488)" : "var(--color-border-primary)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: backupCodesPassword ? "pointer" : "not-allowed" }}>
+                              {backupCodesLoading ? "Generating…" : "Generate new codes"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>Backup codes</div>
+                            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>Use if you lose access to your authentication method</div>
+                          </div>
+                          <button onClick={() => setShowBackupCodes(true)}
+                            style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>
+                            Regenerate
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Section>
+
+            {/* ── Change MFA method modal ── */}
+            {showChangeMfa && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <div style={{ background: "var(--color-surface, #1a2332)", border: "1px solid var(--color-border, rgba(255,255,255,0.08))", borderRadius: 20, padding: "32px 28px 24px", maxWidth: 420, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>
+                      {user?.mfaEnabled ? "Add 2FA method" : "Enable two-factor authentication"}
+                    </h3>
+                    <button onClick={() => { setShowChangeMfa(false); setChangeMfaSubStep("pick"); setChangeMfaData(null); setChangeMfaCode(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}><X size={18} /></button>
+                  </div>
+
+                  {changeMfaSubStep === "pick" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {[
+                        { method: "totp" as MfaMethodType, icon: "📱", label: "Authenticator app", desc: "Google Authenticator, Authy, 1Password" },
+                        { method: "email" as MfaMethodType, icon: "✉️", label: "Email code", desc: `Code sent to ${user?.email}` },
+                      ].map(opt => {
+                        const alreadyEnabled = (mfaEnabledMethods.length > 0 ? mfaEnabledMethods : (user?.mfaMethods ?? [])).includes(opt.method);
+                        return (
+                          <button key={opt.method} onClick={() => !alreadyEnabled && startChangeMfaMethod(opt.method)} disabled={changeMfaLoading || alreadyEnabled}
+                            style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", borderRadius: 10, border: `1.5px solid ${alreadyEnabled ? "var(--color-accent)" : "var(--color-border-secondary)"}`, background: alreadyEnabled ? "rgba(13,148,136,0.06)" : "var(--color-background-secondary)", cursor: changeMfaLoading || alreadyEnabled ? "not-allowed" : "pointer", textAlign: "left", opacity: alreadyEnabled ? 0.7 : 1 }}>
+                            <span style={{ fontSize: 22 }}>{opt.icon}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>{opt.label}</div>
+                              <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{opt.desc}</div>
+                            </div>
+                            {alreadyEnabled && <Check size={14} style={{ color: "var(--color-accent)" }} />}
+                          </button>
+                        );
+                      })}
+                      {/* SMS — disabled */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", borderRadius: 10, border: "1.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", opacity: 0.45, cursor: "not-allowed" }}>
+                        <span style={{ fontSize: 22 }}>💬</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>SMS text message</div>
+                          <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Receive a code by text</div>
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", background: "rgba(100,116,139,0.15)", borderRadius: 20, color: "var(--color-text-secondary)" }}>Soon</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {changeMfaSubStep === "setup" && changeMfaMethod === "totp" && changeMfaData && (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                        <div style={{ background: "#fff", borderRadius: 10, padding: 8, display: "inline-block" }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={changeMfaData.qrCodeDataUrl} alt="QR" style={{ width: 140, height: 140, display: "block" }} />
+                        </div>
+                      </div>
+                      <p style={{ fontSize: 12, color: "var(--color-text-secondary)", textAlign: "center", marginBottom: 6 }}>Scan with your authenticator app.</p>
+                      <p style={{ fontSize: 11, color: "var(--color-text-tertiary)", textAlign: "center", marginBottom: 14 }}>Manual: <code style={{ fontFamily: "monospace" }}>{changeMfaData.secret}</code></p>
+                      <input type="text" inputMode="numeric" maxLength={6} placeholder="000000" value={changeMfaCode} autoFocus
+                        onChange={e => setChangeMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        onKeyDown={e => { if (e.key === "Enter") confirmChangeMfa(); }}
+                        style={{ width: "100%", padding: "12px", textAlign: "center", fontSize: 24, fontFamily: "monospace", letterSpacing: "0.2em", background: "rgba(255,255,255,0.05)", border: `1.5px solid ${changeMfaError ? "#ef4444" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, color: "var(--color-text-primary)", outline: "none", boxSizing: "border-box" }} />
+                      {changeMfaError && <p style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{changeMfaError}</p>}
+                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <button onClick={() => setChangeMfaSubStep("pick")} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>← Back</button>
+                        <button onClick={confirmChangeMfa} disabled={changeMfaCode.length !== 6 || changeMfaLoading} style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: changeMfaCode.length === 6 ? "linear-gradient(135deg, #0f766e, #0d9488)" : "rgba(255,255,255,0.06)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: changeMfaCode.length === 6 ? "pointer" : "not-allowed" }}>{changeMfaLoading ? "Activating…" : "Confirm →"}</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {changeMfaSubStep === "verify" && changeMfaMethod === "email" && (
+                    <div>
+                      <p style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 14, textAlign: "center" }}>Enter the code sent to <strong>{user?.email}</strong></p>
+                      <input type="text" inputMode="numeric" maxLength={6} placeholder="000000" value={changeMfaCode} autoFocus
+                        onChange={e => setChangeMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        onKeyDown={e => { if (e.key === "Enter") confirmChangeMfa(); }}
+                        style={{ width: "100%", padding: "12px", textAlign: "center", fontSize: 28, fontFamily: "monospace", letterSpacing: "0.2em", background: "rgba(255,255,255,0.05)", border: `1.5px solid ${changeMfaError ? "#ef4444" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, color: "var(--color-text-primary)", outline: "none", boxSizing: "border-box" }} />
+                      {changeMfaError && <p style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{changeMfaError}</p>}
+                      <p style={{ fontSize: 12, color: "var(--color-text-tertiary)", textAlign: "center", marginTop: 8 }}>
+                        <button onClick={() => { startChangeMfaMethod("email"); }} disabled={changeMfaResendCooldown > 0} style={{ background: "none", border: "none", color: changeMfaResendCooldown > 0 ? "var(--color-text-tertiary)" : "var(--color-accent)", fontSize: 12, fontWeight: 600, cursor: changeMfaResendCooldown > 0 ? "default" : "pointer", padding: 0 }}>
+                          {changeMfaResendCooldown > 0 ? `Resend in ${changeMfaResendCooldown}s` : "Resend code"}
+                        </button>
+                      </p>
+                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <button onClick={() => setChangeMfaSubStep("pick")} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>← Back</button>
+                        <button onClick={confirmChangeMfa} disabled={changeMfaCode.length !== 6 || changeMfaLoading} style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: changeMfaCode.length === 6 ? "linear-gradient(135deg, #0f766e, #0d9488)" : "rgba(255,255,255,0.06)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: changeMfaCode.length === 6 ? "pointer" : "not-allowed" }}>{changeMfaLoading ? "Activating…" : "Confirm →"}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </Section>
+
+            {/* ── Disable single method confirmation ── */}
+            {showDisableMethod && disableMethodTarget && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <div style={{ background: "var(--color-surface, #1a2332)", border: "1px solid var(--color-border, rgba(255,255,255,0.08))", borderRadius: 20, padding: "32px 28px 24px", maxWidth: 400, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>
+                      Remove {disableMethodTarget === "totp" ? "Authenticator app" : disableMethodTarget === "email" ? "Email code" : "SMS"} method
+                    </h3>
+                    <button onClick={() => setShowDisableMethod(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}><X size={18} /></button>
+                  </div>
+                  <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 }}>
+                    To confirm, enter your password and an active verification code.
+                  </p>
+                  <input type="password" placeholder="Your account password" value={disableMethodPassword}
+                    onChange={e => setDisableMethodPassword(e.target.value)}
+                    style={{ width: "100%", padding: "10px 12px", marginBottom: 10, borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "var(--color-input-bg)", color: "var(--color-text-primary)", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  <input type="text" inputMode="numeric" maxLength={8} placeholder="6-digit code or backup code"
+                    value={disableMethodCode}
+                    onChange={e => setDisableMethodCode(e.target.value.replace(/\s/g, ""))}
+                    onKeyDown={e => { if (e.key === "Enter") disableSingleMethod(); }}
+                    style={{ width: "100%", padding: "10px 12px", marginBottom: 10, borderRadius: 8, border: `1.5px solid ${disableMethodError ? "#ef4444" : "var(--color-border-secondary)"}`, background: "var(--color-input-bg)", color: "var(--color-text-primary)", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  {disableMethodError && <p style={{ fontSize: 12, color: "#ef4444", margin: "0 0 10px" }}>{disableMethodError}</p>}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { setShowDisableMethod(false); setDisableMethodPassword(""); setDisableMethodCode(""); setDisableMethodError(""); }}
+                      style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                    <button onClick={disableSingleMethod} disabled={!disableMethodPassword || disableMethodCode.length < 6 || disableMethodLoading}
+                      style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: disableMethodPassword && disableMethodCode.length >= 6 ? "#ef4444" : "rgba(239,68,68,0.3)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: disableMethodPassword && disableMethodCode.length >= 6 ? "pointer" : "not-allowed" }}>
+                      {disableMethodLoading ? "Removing…" : "Remove method"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Add device modal ── */}
+            {showAddDevice && addDeviceData && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+                <div style={{ background: "var(--color-surface, #1a2332)", border: "1px solid var(--color-border, rgba(255,255,255,0.08))", borderRadius: 20, padding: "32px 28px 24px", maxWidth: 420, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                    <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>Add authenticator device</h3>
+                    <button onClick={() => { setShowAddDevice(false); setAddDeviceData(null); setAddDeviceCode(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}><X size={18} /></button>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                    <div style={{ background: "#fff", borderRadius: 10, padding: 8, display: "inline-block" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={addDeviceData.qrCodeDataUrl} alt="QR" style={{ width: 150, height: 150, display: "block" }} />
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--color-text-secondary)", textAlign: "center", marginBottom: 6 }}>Scan with your authenticator app on the new device.</p>
+                  <p style={{ fontSize: 11, color: "var(--color-text-tertiary)", textAlign: "center", marginBottom: 14 }}>Manual: <code style={{ fontFamily: "monospace" }}>{addDeviceData.secret}</code></p>
+                  <input type="text" placeholder="Device label (e.g. iPhone 15)" value={addDeviceLabel} onChange={e => setAddDeviceLabel(e.target.value)} maxLength={40}
+                    style={{ width: "100%", padding: "9px 12px", marginBottom: 10, borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "var(--color-input-bg)", color: "var(--color-text-primary)", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  <input type="text" inputMode="numeric" maxLength={6} placeholder="Enter 6-digit code" value={addDeviceCode} autoFocus
+                    onChange={e => setAddDeviceCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onKeyDown={e => { if (e.key === "Enter") confirmAddDevice(); }}
+                    style={{ width: "100%", padding: "12px", textAlign: "center", fontSize: 24, fontFamily: "monospace", letterSpacing: "0.2em", background: "rgba(255,255,255,0.05)", border: `1.5px solid ${addDeviceError ? "#ef4444" : "rgba(255,255,255,0.1)"}`, borderRadius: 10, color: "var(--color-text-primary)", outline: "none", boxSizing: "border-box" }} />
+                  {addDeviceError && <p style={{ fontSize: 12, color: "#ef4444", marginTop: 6 }}>{addDeviceError}</p>}
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button onClick={() => { setShowAddDevice(false); setAddDeviceData(null); setAddDeviceCode(""); }} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid var(--color-border-secondary)", background: "transparent", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                    <button onClick={confirmAddDevice} disabled={addDeviceCode.length !== 6 || addDeviceLoading} style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: addDeviceCode.length === 6 ? "linear-gradient(135deg, #0f766e, #0d9488)" : "rgba(255,255,255,0.06)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: addDeviceCode.length === 6 ? "pointer" : "not-allowed" }}>{addDeviceLoading ? "Adding…" : "Add device"}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Preferences tab */}

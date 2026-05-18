@@ -18,6 +18,7 @@ export interface LoginInput {
   email: string;
   password: string;
   totpCode?: string;
+  selectedMfaMethod?: MfaMethodType;
 }
 
 export const ALL_PERMISSIONS = [
@@ -46,6 +47,15 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   settings: 'Settings',
 }
 
+export type MfaMethodType = 'totp' | 'email' | 'sms'
+
+export interface MfaDevice {
+  id: string;
+  label: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -53,9 +63,12 @@ export interface AuthUser {
   role: "admin" | "dentist" | "front_desk";
   tenantId: string;
   mfaEnabled: boolean;
+  mfaMethod?: MfaMethodType;      // primary/first method (legacy)
+  mfaMethods?: MfaMethodType[];   // ALL enabled methods
   emailVerified: boolean;
   plan?: "starter" | "pro" | "enterprise" | "cortex";
   status?: "trial" | "active" | "suspended";
+  phoneNumber?: string | null;
   // Sub-user permission system
   // Admins (role='admin') always have full access; this array is for non-admin sub-users
   permissions: PermissionKey[];
@@ -285,7 +298,7 @@ export const authApi = {
     }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
 
   login: (input: LoginInput) =>
-    authRequest<AuthTokens | { requiresMfa: true; message: string }>(
+    authRequest<AuthTokens | { requiresMfa: true; availableMethods: MfaMethodType[]; message: string }>(
       "/auth/login",
       { method: "POST", body: JSON.stringify(input) },
     ),
@@ -317,6 +330,88 @@ export const authApi = {
     }),
 };
 
+// ── MFA Settings (all require Bearer token) ──────────────────
+export const mfaApi = {
+  // TOTP setup
+  setupTotp: (token: string) =>
+    authRequest<{ secret: string; qrCodeDataUrl: string; backupCodes: string[] }>("/auth/mfa/setup/totp", {
+      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({}),
+    }),
+  verifyTotp: (token: string, code: string, secret: string) =>
+    authRequest<{ backupCodes: string[] }>("/auth/mfa/setup/totp/verify", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ code, secret }),
+    }),
+
+  // Email OTP setup
+  setupEmail: (token: string) =>
+    authRequest("/auth/mfa/setup/email", {
+      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({}),
+    }),
+  verifyEmailSetup: (token: string, code: string) =>
+    authRequest<{ backupCodes: string[] }>("/auth/mfa/setup/email/verify", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+    }),
+
+  // SMS OTP setup (disabled until SMS_ENABLED=true on server)
+  setupSms: (token: string, phoneNumber: string) =>
+    authRequest("/auth/mfa/setup/sms", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ phoneNumber }),
+    }),
+  verifySmsSetup: (token: string, code: string) =>
+    authRequest<{ backupCodes: string[] }>("/auth/mfa/setup/sms/verify", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ code }),
+    }),
+
+  // Get all enabled methods + devices
+  getStatus: (token: string) =>
+    authRequest<{ enabled: boolean; methods: MfaMethodType[]; devices: MfaDevice[] }>("/auth/mfa/status", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  // Resend login / setup OTP
+  resendOtp: (token: string) =>
+    authRequest("/auth/mfa/send-otp", {
+      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({}),
+    }),
+
+  // Remove a single MFA method (keeps others active)
+  disableMethod: (token: string, method: MfaMethodType, password: string, code: string) =>
+    authRequest<{ remainingMethods: MfaMethodType[] }>("/auth/mfa/disable-method", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ method, password, code }),
+    }),
+
+  // Disable MFA
+  disable: (token: string, password: string, code: string) =>
+    authRequest("/auth/mfa/disable", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ password, code }),
+    }),
+
+  // Backup codes
+  regenerateBackupCodes: (token: string, password: string) =>
+    authRequest<{ backupCodes: string[] }>("/auth/mfa/backup-codes", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ password }),
+    }),
+
+  // Additional authenticator devices
+  listDevices: (token: string) =>
+    authRequest<MfaDevice[]>("/auth/mfa/devices", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  initiateAddDevice: (token: string) =>
+    authRequest<{ secret: string; qrCodeDataUrl: string }>("/auth/mfa/devices", {
+      method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({}),
+    }),
+  confirmAddDevice: (token: string, secret: string, code: string, label: string) =>
+    authRequest<MfaDevice>("/auth/mfa/devices/verify", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ secret, code, label }),
+    }),
+  removeDevice: (token: string, deviceId: string) =>
+    authRequest(`/auth/mfa/devices/${deviceId}`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+    }),
+}
+
 // ── Invite / onboarding (public — no auth token needed) ──────
 export const inviteApi = {
   getDetails: (token: string) =>
@@ -328,7 +423,13 @@ export const inviteApi = {
       { method: "POST", body: JSON.stringify({}) }
     ),
 
-  complete: (token: string, body: { password: string; mfaCode: string; tosAgreed: boolean }) =>
+  setupEmailMfa: (token: string) =>
+    authRequest<{ message: string }>(
+      `/users/invite/${token}/setup-mfa/email`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
+
+  complete: (token: string, body: { password: string; mfaCode: string; tosAgreed: boolean; mfaMethod?: string }) =>
     authRequest<{ accessToken: string; user: AuthUser }>(
       `/users/invite/${token}/complete`,
       { method: "POST", body: JSON.stringify(body) }

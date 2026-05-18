@@ -71,6 +71,18 @@ export class EmailService {
     });
   }
 
+  async sendMfaOtpEmail(email: string, name: string, otp: string, context: 'setup' | 'login') {
+    const subject = context === 'setup'
+      ? 'Your DentalIQ verification code'
+      : 'Your DentalIQ sign-in code'
+    await this.send({
+      to: email,
+      subject,
+      html: mfaOtpEmailHtml(name, otp, context),
+      text: `Hi ${name},\n\nYour DentalIQ ${context === 'setup' ? 'verification' : 'sign-in'} code is:\n\n${otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\nIf you didn't request this code, please secure your account immediately.\n\n— The DentalIQ Team`,
+    })
+  }
+
   async sendInviteEmail(email: string, name: string, clinicName: string, adminName: string, inviteUrl: string) {
     await this.send({
       to: email,
@@ -796,4 +808,33 @@ function inviteEmailHtml(name: string, clinicName: string, adminName: string, in
     <p class="muted">If you weren't expecting this invitation or don't know who ${adminName} is, you can safely ignore this email. No account will be created.</p>
     `,
   );
+}
+
+function mfaOtpEmailHtml(name: string, otp: string, context: 'setup' | 'login') {
+  const title = context === 'setup' ? 'Your verification code' : 'Your sign-in code'
+  const subtitle = context === 'setup'
+    ? 'Enter this code to enable email two-factor authentication on your DentalIQ account.'
+    : 'Enter this code to complete your DentalIQ sign-in. This is valid for 10 minutes.'
+
+  // Split OTP into individual digits for display
+  const digits = otp.split('').map(d =>
+    `<span style="display:inline-block;width:40px;height:52px;line-height:52px;text-align:center;font-size:28px;font-weight:800;color:#0f766e;background:rgba(13,148,136,0.07);border:1.5px solid rgba(13,148,136,0.18);border-radius:10px;margin:0 3px;">${d}</span>`
+  ).join('')
+
+  return baseTemplate(
+    `Your DentalIQ ${context === 'setup' ? 'verification' : 'sign-in'} code is ${otp}`,
+    title,
+    '#0f766e',
+    `
+    <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#475569;">${subtitle}</p>
+    <div style="text-align:center;margin:28px 0 20px;">
+      ${digits}
+    </div>
+    <p style="text-align:center;font-size:13px;color:#94a3b8;margin:0 0 28px;">Expires in <strong>10 minutes</strong></p>
+    <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:12px;padding:14px 18px;margin:0 0 24px;">
+      <p style="margin:0;font-size:13px;color:#ef4444;font-weight:600;">🔒 Never share this code. DentalIQ staff will never ask for it.</p>
+    </div>
+    <p class="muted">If you didn't request this code, please change your password immediately.</p>
+    `,
+  )
 }

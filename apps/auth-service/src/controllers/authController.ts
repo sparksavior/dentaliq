@@ -6,12 +6,13 @@ import { getEnv } from "@dentaliq/config";
 import { createLogger } from "@dentaliq/logger";
 import type { JWTPayload, AuthTokens, UserRole } from "@dentaliq/types";
 import { eq, and, gt } from "drizzle-orm";
-import { authenticator } from "otplib";
 import { TenantService } from "../services/tenantService";
 import { EmailService } from "../services/emailService";
 import { AuditService } from "../services/auditService";
+import { MfaController } from "./mfaController";
 
 const logger = createLogger("auth-controller");
+const mfaCtrl = new MfaController();
 
 interface RegisterInput {
   name: string;
@@ -26,6 +27,7 @@ interface LoginInput {
   email: string;
   password: string;
   totpCode?: string;
+  selectedMfaMethod?: string;  // which method the user chose when they have multiple
 }
 
 export class AuthController {
@@ -112,7 +114,7 @@ export class AuthController {
 
   // ── Login ─────────────────────────────────────────────────
   async login(input: LoginInput, ip: string) {
-    const { email, password, totpCode } = input;
+    const { email, password, totpCode, selectedMfaMethod } = input;
 
     const [user] = await this.db
       .select()
@@ -135,16 +137,39 @@ export class AuthController {
     }
 
     if (user.mfaEnabled) {
-      if (!totpCode) return { requiresMfa: true, tokens: null, user: null };
-      if (!user.mfaSecret) throw new Error("MFA setup incomplete");
-      const isValid = authenticator.verify({
-        token: totpCode,
-        secret: user.mfaSecret,
-      });
-      if (!isValid) {
-        const err = new Error("Invalid MFA code");
-        (err as any).statusCode = 401;
-        throw err;
+      const availableMethods = mfaCtrl.getEnabledMethods(user)
+
+      if (!totpCode) {
+        const emailSmsMethods = availableMethods.filter(m => m === 'email' || m === 'sms')
+        if (emailSmsMethods.length > 0) {
+          if (availableMethods.length === 1) {
+            // Only one method and it's email/SMS — auto-send immediately (no picker shown)
+            await mfaCtrl.sendLoginOtp(user.id)
+          } else if (selectedMfaMethod === 'email' || selectedMfaMethod === 'sms') {
+            // User has multiple methods and explicitly picked an email/SMS one — send for that method
+            await mfaCtrl.sendLoginOtp(user.id)
+          }
+          // else: multiple methods, no selection yet — return challenge without sending anything
+        }
+        return { requiresMfa: true, availableMethods, tokens: null, user: null }
+      }
+
+      // Verify using the method the user selected (or default to TOTP if not specified)
+      const chosenMethod = selectedMfaMethod ?? (availableMethods[0] ?? 'totp')
+      if (chosenMethod === 'totp') {
+        const isValid = await mfaCtrl.verifyTotpAnyDevice(user.id, totpCode)
+        if (!isValid) {
+          const err = new Error("Invalid authentication code")
+          ;(err as any).statusCode = 401
+          throw err
+        }
+      } else {
+        const isValid = await mfaCtrl.verifyLoginOtp(user.id, totpCode)
+        if (!isValid) {
+          const err = new Error("Invalid or expired code. Request a new one.")
+          ;(err as any).statusCode = 401
+          throw err
+        }
       }
     }
 
@@ -178,6 +203,8 @@ export class AuthController {
         role: user.role,
         tenantId: user.tenantId,
         mfaEnabled: user.mfaEnabled,
+        mfaMethod: (user as any).mfaMethod ?? 'totp',
+        mfaMethods: mfaCtrl.getEnabledMethods(user),
         permissions,
         invitedBy: user.invitedBy ?? null,
       },

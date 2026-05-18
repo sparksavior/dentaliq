@@ -10,8 +10,13 @@ export const users = sqliteTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: text('role', { enum: ['admin', 'dentist', 'front_desk'] }).notNull().default('front_desk'),
   mfaEnabled: integer('mfa_enabled', { mode: 'boolean' }).notNull().default(false),
+  mfaMethod: text('mfa_method').notNull().default('totp'),   // legacy single-method field (kept for compat)
+  mfaMethods: text('mfa_methods').notNull().default('[]'),   // JSON array of all enabled methods e.g. '["totp","email"]'
   mfaSecret: text('mfa_secret'),
   mfaBackupCodes: text('mfa_backup_codes'),
+  phoneNumber: text('phone_number'),                         // for SMS MFA
+  mfaOtpCode: text('mfa_otp_code'),                         // temp OTP for email/SMS login
+  mfaOtpExpires: text('mfa_otp_expires'),                   // ISO expiry for temp OTP
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
   emailVerifyToken: text('email_verify_token'),
   passwordResetToken: text('password_reset_token'),

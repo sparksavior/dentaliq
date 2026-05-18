@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useClinic } from "@/contexts/clinic-context";
-import { agentsApi } from "@/lib/api";
+import { agentsApi, tenantsApi } from "@/lib/api";
 import {
   Activity,
   Zap,
@@ -149,6 +149,14 @@ export default function CortexCommandCenter() {
   const router = useRouter();
   const { accessToken } = useAuth();
   const { selectedClinicId } = useClinic();
+
+  // ── Cortex plan guard ─────────────────────────────────────
+  useEffect(() => {
+    if (!accessToken) return;
+    tenantsApi.getTenant(accessToken).then(t => {
+      if (t?.plan !== 'cortex') router.replace('/dashboard');
+    }).catch(() => router.replace('/dashboard'));
+  }, [accessToken, router]);
 
   const [rentedAgents, setRentedAgents] = useState<any[]>([]);
 

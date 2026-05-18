@@ -12,7 +12,9 @@ export const inviteTokens = sqliteTable('invite_tokens', {
   invitedByUserId: text('invited_by_user_id').notNull(),
   // JSON array of permission keys e.g. '["dashboard","patients","estimates"]'
   permissions: text('permissions').notNull().default('[]'),
-  // Temporary TOTP secret stored during onboarding (before user account is created)
+  // MFA method chosen during onboarding ('totp' | 'email')
+  mfaMethod: text('mfa_method').notNull().default('totp'),
+  // Temporary TOTP secret stored during onboarding (also used as OTP code for email method)
   mfaSetupSecret: text('mfa_setup_secret'),
   mfaBackupCodes: text('mfa_backup_codes'), // JSON array
   expiresAt: text('expires_at').notNull(),

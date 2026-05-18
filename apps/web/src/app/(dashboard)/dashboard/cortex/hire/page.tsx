@@ -132,6 +132,14 @@ export default function HireAgentsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // ── Cortex plan guard ─────────────────────────────────────
+  useEffect(() => {
+    if (!accessToken) return;
+    tenantsApi.getTenant(accessToken).then(t => {
+      if (t?.plan !== 'cortex') router.replace('/dashboard');
+    }).catch(() => router.replace('/dashboard'));
+  }, [accessToken, router]);
+
   useEffect(() => {
     if (!accessToken) return;
     Promise.all([

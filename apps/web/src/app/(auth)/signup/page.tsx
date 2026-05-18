@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { authApi, tenantsApi, ApiError } from "@/lib/api";
+import { authApi, mfaApi, tenantsApi, ApiError, type MfaMethodType } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -157,11 +157,18 @@ function SignupPage() {
   >("idle");
   const [pmsProgress, setPmsProgress] = useState(0);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [mfaMethod, setMfaMethod] = useState<MfaMethodType>("totp");
+  const [mfaSubStep, setMfaSubStep] = useState<"pick" | "setup" | "verify">("pick");
   const [mfaData, setMfaData] = useState<{
     secret: string;
     qrCodeDataUrl: string;
+    backupCodes?: string[];
   } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [mfaBackupCodes, setMfaBackupCodes] = useState<string[]>([]);
+  const [mfaBackupSaved, setMfaBackupSaved] = useState(false);
+  const [mfaEmailSent, setMfaEmailSent] = useState(false);
+  const [mfaResendCooldown, setMfaResendCooldown] = useState(0);
   const [extraClinics, setExtraClinics] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -275,56 +282,80 @@ function SignupPage() {
   }
 
   function skipPms() {
-    loadMfa();
+    setMfaSubStep("pick");
     setStep(S_MFA);
   }
 
-  async function loadMfa() {
-    if (!sessionToken || mfaData) return;
+  function skipPmsAndShowMfa() {
+    setMfaSubStep("pick");
+    setStep(S_MFA);
+  }
+
+  async function startMfaMethod(method: MfaMethodType) {
+    if (!sessionToken) { setStep(S_DONE); return; }
+    setMfaMethod(method);
+    setLoading(true);
+    setError("");
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"}/auth/mfa/setup`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${sessionToken}` },
-          credentials: "include",
-        },
-      );
-      const json = await res.json();
-      if (json.success) setMfaData(json.data);
-    } catch {
-      /* MFA is optional */
+      if (method === "totp") {
+        const data = await mfaApi.setupTotp(sessionToken);
+        setMfaData(data);
+        setMfaSubStep("setup");
+      } else if (method === "email") {
+        await mfaApi.setupEmail(sessionToken);
+        setMfaEmailSent(true);
+        setMfaResendCooldown(30);
+        const t = setInterval(() => setMfaResendCooldown(c => { if (c <= 1) { clearInterval(t); return 0; } return c - 1; }), 1000);
+        setMfaSubStep("verify");
+      } else if (method === "sms") {
+        // Disabled — handled by button being disabled
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to start 2FA setup");
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function enableMfa() {
-    if (!sessionToken || !mfaData) {
-      setStep(S_DONE);
-      return;
-    }
-    if (!mfaCode || mfaCode.length !== 6) {
-      setStep(S_DONE);
-      return;
-    }
-    setLoading(true);
+  async function resendMfaOtp() {
+    if (!sessionToken || mfaResendCooldown > 0) return;
     try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"}/auth/mfa/verify`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${sessionToken}`,
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ code: mfaCode, secret: mfaData.secret }),
-        },
-      );
-    } catch {
-      /* non-blocking */
+      await mfaApi.setupEmail(sessionToken);
+      setMfaResendCooldown(30);
+      const t = setInterval(() => setMfaResendCooldown(c => { if (c <= 1) { clearInterval(t); return 0; } return c - 1; }), 1000);
+    } catch { /* ignore */ }
+  }
+
+  async function verifyMfaCode() {
+    if (!sessionToken || !mfaCode || mfaCode.length < 6) return;
+    setLoading(true);
+    setError("");
+    try {
+      let backupCodes: string[] = [];
+      if (mfaMethod === "totp" && mfaData) {
+        const res = await mfaApi.verifyTotp(sessionToken, mfaCode, mfaData.secret);
+        backupCodes = res.backupCodes;
+      } else if (mfaMethod === "email") {
+        const res = await mfaApi.verifyEmailSetup(sessionToken, mfaCode);
+        backupCodes = res.backupCodes;
+      }
+      setMfaBackupCodes(backupCodes);
+      if (backupCodes.length > 0) {
+        setMfaSubStep("verify"); // reuse "verify" to show backup codes
+        // Actually advance to backup-codes display state
+        setMfaSubStep("setup" as any); // use a different flag
+      }
+      setMfaSubStep("done" as any);
+      setStep(S_DONE);
+    } catch (err: any) {
+      setError(err?.message ?? "Invalid code. Please try again.");
+    } finally {
+      setLoading(false);
     }
+  }
+
+  async function skipMfa() {
     setStep(S_DONE);
-    setLoading(false);
   }
 
   async function goToDashboard() {
@@ -1882,8 +1913,8 @@ function SignupPage() {
                 </div>
                 <button
                   onClick={() => {
+                    setMfaSubStep("pick");
                     setStep(S_MFA);
-                    loadMfa();
                   }}
                   style={{
                     width: "100%",
@@ -1962,157 +1993,161 @@ function SignupPage() {
               information.
             </p>
 
-            {mfaData ? (
-              <div
-                style={{
-                  border: "1px solid var(--color-border-secondary)",
-                  borderRadius: 12,
-                  padding: "1.2rem",
-                  marginBottom: "1rem",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--color-text-primary)",
-                    marginBottom: 8,
+            {/* ── Sub-step: Pick method ── */}
+            {mfaSubStep === "pick" && (
+              <div>
+                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16, lineHeight: 1.5 }}>
+                  Choose how you'd like to verify your identity each time you sign in.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                  {/* Authenticator App */}
+                  <button onClick={() => startMfaMethod("totp")} disabled={loading} style={{
+                    display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                    border: "1.5px solid var(--color-border-secondary)", borderRadius: 12,
+                    background: "var(--color-background-secondary)", cursor: loading ? "not-allowed" : "pointer",
+                    textAlign: "left", transition: "border-color 0.15s",
                   }}
-                >
-                  Scan with Google Authenticator or Authy
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: 12,
-                  }}
-                >
-                  <img
-                    src={mfaData.qrCodeDataUrl}
-                    alt="TOTP QR code"
-                    style={{
-                      width: 160,
-                      height: 160,
-                      borderRadius: 12,
-                      border: "1px solid var(--color-border-secondary)",
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--color-text-secondary)",
-                    textAlign: "center",
-                    marginBottom: 14,
-                  }}
-                >
-                  Or enter manually:{" "}
-                  <code
-                    style={{
-                      fontFamily: "monospace",
-                      background: "var(--color-background-secondary)",
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      fontSize: 11,
-                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "var(--color-accent)"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "var(--color-border-secondary)"}
                   >
-                    {mfaData.secret}
-                  </code>
-                </div>
-                <input
-                  value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
-                  placeholder="Enter 6-digit code to confirm"
-                  maxLength={6}
-                  inputMode="numeric"
-                  style={{
-                    ...inputStyle,
-                    textAlign: "center",
-                    letterSpacing: "0.3em",
-                    fontSize: 22,
-                    fontFamily: "monospace",
-                    background: "var(--color-background-primary)",
-                    color: "var(--color-text-primary)",
-                    border: "1.5px solid var(--color-border-secondary)",
+                    <span style={{ fontSize: 26 }}>📱</span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>Authenticator app</div>
+                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>Google Authenticator, Authy, 1Password — most secure</div>
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--color-accent)", fontWeight: 600 }}>→</span>
+                  </button>
+
+                  {/* Email Code */}
+                  <button onClick={() => startMfaMethod("email")} disabled={loading} style={{
+                    display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                    border: "1.5px solid var(--color-border-secondary)", borderRadius: 12,
+                    background: "var(--color-background-secondary)", cursor: loading ? "not-allowed" : "pointer",
+                    textAlign: "left", transition: "border-color 0.15s",
                   }}
-                  onFocus={(e) =>
-                    (e.target.style.borderColor = "var(--color-accent)")
-                  }
-                  onBlur={(e) =>
-                    (e.target.style.borderColor =
-                      "var(--color-border-secondary)")
-                  }
-                />
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "var(--color-accent)"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "var(--color-border-secondary)"}
+                  >
+                    <span style={{ fontSize: 26 }}>✉️</span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>Email code</div>
+                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>We'll send a 6-digit code to {form.email}</div>
+                    </div>
+                    <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--color-accent)", fontWeight: 600 }}>→</span>
+                  </button>
+
+                  {/* SMS — disabled */}
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                    border: "1.5px solid var(--color-border-secondary)", borderRadius: 12,
+                    background: "var(--color-background-secondary)", opacity: 0.5,
+                    cursor: "not-allowed", position: "relative",
+                  }}>
+                    <span style={{ fontSize: 26 }}>💬</span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>SMS text message</div>
+                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>Receive a code by text to your phone number</div>
+                    </div>
+                    <span style={{
+                      marginLeft: "auto", fontSize: 10, fontWeight: 700, padding: "3px 8px",
+                      background: "rgba(100,116,139,0.15)", color: "var(--color-text-secondary)",
+                      borderRadius: 20, whiteSpace: "nowrap",
+                    }}>Coming soon</span>
+                  </div>
+                </div>
+
+                <button onClick={skipMfa} style={{
+                  width: "100%", background: "none", border: "none",
+                  color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer", padding: "8px 0",
+                }}>
+                  Skip for now — set up 2FA later in Settings
+                </button>
               </div>
-            ) : (
-              <div
-                style={{
-                  border: "1px solid var(--color-border-secondary)",
-                  borderRadius: 12,
-                  padding: "1.2rem",
-                  marginBottom: "1rem",
-                  background: "var(--color-background-secondary)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--color-text-primary)",
-                    marginBottom: 6,
-                  }}
-                >
-                  Two-factor authentication
+            )}
+
+            {/* ── Sub-step: TOTP Setup (scan QR) ── */}
+            {mfaSubStep === "setup" && mfaMethod === "totp" && mfaData && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                  <div style={{ background: "#fff", borderRadius: 12, padding: 10, display: "inline-block" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mfaData.qrCodeDataUrl} alt="TOTP QR code" style={{ width: 160, height: 160, display: "block" }} />
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--color-text-secondary)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Protect access to patient data with an authenticator app. You
-                  can enable this later in Settings.
+                <p style={{ fontSize: 12, color: "var(--color-text-secondary)", textAlign: "center", marginBottom: 10 }}>
+                  Scan with Google Authenticator, Authy, or 1Password.
+                </p>
+                <p style={{ fontSize: 11, color: "var(--color-text-tertiary)", textAlign: "center", marginBottom: 14 }}>
+                  Can't scan? Manual code: <code style={{ fontFamily: "monospace", fontSize: 11, color: "var(--color-text-primary)" }}>{mfaData.secret}</code>
+                </p>
+                <input
+                  value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="Enter 6-digit code" maxLength={6} inputMode="numeric" autoFocus
+                  style={{ ...inputStyle, textAlign: "center", letterSpacing: "0.3em", fontSize: 22, fontFamily: "monospace",
+                    background: "var(--color-background-primary)", color: "var(--color-text-primary)",
+                    border: "1.5px solid var(--color-border-secondary)" }}
+                  onFocus={e => e.target.style.borderColor = "var(--color-accent)"}
+                  onBlur={e => e.target.style.borderColor = "var(--color-border-secondary)"}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button onClick={() => setMfaSubStep("pick")} style={{
+                    flex: 1, padding: "11px", background: "var(--color-background-secondary)",
+                    border: "1px solid var(--color-border-secondary)", borderRadius: 10,
+                    color: "var(--color-text-secondary)", fontSize: 14, cursor: "pointer",
+                  }}>← Back</button>
+                  <button onClick={verifyMfaCode} disabled={loading || mfaCode.length !== 6} style={{
+                    flex: 2, padding: "11px",
+                    background: mfaCode.length === 6 ? "linear-gradient(135deg, #0f766e, #0d9488)" : "var(--color-border-primary)",
+                    border: "none", borderRadius: 10, color: "#fff", fontSize: 14, fontWeight: 600,
+                    cursor: mfaCode.length === 6 ? "pointer" : "not-allowed",
+                  }}>{loading ? "Verifying…" : "Enable →"}</button>
                 </div>
               </div>
             )}
 
-            <button
-              onClick={enableMfa}
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "13px",
-                borderRadius: 10,
-                border: "none",
-                background: loading
-                  ? "var(--color-border-primary)"
-                  : "linear-gradient(135deg, #0f766e, #0d9488)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: loading ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-                boxShadow: loading ? "none" : "0 4px 14px rgba(15,118,110,0.3)",
-              }}
-              onMouseEnter={(e) => {
-                if (!loading) {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                e.currentTarget.style.boxShadow = loading ? "none" : "0 4px 14px rgba(15,118,110,0.3)";
-              }}
-            >
-              {loading
-                ? "Enabling…"
-                : mfaData && mfaCode.length === 6
-                  ? "Enable MFA & continue →"
-                  : "Skip for now →"}
-            </button>
+            {/* ── Sub-step: Email OTP Verify ── */}
+            {mfaSubStep === "verify" && mfaMethod === "email" && (
+              <div>
+                <div style={{ textAlign: "center", marginBottom: 16 }}>
+                  <span style={{ fontSize: 40 }}>✉️</span>
+                  <p style={{ fontSize: 14, color: "var(--color-text-secondary)", marginTop: 8, lineHeight: 1.5 }}>
+                    A 6-digit code was sent to <strong style={{ color: "var(--color-text-primary)" }}>{form.email}</strong>
+                  </p>
+                </div>
+                <input
+                  value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000" maxLength={6} inputMode="numeric" autoFocus
+                  style={{ ...inputStyle, textAlign: "center", letterSpacing: "0.3em", fontSize: 28, fontFamily: "monospace",
+                    background: "var(--color-background-primary)", color: "var(--color-text-primary)",
+                    border: "1.5px solid var(--color-border-secondary)" }}
+                  onFocus={e => e.target.style.borderColor = "var(--color-accent)"}
+                  onBlur={e => e.target.style.borderColor = "var(--color-border-secondary)"}
+                />
+                <p style={{ textAlign: "center", fontSize: 13, marginTop: 10, color: "var(--color-text-secondary)" }}>
+                  Didn't get it?{" "}
+                  <button type="button" onClick={resendMfaOtp} disabled={mfaResendCooldown > 0} style={{
+                    background: "none", border: "none", padding: 0, fontSize: 13, fontWeight: 600,
+                    color: mfaResendCooldown > 0 ? "var(--color-text-tertiary)" : "var(--color-accent)",
+                    cursor: mfaResendCooldown > 0 ? "default" : "pointer",
+                  }}>
+                    {mfaResendCooldown > 0 ? `Resend in ${mfaResendCooldown}s` : "Resend code"}
+                  </button>
+                </p>
+                <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                  <button onClick={() => setMfaSubStep("pick")} style={{
+                    flex: 1, padding: "11px", background: "var(--color-background-secondary)",
+                    border: "1px solid var(--color-border-secondary)", borderRadius: 10,
+                    color: "var(--color-text-secondary)", fontSize: 14, cursor: "pointer",
+                  }}>← Back</button>
+                  <button onClick={verifyMfaCode} disabled={loading || mfaCode.length !== 6} style={{
+                    flex: 2, padding: "11px",
+                    background: mfaCode.length === 6 ? "linear-gradient(135deg, #0f766e, #0d9488)" : "var(--color-border-primary)",
+                    border: "none", borderRadius: 10, color: "#fff", fontSize: 14, fontWeight: 600,
+                    cursor: mfaCode.length === 6 ? "pointer" : "not-allowed",
+                  }}>{loading ? "Verifying…" : "Enable email 2FA →"}</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

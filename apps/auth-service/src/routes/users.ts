@@ -8,6 +8,9 @@ import { authenticator } from 'otplib'
 import QRCode from 'qrcode'
 import { getEnv } from '@dentaliq/config'
 
+// Permissions only available on the Cortex plan
+const CORTEX_ONLY_PERMISSIONS = ['cortex_agents', 'cortex_inbox'] as const
+
 export const PERMISSION_KEYS = [
   'dashboard',
   'estimates',
@@ -97,13 +100,43 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.send({ success: true, data: { secret, qrCodeDataUrl, backupCodes } })
     })
 
+    // Send email OTP for invite onboarding (when user picks email as 2FA method)
+    publicApi.post('/invite/:token/setup-mfa/email', async (req, reply) => {
+      const { token } = req.params as { token: string }
+      const now = new Date().toISOString()
+
+      const [invite] = await db
+        .select()
+        .from(inviteTokens)
+        .where(and(eq(inviteTokens.token, token), isNull(inviteTokens.acceptedAt)))
+        .limit(1)
+
+      if (!invite || invite.expiresAt < now) {
+        return reply.code(404).send({ success: false, error: 'Invalid or expired invite' })
+      }
+
+      // Generate a 6-digit OTP and store it in mfaSetupSecret (reusing the field)
+      const otp = String(Math.floor(100000 + Math.random() * 900000))
+      await db
+        .update(inviteTokens)
+        .set({ mfaMethod: 'email', mfaSetupSecret: otp, mfaBackupCodes: null })
+        .where(eq(inviteTokens.token, token))
+
+      const { EmailService } = await import('../services/emailService')
+      const emailService = new EmailService()
+      await emailService.sendMfaOtpEmail(invite.email, invite.name, otp, 'setup')
+
+      return reply.send({ success: true, message: 'A 6-digit code has been sent to your email.' })
+    })
+
     // Complete onboarding: set password + verify MFA + agree TOS → create user account
     publicApi.post('/invite/:token/complete', async (req, reply) => {
       const { token } = req.params as { token: string }
-      const { password, mfaCode, tosAgreed } = req.body as {
+      const { password, mfaCode, tosAgreed, mfaMethod: chosenMethod } = req.body as {
         password: string
         mfaCode: string
         tosAgreed: boolean
+        mfaMethod?: string
       }
       const now = new Date().toISOString()
 
@@ -125,12 +158,23 @@ export async function userRoutes(app: FastifyInstance) {
       }
 
       if (!invite.mfaSetupSecret) {
-        return reply.code(400).send({ success: false, error: 'MFA setup not started. Please go back and set up authenticator.' })
+        return reply.code(400).send({ success: false, error: 'MFA setup not started. Please go back and complete 2FA setup.' })
       }
 
-      const validMfa = authenticator.verify({ token: mfaCode, secret: invite.mfaSetupSecret })
-      if (!validMfa) {
-        return reply.code(400).send({ success: false, error: 'Invalid authenticator code. Please try again.' })
+      // Determine MFA method (from request body or stored on invite)
+      const effectiveMethod = chosenMethod ?? (invite as any).mfaMethod ?? 'totp'
+
+      if (effectiveMethod === 'email') {
+        // Direct comparison — mfaSetupSecret holds the 6-digit OTP
+        if (invite.mfaSetupSecret !== mfaCode) {
+          return reply.code(400).send({ success: false, error: 'Invalid or expired code. Please request a new one.' })
+        }
+      } else {
+        // TOTP — use authenticator.verify
+        const validMfa = authenticator.verify({ token: mfaCode, secret: invite.mfaSetupSecret })
+        if (!validMfa) {
+          return reply.code(400).send({ success: false, error: 'Invalid authenticator code. Please try again.' })
+        }
       }
 
       const [existing] = await db
@@ -143,6 +187,7 @@ export async function userRoutes(app: FastifyInstance) {
       }
 
       const passwordHash = await bcrypt.hash(password, 12)
+      const mfaMethods = JSON.stringify([effectiveMethod])
       const [newUser] = await db
         .insert(users)
         .values({
@@ -152,8 +197,10 @@ export async function userRoutes(app: FastifyInstance) {
           passwordHash,
           role: 'front_desk',
           mfaEnabled: true,
-          mfaSecret: invite.mfaSetupSecret,
-          mfaBackupCodes: invite.mfaBackupCodes,
+          mfaMethod: effectiveMethod,
+          mfaMethods,
+          mfaSecret: effectiveMethod === 'totp' ? invite.mfaSetupSecret : null,
+          mfaBackupCodes: effectiveMethod === 'totp' ? invite.mfaBackupCodes : null,
           emailVerified: true,
           permissions: invite.permissions,
           invitedBy: invite.invitedByUserId,
@@ -305,7 +352,14 @@ export async function userRoutes(app: FastifyInstance) {
         return reply.code(400).send({ success: false, error: 'Email and name are required' })
       }
 
-      const validPerms = (permissions ?? []).filter(p => PERMISSION_KEYS.includes(p as PermissionKey))
+      // Validate permissions — strip Cortex ones if tenant is not on Cortex plan
+      const [tenantRow] = await db.select({ plan: tenants.plan }).from(tenants).where(eq(tenants.id, me.tenantId)).limit(1)
+      const isCortexPlan = tenantRow?.plan === 'cortex'
+      const validPerms = (permissions ?? []).filter(p => {
+        if (!PERMISSION_KEYS.includes(p as PermissionKey)) return false
+        if (CORTEX_ONLY_PERMISSIONS.includes(p as any) && !isCortexPlan) return false
+        return true
+      })
 
       const [existingUser] = await db
         .select({ id: users.id })
@@ -383,7 +437,13 @@ export async function userRoutes(app: FastifyInstance) {
         return reply.code(403).send({ success: false, error: 'You cannot modify your own permissions' })
       }
 
-      const validPerms = (permissions ?? []).filter(p => PERMISSION_KEYS.includes(p as PermissionKey))
+      const [tenantInfo] = await db.select({ plan: tenants.plan }).from(tenants).where(eq(tenants.id, me.tenantId)).limit(1)
+      const isCortex = tenantInfo?.plan === 'cortex'
+      const validPerms = (permissions ?? []).filter(p => {
+        if (!PERMISSION_KEYS.includes(p as PermissionKey)) return false
+        if (CORTEX_ONLY_PERMISSIONS.includes(p as any) && !isCortex) return false
+        return true
+      })
       await db.update(users).set({ permissions: JSON.stringify(validPerms), updatedAt: new Date().toISOString() }).where(eq(users.id, id))
 
       return reply.send({ success: true, data: { id, permissions: validPerms } })

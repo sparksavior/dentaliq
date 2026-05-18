@@ -192,12 +192,14 @@ export default function InvitePage() {
   const [passwordError, setPasswordError] = useState('')
 
   // MFA step
+  const [mfaMethod, setMfaMethod] = useState<'totp' | 'email' | null>(null) // null = not picked yet
   const [mfaData, setMfaData] = useState<{ secret: string; qrCodeDataUrl: string; backupCodes: string[] } | null>(null)
   const [mfaCode, setMfaCode] = useState('')
   const [mfaError, setMfaError] = useState('')
   const [mfaLoading, setMfaLoading] = useState(false)
   const [showSecret, setShowSecret] = useState(false)
   const [backupSaved, setBackupSaved] = useState(false)
+  const [mfaResendCooldown, setMfaResendCooldown] = useState(0)
 
   // TOS step
   const [tosChecked, setTosChecked] = useState(false)
@@ -226,12 +228,27 @@ export default function InvitePage() {
     }
   }, [token, mfaData])
 
+  async function startEmailMfa() {
+    setMfaLoading(true)
+    setMfaError('')
+    try {
+      await inviteApi.setupEmailMfa(token)
+      setMfaMethod('email')
+      setMfaResendCooldown(30)
+      const t = setInterval(() => setMfaResendCooldown(c => { if (c <= 1) { clearInterval(t); return 0 } return c - 1 }), 1000)
+    } catch (err: any) {
+      setMfaError(err.message ?? 'Failed to send email code.')
+    } finally {
+      setMfaLoading(false)
+    }
+  }
+
   const handlePasswordNext = () => {
     setPasswordError('')
     if (password.length < 8) { setPasswordError('Password must be at least 8 characters.'); return }
     if (password !== confirmPassword) { setPasswordError('Passwords do not match.'); return }
     setStep('mfa')
-    loadMfa()
+    // Don't auto-load TOTP yet — let user pick method first
   }
 
   const handleComplete = async () => {
@@ -239,7 +256,7 @@ export default function InvitePage() {
     setCompleting(true)
     setStep('completing')
     try {
-      const result = await inviteApi.complete(token, { password, mfaCode, tosAgreed: true })
+      const result = await inviteApi.complete(token, { password, mfaCode, tosAgreed: true, mfaMethod: mfaMethod ?? 'totp' })
       setSession(result.accessToken, result.user)
       setStep('done')
       setTimeout(() => router.replace('/dashboard'), 1500)
@@ -446,13 +463,13 @@ export default function InvitePage() {
         <Card>
           <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 800, margin: '0 0 6px' }}>Enable 2-factor authentication</h2>
           <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 14, margin: '0 0 24px' }}>
-            2FA is required to protect patient data. Scan the QR code with your authenticator app.
+            Required to protect patient data. Choose your preferred verification method.
           </p>
 
           {mfaLoading && (
             <div style={{ textAlign: 'center', padding: '2rem 0' }}>
               <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spinRing 0.8s linear infinite', margin: '0 auto 12px' }} />
-              <p style={{ color: 'rgba(255,255,255,0.4)', margin: 0, fontSize: 13 }}>Generating your QR code…</p>
+              <p style={{ color: 'rgba(255,255,255,0.4)', margin: 0, fontSize: 13 }}>Setting up…</p>
             </div>
           )}
 
@@ -462,7 +479,36 @@ export default function InvitePage() {
             </div>
           )}
 
-          {mfaData && (
+          {/* ── Method picker (shown until user picks) ── */}
+          {!mfaMethod && !mfaLoading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
+              <button
+                onClick={() => { setMfaMethod('totp'); loadMfa(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: '1.5px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.06)', cursor: 'pointer', textAlign: 'left' }}
+              >
+                <span style={{ fontSize: 26 }}>📱</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>Authenticator app</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Google Authenticator, Authy, 1Password</div>
+                </div>
+                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 20, background: 'rgba(16,185,129,0.15)', color: '#34d399', fontWeight: 700, flexShrink: 0 }}>Recommended</span>
+              </button>
+
+              <button
+                onClick={startEmailMfa}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 12, border: '1.5px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', cursor: 'pointer', textAlign: 'left' }}
+              >
+                <span style={{ fontSize: 26 }}>✉️</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>Email code</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>6-digit code sent to {invite?.email}</div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* ── TOTP path ── */}
+          {mfaMethod === 'totp' && mfaData && (
             <>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -482,7 +528,7 @@ export default function InvitePage() {
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <code style={{
-                    flex: 1, fontSize: showSecret ? 13 : 13,
+                    flex: 1, fontSize: 13,
                     color: showSecret ? '#a78bfa' : 'transparent',
                     background: showSecret ? 'rgba(139,92,246,0.1)' : 'rgba(255,255,255,0.05)',
                     padding: '6px 10px', borderRadius: 7,
@@ -509,7 +555,7 @@ export default function InvitePage() {
                   Save your backup codes
                 </p>
                 <p style={{ margin: '0 0 10px', fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-                  Store these codes somewhere safe. You'll need one if you lose access to your authenticator app.
+                  Store these somewhere safe. You'll need one if you lose your phone.
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
                   {mfaData.backupCodes.map((code, i) => (
@@ -550,6 +596,47 @@ export default function InvitePage() {
               >
                 Verify & Continue
               </PrimaryButton>
+            </>
+          )}
+
+          {/* ── Email OTP path ── */}
+          {mfaMethod === 'email' && (
+            <>
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>✉️</div>
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, margin: 0 }}>
+                  We sent a 6-digit code to <strong style={{ color: 'rgba(255,255,255,0.9)' }}>{invite?.email}</strong>
+                </p>
+              </div>
+
+              <Input
+                label="Enter the 6-digit code"
+                value={mfaCode}
+                onChange={v => { setMfaCode(v.replace(/\D/g, '').slice(0, 6)); setMfaError('') }}
+                placeholder="000000"
+                error={mfaError}
+              />
+
+              <p style={{ textAlign: 'center', fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '8px 0 16px' }}>
+                Didn't get it?{' '}
+                <button type="button" onClick={startEmailMfa} disabled={mfaResendCooldown > 0} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, fontWeight: 600, color: mfaResendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#a78bfa', cursor: mfaResendCooldown > 0 ? 'default' : 'pointer' }}>
+                  {mfaResendCooldown > 0 ? `Resend in ${mfaResendCooldown}s` : 'Resend code'}
+                </button>
+              </p>
+
+              <PrimaryButton
+                onClick={() => {
+                  if (mfaCode.length !== 6) { setMfaError('Enter the 6-digit code from your email.'); return }
+                  setStep('tos')
+                }}
+                disabled={mfaCode.length !== 6}
+              >
+                Verify & Continue
+              </PrimaryButton>
+
+              <button onClick={() => { setMfaMethod(null); setMfaCode(''); setMfaError(''); }} style={{ width: '100%', marginTop: 8, background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 13, padding: '6px 0', fontFamily: 'inherit' }}>
+                ← Choose a different method
+              </button>
             </>
           )}
 

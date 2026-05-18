@@ -26,7 +26,8 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
-  totpCode: z.string().length(6).optional(), // required if MFA enabled
+  totpCode: z.string().min(6).max(8).optional(), // TOTP (6 digits) or backup code (8 chars)
+  selectedMfaMethod: z.enum(['totp', 'email', 'sms']).optional(), // which method user chose
 });
 
 const forgotPasswordSchema = z.object({
@@ -82,14 +83,20 @@ export async function authRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const body = loginSchema.parse(req.body);
-      const { tokens, user, requiresMfa } = await ctrl.login(body, req.ip);
+      const result = await ctrl.login(body, req.ip);
 
-      if (requiresMfa) {
+      if (result.requiresMfa) {
         return reply.code(202).send({
           success: true,
-          data: { requiresMfa: true, message: "Please provide your MFA code" },
+          data: {
+            requiresMfa: true,
+            availableMethods: (result as any).availableMethods ?? [],
+            message: "Please complete your two-factor authentication",
+          },
         });
       }
+
+      const { tokens, user } = result;
 
       // Set refresh token as httpOnly cookie
       reply.setCookie("refresh_token", tokens!.refreshToken, {

@@ -18,12 +18,88 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   setSession: (token: string, user: AuthUser) => void
-  clearSession: () => void
+  clearSession: (reason?: string) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const TOKEN_KEY = 'diq_access_token'
+
+// ── Session-expired overlay ───────────────────────────────────
+function SessionExpiredOverlay({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'rgba(0,0,0,0.55)',
+      backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24,
+      animation: 'diqFadeIn 0.2s ease-out',
+    }}>
+      <style>{`
+        @keyframes diqFadeIn { from { opacity:0; transform:scale(0.96) } to { opacity:1; transform:scale(1) } }
+      `}</style>
+      <div style={{
+        background: 'var(--color-surface, #1a2332)',
+        border: '1px solid var(--color-border, rgba(255,255,255,0.08))',
+        borderRadius: 20,
+        padding: '36px 32px 28px',
+        maxWidth: 400,
+        width: '100%',
+        textAlign: 'center',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
+      }}>
+        {/* Icon */}
+        <div style={{
+          width: 60, height: 60, borderRadius: 18,
+          background: 'rgba(245,158,11,0.12)',
+          border: '1.5px solid rgba(245,158,11,0.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 28, margin: '0 auto 20px',
+        }}>
+          🔒
+        </div>
+
+        <h2 style={{
+          margin: '0 0 10px',
+          fontSize: 20, fontWeight: 700,
+          color: 'var(--color-text-primary, #f1f5f9)',
+          letterSpacing: '-0.02em',
+        }}>
+          You've been signed out
+        </h2>
+
+        <p style={{
+          margin: '0 0 28px',
+          fontSize: 14, lineHeight: 1.6,
+          color: 'var(--color-text-secondary, #94a3b8)',
+        }}>
+          {message}
+        </p>
+
+        <button
+          onClick={onDismiss}
+          style={{
+            width: '100%', padding: '12px 0',
+            background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+            color: '#fff', border: 'none', borderRadius: 12,
+            fontSize: 15, fontWeight: 600, cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(15,118,110,0.3)',
+          }}
+        >
+          Sign in again
+        </button>
+
+        <p style={{
+          marginTop: 14, fontSize: 12,
+          color: 'var(--color-text-tertiary, #64748b)',
+        }}>
+          Your work is saved — you won't lose anything.
+        </p>
+      </div>
+    </div>
+  )
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -31,17 +107,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     accessToken: null,
     loading: true,
   })
+  const [expiredMessage, setExpiredMessage] = useState<string | null>(null)
+
+  const handleDismissExpired = useCallback(() => {
+    setExpiredMessage(null)
+    window.location.href = '/login'
+  }, [])
 
   const setSession = useCallback((token: string, user: AuthUser) => {
     localStorage.setItem(TOKEN_KEY, token)
     setState({ user, accessToken: token, loading: false })
   }, [])
 
-  const clearSession = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    authApi.logout().catch(() => null);
-    window.location.href = "/logout";
-  }, []);
+  const clearSession = useCallback((reason?: string) => {
+    localStorage.removeItem(TOKEN_KEY)
+    authApi.logout().catch(() => null)
+    setState({ user: null, accessToken: null, loading: false })
+
+    if (reason) {
+      // Show friendly overlay instead of silent redirect
+      setExpiredMessage(reason)
+    } else {
+      // Voluntary logout — go to the logout page as normal
+      window.location.href = '/logout'
+    }
+  }, [])
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -54,13 +144,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .me(token)
       .then((user) => setState({ user, accessToken: token, loading: false }))
       .catch(() => {
-        // Token expired — try silent refresh
+        // Token may be expired — try silent refresh first
         authApi
           .refresh()
           .then(({ accessToken }) => authApi.me(accessToken).then((user) => setSession(accessToken, user)))
           .catch(() => {
             localStorage.removeItem(TOKEN_KEY)
             setState({ user: null, accessToken: null, loading: false })
+            // Don't show the overlay here — could be a fresh browser open with a stale token,
+            // not a mid-session expiry. Just silently redirect to login.
+            window.location.href = '/login'
           })
       })
   }, [setSession])
@@ -74,8 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const user = await authApi.me(accessToken)
         setSession(accessToken, user)
       } catch {
-        // Refresh token also expired — force logout
-        clearSession()
+        // Refresh token expired — show friendly message, don't just vanish
+        clearSession(
+          "For your security, sessions automatically expire after a period of inactivity. Please sign in again to continue."
+        )
       }
     }, 14 * 60 * 1000) // every 14 minutes
     return () => clearInterval(id)
@@ -84,6 +179,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ ...state, setSession, clearSession }}>
       {children}
+      {expiredMessage && (
+        <SessionExpiredOverlay
+          message={expiredMessage}
+          onDismiss={handleDismissExpired}
+        />
+      )}
     </AuthContext.Provider>
   )
 }

@@ -109,6 +109,7 @@ export default function EstimatesPage() {
   const { accessToken } = useAuth()
   const [cdtCodes, setCdtCodes] = useState<CdtCodeSummary[]>(FALLBACK_CDT)
   const [patients, setPatients] = useState<Patient[]>([])
+  const [dataLoaded, setDataLoaded] = useState(false)
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [history, setHistory] = useState<EstimateHistoryItem[]>([])
   const [liveMode, setLiveMode] = useState(false)
@@ -137,6 +138,7 @@ export default function EstimatesPage() {
     setPatients(pts)
     setHistory(hist)
     setTenant(t)
+    setDataLoaded(true)
   }, [accessToken, selectedClinicId])
 
   useEffect(() => { load() }, [load, selectedClinicId])
@@ -254,6 +256,40 @@ export default function EstimatesPage() {
       <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {/* Left: Estimator */}
         <div>
+          {/* ── No-patient gate ── */}
+          {dataLoaded && patients.length === 0 ? (
+            <div style={{
+              background: 'var(--color-background-primary)', border: '1.5px dashed var(--color-border-secondary)',
+              borderRadius: 16, padding: '2.5rem 2rem', boxShadow: 'var(--shadow-sm)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12,
+            }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(13,148,136,0.1)', border: '1.5px solid rgba(13,148,136,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
+                🧑‍⚕️
+              </div>
+              <div>
+                <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.02em' }}>
+                  Add a patient first
+                </h3>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6, maxWidth: 280 }}>
+                  Estimates are tied to patient records. Create your first patient to unlock cost estimating.
+                </p>
+              </div>
+              <a
+                href="/dashboard/patients"
+                style={{
+                  marginTop: 4, padding: '10px 22px', borderRadius: 10, border: 'none',
+                  background: 'linear-gradient(135deg, #0f766e, #0d9488)',
+                  color: '#fff', fontSize: 14, fontWeight: 600, textDecoration: 'none',
+                  boxShadow: '0 4px 14px rgba(15,118,110,0.3)', display: 'inline-block',
+                  transition: 'transform 0.15s, box-shadow 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(15,118,110,0.4)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 14px rgba(15,118,110,0.3)' }}
+              >
+                Go to Patients →
+              </a>
+            </div>
+          ) : (
           <div style={{
             background: 'var(--color-background-primary)', border: '1px solid var(--color-border-secondary)',
             borderRadius: 16, padding: '1.5rem', boxShadow: 'var(--shadow-sm)', marginBottom: 16,
@@ -318,6 +354,7 @@ export default function EstimatesPage() {
               ) : 'Run Estimate →'}
             </button>
           </div>
+          )} {/* end no-patient gate */}
 
           {/* Result card */}
           {result && rs && (
