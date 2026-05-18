@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { useClinic } from "@/contexts/clinic-context";
-import { agentsApi } from "@/lib/api";
+import { agentsApi, tenantsApi, type Tenant } from "@/lib/api";
 import {
   Activity,
   Zap,
@@ -150,6 +150,9 @@ export default function CortexCommandCenter() {
   const { accessToken } = useAuth();
   const { selectedClinicId } = useClinic();
 
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [tenantLoading, setTenantLoading] = useState(true);
+
   const [rentedAgents, setRentedAgents] = useState<any[]>([]);
 
   // Activity feed state
@@ -174,6 +177,16 @@ export default function CortexCommandCenter() {
 
   const agentManagerUrl =
     process.env.NEXT_PUBLIC_AGENT_MANAGER_URL ?? "http://localhost:3006";
+
+  // Fetch tenant (for plan gating)
+  useEffect(() => {
+    if (!accessToken) return;
+    tenantsApi
+      .getTenant(accessToken)
+      .then(setTenant)
+      .catch(() => {})
+      .finally(() => setTenantLoading(false));
+  }, [accessToken]);
 
   // Fetch rented agents
   useEffect(() => {
@@ -322,6 +335,92 @@ export default function CortexCommandCenter() {
       gradient: "linear-gradient(135deg,#ec4899,#db2777)",
     },
   ];
+
+  // ── Plan gate ──────────────────────────────────────────────
+  if (tenantLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            border: "3px solid var(--color-border)",
+            borderTopColor: "#6366f1",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+          }}
+        />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (tenant?.plan !== "cortex") {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
+          gap: "1.5rem",
+          padding: "2rem",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 56 }}>🧠</div>
+        <h1
+          style={{
+            fontSize: "1.75rem",
+            fontWeight: 700,
+            color: "var(--color-text-primary)",
+            margin: 0,
+          }}
+        >
+          Cortex Plan Required
+        </h1>
+        <p
+          style={{
+            fontSize: "1rem",
+            color: "var(--color-text-secondary)",
+            maxWidth: 480,
+            margin: 0,
+            lineHeight: 1.6,
+          }}
+        >
+          The Command Center is available exclusively on the{" "}
+          <strong>Cortex</strong> plan. Upgrade to unlock AI-powered agents that
+          automate billing, recall, reviews, and more.
+        </p>
+        <Link
+          href="/dashboard/billing"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0.75rem 1.75rem",
+            borderRadius: 10,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff",
+            fontWeight: 600,
+            fontSize: "0.95rem",
+            textDecoration: "none",
+            boxShadow: "0 4px 14px rgba(99,102,241,0.4)",
+          }}
+        >
+          Upgrade to Cortex →
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div

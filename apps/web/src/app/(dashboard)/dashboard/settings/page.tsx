@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Building2,
   Settings2,
@@ -202,10 +203,13 @@ function Section({
 
 export default function SettingsPage() {
   const { user, accessToken } = useAuth();
+  const searchParams = useSearchParams();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [plans, setPlans] = useState<InsurancePlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const initialTab =
+    (searchParams.get("tab") as SettingsTab | null) ?? "profile";
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
   const [clinicName, setClinicName] = useState("");
   const [savingClinic, setSavingClinic] = useState(false);
@@ -264,41 +268,40 @@ export default function SettingsPage() {
 
   const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001";
 
-  // Fetch status + methods when entering Account tab
+  // Fetch MFA status + enabled methods from the server
+  const refreshMfaStatus = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const res = await fetch(`${AUTH_URL}/auth/mfa/status`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const json = await res.json();
+      if (json.success) setSmsAvailable(json.data.smsAvailable);
+    } catch {}
+    try {
+      const meRes = await fetch(`${AUTH_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const meJson = await meRes.json();
+      const userData = meJson.data ?? meJson;
+      const raw: string = userData.mfaMethods ?? "[]";
+      const parsed: MfaMethodId[] = JSON.parse(
+        typeof raw === "string" ? raw : JSON.stringify(raw),
+      );
+      // Legacy: mfaEnabled=true but empty methods array → treat as TOTP only
+      if (parsed.length === 0 && userData.mfaEnabled) {
+        setMfaMethods(["totp"]);
+      } else {
+        setMfaMethods(parsed);
+      }
+    } catch {}
+  }, [accessToken, AUTH_URL]);
+
+  // Refresh when entering Account tab
   useEffect(() => {
-    if (activeTab !== "account" || !accessToken) return;
-    (async () => {
-      try {
-        // Get server-side SMS availability
-        const res = await fetch(`${AUTH_URL}/auth/mfa/status`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const json = await res.json();
-        if (json.success) setSmsAvailable(json.data.smsAvailable);
-      } catch {}
-      // Parse enabled methods from user's mfaMethods field (stored in auth context)
-      // Fall back to checking mfaEnabled for legacy TOTP-only accounts
-      try {
-        const meRes = await fetch(`${AUTH_URL}/auth/me`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const meJson = await meRes.json();
-        const raw = meJson.user?.mfaMethods ?? meJson.mfaMethods ?? "[]";
-        const parsed: MfaMethodId[] = JSON.parse(
-          typeof raw === "string" ? raw : JSON.stringify(raw),
-        );
-        // Legacy: if mfaEnabled but empty methods array, treat as TOTP
-        if (
-          parsed.length === 0 &&
-          (meJson.user?.mfaEnabled ?? meJson.mfaEnabled)
-        ) {
-          setMfaMethods(["totp"]);
-        } else {
-          setMfaMethods(parsed);
-        }
-      } catch {}
-    })();
-  }, [activeTab, accessToken]);
+    if (activeTab !== "account") return;
+    refreshMfaStatus();
+  }, [activeTab, refreshMfaStatus]);
 
   function openMfaModal(mode: "enable" | "disable", method: MfaMethodId) {
     setMfaModal({ mode, method });
@@ -343,7 +346,7 @@ export default function SettingsPage() {
       });
       const json = await res.json();
       if (json.success) setOtpSent(true);
-      else setMfaError(json.message ?? "Failed to send code.");
+      else setMfaError(json.error ?? json.message ?? "Failed to send code.");
     } catch {
       setMfaError("Could not reach server.");
     } finally {
@@ -367,11 +370,9 @@ export default function SettingsPage() {
       const json = await res.json();
       if (json.success) {
         setMfaSuccess(true);
-        setMfaMethods((prev) =>
-          prev.includes(method) ? prev : [...prev, method],
-        );
+        await refreshMfaStatus();
         setTimeout(() => setMfaModal(null), 2200);
-      } else setMfaError(json.message ?? "Invalid code.");
+      } else setMfaError(json.error ?? json.message ?? "Invalid code.");
     } catch {
       setMfaError("Could not reach server.");
     } finally {
@@ -395,11 +396,10 @@ export default function SettingsPage() {
       const json = await res.json();
       if (json.success) {
         setMfaSuccess(true);
-        setMfaMethods((prev) =>
-          prev.includes("totp") ? prev : [...prev, "totp"],
-        );
+        await refreshMfaStatus();
         setTimeout(() => setMfaModal(null), 2200);
-      } else setMfaError(json.message ?? "Invalid code — try again.");
+      } else
+        setMfaError(json.error ?? json.message ?? "Invalid code — try again.");
     } catch {
       setMfaError("Could not reach server.");
     } finally {
@@ -423,9 +423,9 @@ export default function SettingsPage() {
       const json = await res.json();
       if (json.success) {
         setMfaSuccess(true);
-        setMfaMethods((prev) => prev.filter((m) => m !== method));
+        await refreshMfaStatus();
         setTimeout(() => setMfaModal(null), 2200);
-      } else setMfaError(json.message ?? "Incorrect password.");
+      } else setMfaError(json.error ?? json.message ?? "Incorrect password.");
     } catch {
       setMfaError("Could not reach server.");
     } finally {

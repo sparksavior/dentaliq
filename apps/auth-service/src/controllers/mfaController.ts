@@ -73,7 +73,7 @@ export class MfaController {
         mfaEnabled: true,
         mfaSecret: secret,
         mfaMethods: JSON.stringify(methods),
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(users.id, userId));
 
@@ -104,7 +104,11 @@ export class MfaController {
 
     await this.db
       .update(users)
-      .set({ mfaOtpCode: code, mfaOtpExpires: expires, updatedAt: new Date() })
+      .set({
+        mfaOtpCode: code,
+        mfaOtpExpires: expires,
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(users.id, userId));
 
     if (method === "email") {
@@ -154,7 +158,7 @@ export class MfaController {
         mfaMethods: JSON.stringify(methods),
         mfaOtpCode: null,
         mfaOtpExpires: null,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(users.id, userId));
   }
@@ -187,7 +191,7 @@ export class MfaController {
         mfaEnabled: stillEnabled,
         mfaSecret: method === "totp" ? null : user.mfaSecret,
         mfaMethods: JSON.stringify(methods),
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(users.id, userId));
   }
@@ -226,7 +230,7 @@ export class MfaController {
         mfaEnabled: false,
         mfaSecret: null,
         mfaMethods: "[]",
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(users.id, userId));
   }

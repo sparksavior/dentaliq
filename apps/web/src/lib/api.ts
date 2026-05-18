@@ -18,33 +18,35 @@ export interface LoginInput {
   email: string;
   password: string;
   totpCode?: string;
+  mfaMethod?: "totp" | "email" | "sms";
+  otpCode?: string;
 }
 
 export const ALL_PERMISSIONS = [
-  'dashboard',
-  'estimates',
-  'claims',
-  'patients',
-  'analytics',
-  'cortex_agents',
-  'cortex_inbox',
-  'support',
-  'settings',
-] as const
+  "dashboard",
+  "estimates",
+  "claims",
+  "patients",
+  "analytics",
+  "cortex_agents",
+  "cortex_inbox",
+  "support",
+  "settings",
+] as const;
 
-export type PermissionKey = typeof ALL_PERMISSIONS[number]
+export type PermissionKey = (typeof ALL_PERMISSIONS)[number];
 
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
-  dashboard: 'Overview',
-  estimates: 'Estimates',
-  claims: 'Claims',
-  patients: 'Patients',
-  analytics: 'Analytics',
-  cortex_agents: 'Cortex Agents',
-  cortex_inbox: 'Approval Inbox',
-  support: 'Support',
-  settings: 'Settings',
-}
+  dashboard: "Overview",
+  estimates: "Estimates",
+  claims: "Claims",
+  patients: "Patients",
+  analytics: "Analytics",
+  cortex_agents: "Cortex Agents",
+  cortex_inbox: "Approval Inbox",
+  support: "Support",
+  settings: "Settings",
+};
 
 export interface AuthUser {
   id: string;
@@ -73,7 +75,7 @@ export interface TeamMember {
   invitedBy: string | null;
   lastLoginAt: string | null;
   createdAt: string;
-  status: 'active';
+  status: "active";
 }
 
 export interface PendingInvite {
@@ -83,7 +85,7 @@ export interface PendingInvite {
   permissions: PermissionKey[];
   expiresAt: string;
   createdAt: string;
-  status: 'pending';
+  status: "pending";
 }
 
 export interface InviteDetails {
@@ -230,7 +232,9 @@ async function request<T>(
     ...options,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      // Only send Content-Type when there is a body — Fastify rejects
+      // DELETE/GET requests that carry Content-Type without a body.
+      ...(options.body !== undefined && { "Content-Type": "application/json" }),
       ...(clinicId && { "x-clinic-id": clinicId }),
       ...options.headers,
     },
@@ -285,12 +289,18 @@ export const authApi = {
     }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
 
   login: (input: LoginInput) =>
-    authRequest<AuthTokens | { requiresMfa: true; message: string }>(
-      "/auth/login",
-      { method: "POST", body: JSON.stringify(input) },
-    ),
+    authRequest<
+      AuthTokens | { requiresMfa: true; mfaMethods: string[]; message: string }
+    >("/auth/login", { method: "POST", body: JSON.stringify(input) }),
 
-  logout: () => authRequest("/auth/logout", { method: "POST", body: JSON.stringify({}) }),
+  loginSendOtp: (email: string, password: string, method: "email" | "sms") =>
+    authRequest<{ message: string }>("/auth/login/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, password, method }),
+    }),
+
+  logout: () =>
+    authRequest("/auth/logout", { method: "POST", body: JSON.stringify({}) }),
 
   refresh: () =>
     authRequest<{ accessToken: string; expiresIn: number }>("/auth/refresh", {
@@ -323,15 +333,22 @@ export const inviteApi = {
     authRequest<InviteDetails>(`/users/invite/${token}`),
 
   setupMfa: (token: string) =>
-    authRequest<{ secret: string; qrCodeDataUrl: string; backupCodes: string[] }>(
-      `/users/invite/${token}/setup-mfa`,
-      { method: "POST", body: JSON.stringify({}) }
-    ),
+    authRequest<{
+      secret: string;
+      qrCodeDataUrl: string;
+      backupCodes: string[];
+    }>(`/users/invite/${token}/setup-mfa`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
 
-  complete: (token: string, body: { password: string; mfaCode: string; tosAgreed: boolean }) =>
+  complete: (
+    token: string,
+    body: { password: string; mfaCode: string; tosAgreed: boolean },
+  ) =>
     authRequest<{ accessToken: string; user: AuthUser }>(
       `/users/invite/${token}/complete`,
-      { method: "POST", body: JSON.stringify(body) }
+      { method: "POST", body: JSON.stringify(body) },
     ),
 };
 
@@ -347,19 +364,32 @@ export const teamApi = {
       headers: { Authorization: `Bearer ${token}` },
     }),
 
-  invite: (token: string, data: { email: string; name: string; permissions: PermissionKey[] }) =>
-    authRequest<{ email: string; name: string; expiresAt: string }>("/users/invite", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify(data),
-    }),
+  invite: (
+    token: string,
+    data: { email: string; name: string; permissions: PermissionKey[] },
+  ) =>
+    authRequest<{ email: string; name: string; expiresAt: string }>(
+      "/users/invite",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify(data),
+      },
+    ),
 
-  updatePermissions: (token: string, userId: string, permissions: PermissionKey[]) =>
-    authRequest<{ id: string; permissions: PermissionKey[] }>(`/users/${userId}/permissions`, {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ permissions }),
-    }),
+  updatePermissions: (
+    token: string,
+    userId: string,
+    permissions: PermissionKey[],
+  ) =>
+    authRequest<{ id: string; permissions: PermissionKey[] }>(
+      `/users/${userId}/permissions`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ permissions }),
+      },
+    ),
 
   removeMember: (token: string, userId: string) =>
     authRequest<{ success: true }>(`/users/${userId}`, {

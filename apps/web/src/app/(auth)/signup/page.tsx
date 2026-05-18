@@ -428,6 +428,10 @@ function SignupPage() {
       setError("Please enter your full name.");
       return;
     }
+    if (!form.clinic.trim()) {
+      setError("Please enter your clinic name.");
+      return;
+    }
     setError("");
     advance();
   }
@@ -445,7 +449,7 @@ function SignupPage() {
         name: form.name,
         email: form.email,
         password: form.password,
-        clinicName: "My Clinic", // updated in clinic step
+        clinicName: form.clinic.trim(),
         plan,
       });
       const result = await authApi.login({
@@ -467,13 +471,10 @@ function SignupPage() {
 
   async function submitClinic() {
     setError("");
-    if (!form.clinic.trim()) return setError("Please enter your clinic name.");
     setLoading(true);
     try {
       if (sessionToken) {
-        await tenantsApi.updateTenant(sessionToken, {
-          name: form.clinic.trim(),
-        });
+        // Primary clinic name was already set at registration — only create extra locations here
         for (const n of extraClinics) {
           if (n.trim())
             await tenantsApi.createClinic(sessionToken, {
@@ -602,21 +603,43 @@ function SignupPage() {
             <StepHeader
               icon="👋"
               title="Welcome to DentalIQ"
-              sub="Let's get you set up in minutes. First — what's your name?"
+              sub="Let's get you set up in minutes. First — tell us about yourself and your clinic."
             />
             {ErrorBanner}
-            <div style={{ marginBottom: 20 }}>
-              <FieldLabel>Your full name</FieldLabel>
-              <FancyInput
-                autoFocus
-                placeholder="Dr. Sarah Chen"
-                value={form.name}
-                onChange={setF("name")}
-                onKeyDown={(e) => e.key === "Enter" && submitName()}
-                style={{ fontSize: 18, padding: "16px 18px" }}
-              />
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                marginBottom: 20,
+              }}
+            >
+              <div>
+                <FieldLabel>Your full name</FieldLabel>
+                <FancyInput
+                  autoFocus
+                  placeholder="Dr. Sarah Chen"
+                  value={form.name}
+                  onChange={setF("name")}
+                  onKeyDown={(e) => e.key === "Enter" && submitName()}
+                  style={{ fontSize: 18, padding: "16px 18px" }}
+                />
+              </div>
+              <div>
+                <FieldLabel>Clinic name</FieldLabel>
+                <FancyInput
+                  placeholder="Lakeview Dental Group"
+                  value={form.clinic}
+                  onChange={setF("clinic")}
+                  onKeyDown={(e) => e.key === "Enter" && submitName()}
+                  style={{ fontSize: 16 }}
+                />
+              </div>
             </div>
-            <PrimaryBtn onClick={submitName} disabled={!form.name.trim()}>
+            <PrimaryBtn
+              onClick={submitName}
+              disabled={!form.name.trim() || !form.clinic.trim()}
+            >
               Let's go →
             </PrimaryBtn>
           </>
@@ -1454,10 +1477,7 @@ function SignupPage() {
               )}
             </div>
 
-            <PrimaryBtn
-              onClick={submitClinic}
-              disabled={loading || !form.clinic.trim()}
-            >
+            <PrimaryBtn onClick={submitClinic} disabled={loading}>
               {loading ? "Saving…" : "Continue →"}
             </PrimaryBtn>
             {BackLink}

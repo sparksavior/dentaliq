@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
+import { tenantsApi, type Tenant } from "@/lib/api";
 import {
   Sparkles,
   Check,
@@ -106,6 +107,10 @@ interface AgentTask {
 
 export default function CortexInbox() {
   const { accessToken, user } = useAuth();
+
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [tenantLoading, setTenantLoading] = useState(true);
+
   const [items, setItems] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +118,16 @@ export default function CortexInbox() {
   const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<"pending" | "completed">("pending");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Fetch tenant (for plan gating)
+  useEffect(() => {
+    if (!accessToken) return;
+    tenantsApi
+      .getTenant(accessToken)
+      .then(setTenant)
+      .catch(() => {})
+      .finally(() => setTenantLoading(false));
+  }, [accessToken]);
 
   const fetchTasks = useCallback(async () => {
     if (!accessToken) return;
@@ -173,6 +188,92 @@ export default function CortexInbox() {
       ? items.filter((i) => i.status === "pending")
       : items.filter((i) => i.status !== "pending");
 
+  // ── Plan gate ──────────────────────────────────────────────
+  if (tenantLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            border: "3px solid var(--color-border)",
+            borderTopColor: "#6366f1",
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+          }}
+        />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (tenant?.plan !== "cortex") {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
+          gap: "1.5rem",
+          padding: "2rem",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 56 }}>📥</div>
+        <h1
+          style={{
+            fontSize: "1.75rem",
+            fontWeight: 700,
+            color: "var(--color-text-primary)",
+            margin: 0,
+          }}
+        >
+          Cortex Plan Required
+        </h1>
+        <p
+          style={{
+            fontSize: "1rem",
+            color: "var(--color-text-secondary)",
+            maxWidth: 480,
+            margin: 0,
+            lineHeight: 1.6,
+          }}
+        >
+          The Approval Inbox is available exclusively on the{" "}
+          <strong>Cortex</strong> plan. Upgrade to review and approve
+          AI-generated agent actions before they execute.
+        </p>
+        <Link
+          href="/dashboard/billing"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0.75rem 1.75rem",
+            borderRadius: 10,
+            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+            color: "#fff",
+            fontWeight: 600,
+            fontSize: "0.95rem",
+            textDecoration: "none",
+            boxShadow: "0 4px 14px rgba(99,102,241,0.4)",
+          }}
+        >
+          Upgrade to Cortex →
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -186,7 +287,8 @@ export default function CortexInbox() {
       {/* Premium Header */}
       <div
         style={{
-          background: "linear-gradient(135deg, var(--color-background-primary) 0%, rgba(99,102,241,0.05) 100%)",
+          background:
+            "linear-gradient(135deg, var(--color-background-primary) 0%, rgba(99,102,241,0.05) 100%)",
           borderBottom: "1px solid var(--color-border-secondary)",
           padding: "1.75rem 2rem",
           marginBottom: "1.75rem",
@@ -208,8 +310,13 @@ export default function CortexInbox() {
             fontWeight: 500,
             transition: "color 0.15s",
           }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "#6366f1")}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.color = "var(--color-text-secondary)")}
+          onMouseEnter={(e) =>
+            ((e.currentTarget as HTMLAnchorElement).style.color = "#6366f1")
+          }
+          onMouseLeave={(e) =>
+            ((e.currentTarget as HTMLAnchorElement).style.color =
+              "var(--color-text-secondary)")
+          }
         >
           <ArrowLeft size={13} /> Cortex Command Center
         </Link>
@@ -245,7 +352,8 @@ export default function CortexInbox() {
                   fontWeight: 800,
                   margin: "0 0 3px",
                   letterSpacing: "-0.03em",
-                  background: "linear-gradient(135deg, var(--color-text-primary) 60%, #6366f1)",
+                  background:
+                    "linear-gradient(135deg, var(--color-text-primary) 60%, #6366f1)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   backgroundClip: "text",
@@ -283,13 +391,16 @@ export default function CortexInbox() {
               transition: "all 0.15s",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--color-background-primary)";
+              e.currentTarget.style.background =
+                "var(--color-background-primary)";
               e.currentTarget.style.borderColor = "var(--color-border-primary)";
               e.currentTarget.style.transform = "translateY(-1px)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--color-background-secondary)";
-              e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+              e.currentTarget.style.background =
+                "var(--color-background-secondary)";
+              e.currentTarget.style.borderColor =
+                "var(--color-border-secondary)";
               e.currentTarget.style.transform = "";
             }}
           >
@@ -538,7 +649,8 @@ export default function CortexInbox() {
                   if (!isExpanded) {
                     e.currentTarget.style.transform = "";
                     e.currentTarget.style.boxShadow = "var(--shadow-xs)";
-                    e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+                    e.currentTarget.style.borderColor =
+                      "var(--color-border-secondary)";
                   }
                 }}
               >

@@ -75,34 +75,55 @@ export async function mfaRoutes(app: FastifyInstance) {
   app.post("/verify", async (req, reply) => {
     const user = req.user as any;
     const { code, secret } = verifySchema.parse(req.body);
-    await ctrl.verifyAndEnableMfa(user.sub, secret, code);
-    return reply.send({
-      success: true,
-      message:
-        "Authenticator app enabled. Your account is now PHIPA-compliant.",
-    });
+    try {
+      await ctrl.verifyAndEnableMfa(user.sub, secret, code);
+      return reply.send({
+        success: true,
+        message:
+          "Authenticator app enabled. Your account is now PHIPA-compliant.",
+      });
+    } catch (err: any) {
+      const status = err.statusCode ?? 400;
+      return reply
+        .code(status)
+        .send({ success: false, error: err.message ?? "Verification failed" });
+    }
   });
 
   // ── Send OTP: email or SMS ────────────────────────────────
   app.post("/send-otp", async (req, reply) => {
     const user = req.user as any;
     const { method } = sendOtpSchema.parse(req.body);
-    await ctrl.sendOtp(user.sub, method);
-    return reply.send({
-      success: true,
-      message: `Verification code sent via ${method}.`,
-    });
+    try {
+      await ctrl.sendOtp(user.sub, method);
+      return reply.send({
+        success: true,
+        message: `Verification code sent via ${method}.`,
+      });
+    } catch (err: any) {
+      const status = err.statusCode ?? 500;
+      return reply
+        .code(status)
+        .send({ success: false, error: err.message ?? "Failed to send code" });
+    }
   });
 
   // ── Verify OTP: confirm email/SMS code and enable method ──
   app.post("/verify-otp", async (req, reply) => {
     const user = req.user as any;
     const { method, code } = verifyOtpSchema.parse(req.body);
-    await ctrl.verifyOtpAndEnable(user.sub, method, code);
-    return reply.send({
-      success: true,
-      message: `${method === "email" ? "Email" : "SMS"} two-factor authentication enabled.`,
-    });
+    try {
+      await ctrl.verifyOtpAndEnable(user.sub, method, code);
+      return reply.send({
+        success: true,
+        message: `${method === "email" ? "Email" : "SMS"} two-factor authentication enabled.`,
+      });
+    } catch (err: any) {
+      const status = err.statusCode ?? 400;
+      return reply
+        .code(status)
+        .send({ success: false, error: err.message ?? "Verification failed" });
+    }
   });
 
   // ── Remove a specific MFA method ─────────────────────────

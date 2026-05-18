@@ -912,13 +912,14 @@ function inviteEmailHtml(
 }
 
 function mfaOtpEmailHtml(name: string, code: string) {
-  return wrap(
+  return baseTemplate(
+    "Your one-time verification code for DentalIQ.",
     "Your DentalIQ verification code",
+    "#0f766e",
     `
+    <h1>Verification code</h1>
     <p>Hi <strong>${name}</strong>,</p>
-    <p style="color:#475569;font-size:15px;line-height:1.6;">
-      Use the code below to verify your identity. It expires in <strong>10 minutes</strong>.
-    </p>
+    <p>Use the code below to verify your identity. It expires in <strong>10 minutes</strong>.</p>
     <div style="text-align:center;margin:32px 0;">
       <div style="display:inline-block;background:linear-gradient(135deg,rgba(15,118,110,0.08),rgba(13,148,136,0.04));border:2px solid rgba(15,118,110,0.25);border-radius:16px;padding:20px 40px;">
         <div style="font-size:11px;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">Verification Code</div>
@@ -926,9 +927,9 @@ function mfaOtpEmailHtml(name: string, code: string) {
       </div>
     </div>
     <div style="background:#fefce8;border:1px solid #fde047;border-radius:10px;padding:14px 18px;margin:0 0 24px;">
-      <p style="margin:0;font-size:13px;color:#854d0e;"><strong>⚠ Never share this code.</strong> DentalIQ staff will never ask for it. If you didn't request this, contact security@dentaliq.ca immediately.</p>
+      <p style="margin:0;font-size:13px;color:#854d0e;"><strong>⚠ Never share this code.</strong> DentalIQ staff will never ask for it. If you didn't request this, contact <a href="mailto:security@dentaliq.ca">security@dentaliq.ca</a> immediately.</p>
     </div>
-    <p class="muted">This code is valid for 10 minutes and can only be used once.</p>
+    <p style="font-size:13px;color:#94a3b8;">This code is valid for 10 minutes and can only be used once.</p>
     `,
   );
 }

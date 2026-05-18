@@ -26,6 +26,9 @@ interface LoginInput {
   email: string;
   password: string;
   totpCode?: string;
+  // For email/SMS OTP login
+  mfaMethod?: "totp" | "email" | "sms";
+  otpCode?: string;
 }
 
 export class AuthController {
@@ -112,7 +115,7 @@ export class AuthController {
 
   // ── Login ─────────────────────────────────────────────────
   async login(input: LoginInput, ip: string) {
-    const { email, password, totpCode } = input;
+    const { email, password, totpCode, mfaMethod, otpCode } = input;
 
     const [user] = await this.db
       .select()
@@ -135,15 +138,63 @@ export class AuthController {
     }
 
     if (user.mfaEnabled) {
-      if (!totpCode) return { requiresMfa: true, tokens: null, user: null };
-      if (!user.mfaSecret) throw new Error("MFA setup incomplete");
-      const isValid = authenticator.verify({
-        token: totpCode,
-        secret: user.mfaSecret,
-      });
-      if (!isValid) {
-        const err = new Error("Invalid MFA code");
-        (err as any).statusCode = 401;
+      // Parse which methods this user has enabled
+      let mfaMethods: string[] = [];
+      try {
+        mfaMethods = JSON.parse(user.mfaMethods ?? "[]");
+      } catch {}
+      // Legacy: mfaEnabled=true but empty methods array → treat as TOTP
+      // Also handles: mfa_secret set but mfa_methods not yet migrated
+      if (mfaMethods.length === 0) {
+        mfaMethods = ["totp"]; // safe fallback — TOTP is the only method for legacy accounts
+      }
+
+      // No MFA code submitted yet — return list of available methods
+      const hasCode = totpCode || otpCode;
+      if (!hasCode) {
+        return { requiresMfa: true, mfaMethods, tokens: null, user: null };
+      }
+
+      // Determine which method is being verified
+      const method = mfaMethod ?? "totp";
+
+      if (method === "totp") {
+        const code = totpCode ?? otpCode ?? "";
+        if (!user.mfaSecret) throw new Error("TOTP not configured");
+        const isValid = authenticator.verify({
+          token: code,
+          secret: user.mfaSecret,
+        });
+        if (!isValid) {
+          const err = new Error("Invalid authenticator code");
+          (err as any).statusCode = 401;
+          throw err;
+        }
+      } else if (method === "email" || method === "sms") {
+        const code = otpCode ?? totpCode ?? "";
+        if (!user.mfaOtpCode || !user.mfaOtpExpires) {
+          const err = new Error("No OTP was sent. Please request a new code.");
+          (err as any).statusCode = 401;
+          throw err;
+        }
+        if (new Date() > new Date(user.mfaOtpExpires)) {
+          const err = new Error("OTP has expired. Please request a new code.");
+          (err as any).statusCode = 401;
+          throw err;
+        }
+        if (user.mfaOtpCode !== code) {
+          const err = new Error("Invalid verification code");
+          (err as any).statusCode = 401;
+          throw err;
+        }
+        // Clear used OTP
+        await this.db
+          .update(users)
+          .set({ mfaOtpCode: null, mfaOtpExpires: null })
+          .where(eq(users.id, user.id));
+      } else {
+        const err = new Error("Unknown MFA method");
+        (err as any).statusCode = 400;
         throw err;
       }
     }
@@ -165,8 +216,10 @@ export class AuthController {
       metadata: { email: user.email },
     });
 
-    let permissions: string[] = []
-    try { permissions = JSON.parse(user.permissions ?? '[]') } catch {}
+    let permissions: string[] = [];
+    try {
+      permissions = JSON.parse(user.permissions ?? "[]");
+    } catch {}
 
     return {
       requiresMfa: false,
@@ -182,6 +235,39 @@ export class AuthController {
         invitedBy: user.invitedBy ?? null,
       },
     };
+  }
+
+  // ── Login: send OTP before verifying (unauthenticated) ───
+  async loginSendOtp(email: string, password: string, method: "email" | "sms") {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()))
+      .limit(1);
+
+    if (!user) {
+      const err = new Error("Invalid email or password");
+      (err as any).statusCode = 401;
+      throw err;
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      const err = new Error("Invalid email or password");
+      (err as any).statusCode = 401;
+      throw err;
+    }
+
+    if (!user.mfaEnabled) {
+      const err = new Error("MFA is not enabled for this account");
+      (err as any).statusCode = 400;
+      throw err;
+    }
+
+    // Delegate OTP generation + sending to MfaController
+    const { MfaController } = await import("./mfaController");
+    const mfaCtrl = new MfaController();
+    await mfaCtrl.sendOtp(user.id, method);
   }
 
   // ── Refresh token ─────────────────────────────────────────
@@ -263,8 +349,6 @@ export class AuthController {
       .update(users)
       .set({ emailVerified: true, emailVerifyToken: null })
       .where(eq(users.id, user.id));
-
-
   }
 
   // ── Forgot password ───────────────────────────────────────
@@ -346,8 +430,10 @@ export class AuthController {
   // ── Issue JWT + refresh token ─────────────────────────────
   async issueTokens(user: any): Promise<AuthTokens> {
     // Parse permissions from DB (stored as JSON string)
-    let permissions: string[] = []
-    try { permissions = JSON.parse(user.permissions ?? '[]') } catch {}
+    let permissions: string[] = [];
+    try {
+      permissions = JSON.parse(user.permissions ?? "[]");
+    } catch {}
 
     const payload: JWTPayload = {
       sub: user.id,

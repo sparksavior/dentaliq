@@ -26,7 +26,15 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
-  totpCode: z.string().length(6).optional(), // required if MFA enabled
+  totpCode: z.string().length(6).optional(),
+  mfaMethod: z.enum(["totp", "email", "sms"]).optional(),
+  otpCode: z.string().length(6).optional(),
+});
+
+const loginSendOtpSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+  method: z.enum(["email", "sms"]),
 });
 
 const forgotPasswordSchema = z.object({
@@ -82,12 +90,19 @@ export async function authRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const body = loginSchema.parse(req.body);
-      const { tokens, user, requiresMfa } = await ctrl.login(body, req.ip);
+      const { tokens, user, requiresMfa, mfaMethods } = (await ctrl.login(
+        body,
+        req.ip,
+      )) as any;
 
       if (requiresMfa) {
         return reply.code(202).send({
           success: true,
-          data: { requiresMfa: true, message: "Please provide your MFA code" },
+          data: {
+            requiresMfa: true,
+            mfaMethods: mfaMethods ?? [],
+            message: "Please provide your MFA code",
+          },
         });
       }
 
@@ -108,6 +123,30 @@ export async function authRoutes(app: FastifyInstance) {
           user,
         },
       });
+    },
+  );
+
+  // ── Login: send OTP (unauthenticated — validates creds first) ──
+  app.post(
+    "/login/send-otp",
+    { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
+    async (req, reply) => {
+      const { email, password, method } = loginSendOtpSchema.parse(req.body);
+      try {
+        await ctrl.loginSendOtp(email, password, method);
+        return reply.send({
+          success: true,
+          data: { message: `Verification code sent via ${method}.` },
+        });
+      } catch (err: any) {
+        const status = err.statusCode ?? 500;
+        return reply
+          .code(status)
+          .send({
+            success: false,
+            error: err.message ?? "Failed to send code",
+          });
+      }
     },
   );
 
