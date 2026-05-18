@@ -2534,12 +2534,23 @@ function SignupPage() {
         </div>
       </div>
 
-      {/* Slide carousel */}
-      <div style={{ position: "relative", zIndex: 10, overflow: "hidden" }}>
+      {/* Slide carousel
+          Strategy: track width = N × 100% of outer; each slide = 1/N of track = 100% of outer.
+          translateX is applied to the track: moving by -(i/N × 100%) = exactly i slide widths.
+          This avoids 100vw (scrollbar gap) and works correctly on resize. */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 10,
+          overflow: "hidden",
+          width: "100%",
+        }}
+      >
         <div
           style={{
             display: "flex",
-            transform: `translateX(-${stepIdx * 100}%)`,
+            width: `${steps.length * 100}%`,
+            transform: `translateX(${-(stepIdx / steps.length) * 100}%)`,
             transition: "transform 0.48s cubic-bezier(0.4,0,0.2,1)",
             willChange: "transform",
           }}
@@ -2548,15 +2559,16 @@ function SignupPage() {
             <div
               key={s.id}
               style={{
-                width: "100%",
+                width: `${100 / steps.length}%`,
                 flexShrink: 0,
                 display: "flex",
                 justifyContent: "center",
+                alignItems: "flex-start",
                 padding: "36px 16px 72px",
                 minHeight: "calc(100vh - 142px)",
               }}
             >
-              <div style={{ maxWidth: 460, width: "100%" }}>
+              <div style={{ maxWidth: 480, width: "100%" }}>
                 {renderStep(s.id as StepId)}
               </div>
             </div>
