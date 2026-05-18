@@ -1,65 +1,52 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense, type FormEvent } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { authApi, tenantsApi, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LaunchScreen } from "@/components/LaunchScreen";
 
-const STEP_NAMES_DEFAULT = [
-  "Account",
-  "Verify",
-  "Clinics",
-  "Connect",
-  "Security",
-  "Done",
-];
-const STEP_NAMES_CORTEX = [
-  "Account",
-  "Verify",
-  "Agents",
-  "Clinics",
-  "Connect",
-  "Security",
-  "Done",
-];
+// ── Static data ────────────────────────────────────────────────────────────────
 
 const PLANS = [
   {
-    id: "starter",
+    id: "starter" as const,
     name: "Starter",
     price: 199,
-    desc: "1 clinic location",
-    features: ["Cost estimator", "Claim risk checks", "Basic analytics"],
+    desc: "1 location",
     color: "#0f766e",
+    popular: false,
+    features: ["Cost estimator", "Claim risk checks", "Basic analytics"],
   },
   {
-    id: "pro",
+    id: "pro" as const,
     name: "Pro",
     price: 349,
     desc: "Up to 3 locations",
+    color: "#0e7490",
+    popular: true,
     features: [
       "Everything in Starter",
       "AI pre-auth letters",
       "Priority support",
       "Multi-location",
     ],
-    color: "#0e7490",
-    popular: true,
   },
   {
-    id: "cortex",
+    id: "cortex" as const,
     name: "Cortex",
     price: 299,
     desc: "AI Digital Workforce",
+    color: "#6366f1",
+    popular: false,
     features: [
       "Everything in Pro",
       "Cortex Command Center",
       "Autonomous Billing Agent",
       "Outcome-based billing",
     ],
-    color: "#6366f1",
   },
 ];
 
@@ -68,18 +55,16 @@ const CORTEX_AGENTS = [
     id: "billing",
     name: "Cortex Billing Agent",
     avatar: "💰",
-    role: "Revenue Compliance Specialist",
-    gradient: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-    status: "available",
+    role: "Revenue Compliance",
+    gradient: "linear-gradient(135deg,#6366f1,#8b5cf6)",
     fee: "Included",
   },
   {
     id: "recall",
     name: "Cortex Recall Agent",
     avatar: "📞",
-    role: "Patient Reactivation Specialist",
-    gradient: "linear-gradient(135deg, #0ea5e9, #06b6d4)",
-    status: "available",
+    role: "Patient Reactivation",
+    gradient: "linear-gradient(135deg,#0ea5e9,#06b6d4)",
     fee: "$99/mo",
   },
   {
@@ -87,8 +72,7 @@ const CORTEX_AGENTS = [
     name: "Cortex Review Agent",
     avatar: "⭐",
     role: "Reputation Manager",
-    gradient: "linear-gradient(135deg, #f59e0b, #f97316)",
-    status: "available",
+    gradient: "linear-gradient(135deg,#f59e0b,#f97316)",
     fee: "$99/mo",
   },
   {
@@ -96,17 +80,15 @@ const CORTEX_AGENTS = [
     name: "Cortex Supply Agent",
     avatar: "📦",
     role: "Inventory Optimizer",
-    gradient: "linear-gradient(135deg, #10b981, #059669)",
-    status: "available",
+    gradient: "linear-gradient(135deg,#10b981,#059669)",
     fee: "$99/mo",
   },
   {
     id: "treatment",
-    name: "Cortex Treatment Coordinator",
+    name: "Treatment Coordinator",
     avatar: "🦷",
-    role: "Case Acceptance Specialist",
-    gradient: "linear-gradient(135deg, #ec4899, #f43f5e)",
-    status: "available",
+    role: "Case Acceptance",
+    gradient: "linear-gradient(135deg,#ec4899,#f43f5e)",
     fee: "$99/mo",
   },
   {
@@ -114,18 +96,34 @@ const CORTEX_AGENTS = [
     name: "Cortex Hygienist Agent",
     avatar: "📅",
     role: "Schedule Optimizer",
-    gradient: "linear-gradient(135deg, #14b8a6, #0d9488)",
-    status: "available",
+    gradient: "linear-gradient(135deg,#14b8a6,#0d9488)",
     fee: "$99/mo",
   },
 ];
 
-const inputStyle: React.CSSProperties = {
+const ALL_STEPS = [
+  { id: "name", label: "Name", cortexOnly: false },
+  { id: "credentials", label: "Account", cortexOnly: false },
+  { id: "verify", label: "Verify", cortexOnly: false },
+  { id: "phone", label: "Phone", cortexOnly: false },
+  { id: "plan", label: "Plan", cortexOnly: false },
+  { id: "clinic", label: "Clinic", cortexOnly: false },
+  { id: "agents", label: "Agents", cortexOnly: true },
+  { id: "security", label: "Security", cortexOnly: false },
+  { id: "connect", label: "Connect", cortexOnly: false },
+  { id: "launch", label: "Launch", cortexOnly: false },
+] as const;
+
+type StepId = (typeof ALL_STEPS)[number]["id"];
+
+// ── Presentational helpers (module-level, stable refs) ─────────────────────────
+
+const INP: React.CSSProperties = {
   width: "100%",
-  padding: "11px 14px",
+  padding: "13px 16px",
   border: "1.5px solid var(--color-border-secondary)",
-  borderRadius: 10,
-  fontSize: 14,
+  borderRadius: 12,
+  fontSize: 15,
   color: "var(--color-text-primary)",
   background: "var(--color-input-bg)",
   outline: "none",
@@ -133,177 +131,360 @@ const inputStyle: React.CSSProperties = {
   transition: "border-color 0.15s, box-shadow 0.15s",
 };
 
+function FancyInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      style={{ ...INP, ...props.style }}
+      onFocus={(e) => {
+        e.target.style.borderColor = "var(--color-accent)";
+        e.target.style.boxShadow = "0 0 0 3px rgba(15,118,110,0.12)";
+        props.onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        e.target.style.borderColor = "var(--color-border-secondary)";
+        e.target.style.boxShadow = "none";
+        props.onBlur?.(e);
+      }}
+    />
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label
+      style={{
+        fontSize: 13,
+        fontWeight: 500,
+        color: "var(--color-text-secondary)",
+        display: "block",
+        marginBottom: 6,
+      }}
+    >
+      {children}
+    </label>
+  );
+}
+
+function PrimaryBtn({
+  children,
+  onClick,
+  disabled,
+  type = "button",
+  accentOverride,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
+  accentOverride?: string;
+}) {
+  const grad = accentOverride ?? "linear-gradient(135deg, #0f766e, #0d9488)";
+  const shadow = accentOverride
+    ? "0 4px 16px rgba(99,102,241,0.35)"
+    : "0 4px 16px rgba(15,118,110,0.3)";
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        width: "100%",
+        padding: "14px",
+        borderRadius: 12,
+        border: "none",
+        background: disabled ? "var(--color-border-secondary)" : grad,
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        letterSpacing: "-0.01em",
+        transition: "all 0.2s",
+        boxShadow: disabled ? "none" : shadow,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.transform = "translateY(-1px)";
+          e.currentTarget.style.boxShadow = shadow
+            .replace("0.3)", "0.45)")
+            .replace("0.35)", "0.5)");
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "";
+        e.currentTarget.style.boxShadow = disabled ? "none" : shadow;
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GhostBtn({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        padding: "12px",
+        borderRadius: 12,
+        border: "1.5px solid var(--color-border-secondary)",
+        background: "transparent",
+        color: "var(--color-text-secondary)",
+        fontSize: 14,
+        cursor: "pointer",
+        transition: "border-color 0.15s, color 0.15s",
+        marginTop: 8,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = "var(--color-accent)";
+        e.currentTarget.style.color = "var(--color-accent)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+        e.currentTarget.style.color = "var(--color-text-secondary)";
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StepHeader({
+  icon,
+  title,
+  sub,
+}: {
+  icon: string;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <div
+      style={{
+        marginBottom: "2rem",
+        animation: "stepFadeUp 0.4s ease-out both",
+      }}
+    >
+      <div
+        style={{
+          width: 68,
+          height: 68,
+          borderRadius: 22,
+          background: "var(--color-accent-muted)",
+          border: "1.5px solid rgba(15,118,110,0.3)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 34,
+          marginBottom: 22,
+          boxShadow: "0 4px 20px rgba(15,118,110,0.15)",
+        }}
+      >
+        {icon}
+      </div>
+      <h1
+        style={{
+          fontSize: 30,
+          fontWeight: 800,
+          letterSpacing: "-0.04em",
+          color: "var(--color-text-primary)",
+          marginBottom: 10,
+          lineHeight: 1.1,
+        }}
+      >
+        {title}
+      </h1>
+      <p
+        style={{
+          fontSize: 15,
+          color: "var(--color-text-secondary)",
+          lineHeight: 1.55,
+          margin: 0,
+        }}
+      >
+        {sub}
+      </p>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 function SignupPage() {
   const router = useRouter();
   const params = useSearchParams();
   const { setSession } = useAuth();
 
-  const [step, setStep] = useState(0);
   const [plan, setPlan] = useState<"starter" | "pro" | "enterprise" | "cortex">(
     (params.get("plan") as any) ?? "pro",
   );
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(["billing"]);
+
+  // Filter steps based on plan
+  const steps = ALL_STEPS.filter((s) => !s.cortexOnly || plan === "cortex");
+  const [stepIdx, setStepIdx] = useState(0);
+  const currentId = steps[Math.min(stepIdx, steps.length - 1)]?.id ?? "name";
+
+  // Form
   const [form, setForm] = useState({
     name: "",
-    clinic: "",
     email: "",
-    phone: "",
     password: "",
     confirm: "",
+    phone: "",
+    clinic: "",
+    address: "",
   });
-  const [verifyCode, setVerifyCode] = useState(["", "", "", "", "", ""]);
-  const [pmsStatus, setPmsStatus] = useState<
-    "idle" | "connecting" | "connected"
-  >("idle");
-  const [pmsProgress, setPmsProgress] = useState(0);
+  const [extraClinics, setExtraClinics] = useState<string[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>(["billing"]);
+
+  // Backend state
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [mfaData, setMfaData] = useState<{
     secret: string;
     qrCodeDataUrl: string;
   } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
-  const [extraClinics, setExtraClinics] = useState<string[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [pmsStatus, setPmsStatus] = useState<
+    "idle" | "connecting" | "connected"
+  >("idle");
+  const [pmsProgress, setPmsProgress] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // UI state
   const [emailVerified, setEmailVerified] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [showLaunch, setShowLaunch] = useState(false);
 
+  // Poll email verification
   useEffect(() => {
-    if (step !== 1 || !sessionToken || emailVerified) return;
-
-    const interval = setInterval(async () => {
+    if (currentId !== "verify" || !sessionToken || emailVerified) return;
+    const iv = setInterval(async () => {
       try {
-        const user = await authApi.me(sessionToken);
-        if (user.emailVerified) {
-          setEmailVerified(true);
-        }
-      } catch {
-        // ignore
-      }
+        const u = await authApi.me(sessionToken);
+        if (u.emailVerified) setEmailVerified(true);
+      } catch {}
     }, 3000);
+    return () => clearInterval(iv);
+  }, [currentId, sessionToken, emailVerified]);
 
-    return () => clearInterval(interval);
-  }, [step, sessionToken, emailVerified]);
+  // Load MFA QR when entering security step
+  useEffect(() => {
+    if (currentId !== "security" || !sessionToken || mfaData) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"}/auth/mfa/setup`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${sessionToken}` },
+            credentials: "include",
+          },
+        );
+        const json = await res.json();
+        if (json.success) setMfaData(json.data);
+      } catch {}
+    })();
+  }, [currentId, sessionToken]);
 
-  const set =
+  const setF =
     (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const selectedPlan = PLANS.find((p) => p.id === plan) ?? PLANS[1];
-  const isCortex = plan === "cortex";
-  const STEP_NAMES = isCortex ? STEP_NAMES_CORTEX : STEP_NAMES_DEFAULT;
-  // Step offsets: for cortex, clinics=3 pms=4 mfa=5 done=6; for others, clinics=2 pms=3 mfa=4 done=5
-  const S_AGENTS = isCortex ? 2 : -1;
-  const S_CLINICS = isCortex ? 3 : 2;
-  const S_PMS = isCortex ? 4 : 3;
-  const S_MFA = isCortex ? 5 : 4;
-  const S_DONE = isCortex ? 6 : 5;
-
-  async function handleRegister(e: FormEvent) {
-    e.preventDefault();
+  const advance = () => {
     setError("");
-    if (form.password !== form.confirm)
-      return setError("Passwords do not match.");
+    setStepIdx((i) => Math.min(i + 1, steps.length - 1));
+  };
+  const goBack = () => {
+    setError("");
+    setStepIdx((i) => Math.max(i - 1, 0));
+  };
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  async function submitName() {
+    if (!form.name.trim()) {
+      setError("Please enter your full name.");
+      return;
+    }
+    setError("");
+    advance();
+  }
+
+  async function submitCredentials() {
+    setError("");
+    if (!form.email.trim()) return setError("Please enter your work email.");
     if (form.password.length < 8)
       return setError("Password must be at least 8 characters.");
+    if (form.password !== form.confirm)
+      return setError("Passwords do not match.");
     setLoading(true);
     try {
       await authApi.register({
         name: form.name,
         email: form.email,
         password: form.password,
-        clinicName: form.clinic,
+        clinicName: "My Clinic", // updated in clinic step
         plan,
       });
       const result = await authApi.login({
         email: form.email,
         password: form.password,
       });
-      if (!("requiresMfa" in result)) {
-        setSessionToken(result.accessToken);
-      }
-      setStep(1);
+      if (!("requiresMfa" in result)) setSessionToken(result.accessToken);
+      advance();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Registration failed");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Registration failed. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  function handleVerify() {
-    setStep(isCortex ? S_AGENTS : S_CLINICS);
-  }
-
-  async function handleSaveClinics() {
-    if (!sessionToken) {
-      setStep(S_PMS);
-      return;
-    }
-    setLoading(true);
+  async function submitClinic() {
     setError("");
+    if (!form.clinic.trim()) return setError("Please enter your clinic name.");
+    setLoading(true);
     try {
-      for (const name of extraClinics) {
-        if (name.trim()) {
-          await tenantsApi.createClinic(sessionToken, { name: name.trim() });
+      if (sessionToken) {
+        await tenantsApi.updateTenant(sessionToken, {
+          name: form.clinic.trim(),
+        });
+        for (const n of extraClinics) {
+          if (n.trim())
+            await tenantsApi.createClinic(sessionToken, {
+              name: n.trim(),
+              address: form.address.trim() || undefined,
+            });
         }
       }
-      setStep(S_PMS);
+      advance();
     } catch (err: any) {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Failed to save additional locations",
+          : "Failed to save clinic. Please try again.",
       );
     } finally {
       setLoading(false);
     }
   }
 
-  function connectPms() {
-    setPmsStatus("connecting");
-    setPmsProgress(0);
-    let p = 0;
-    timerRef.current = setInterval(() => {
-      p += 12;
-      setPmsProgress(p);
-      if (p >= 100) {
-        clearInterval(timerRef.current!);
-        setPmsStatus("connected");
-      }
-    }, 280);
-  }
-
-  function skipPms() {
-    loadMfa();
-    setStep(S_MFA);
-  }
-
-  async function loadMfa() {
-    if (!sessionToken || mfaData) return;
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:3001"}/auth/mfa/setup`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${sessionToken}` },
-          credentials: "include",
-        },
-      );
-      const json = await res.json();
-      if (json.success) setMfaData(json.data);
-    } catch {
-      /* MFA is optional */
-    }
-  }
-
-  async function enableMfa() {
-    if (!sessionToken || !mfaData) {
-      setStep(S_DONE);
-      return;
-    }
-    if (!mfaCode || mfaCode.length !== 6) {
-      setStep(S_DONE);
+  async function submitMfa() {
+    if (!sessionToken || !mfaData || mfaCode.length !== 6) {
+      advance();
       return;
     }
     setLoading(true);
@@ -320,713 +501,1006 @@ function SignupPage() {
           body: JSON.stringify({ code: mfaCode, secret: mfaData.secret }),
         },
       );
-    } catch {
-      /* non-blocking */
-    }
-    setStep(S_DONE);
+    } catch {}
     setLoading(false);
+    advance();
+  }
+
+  function startPms() {
+    setPmsStatus("connecting");
+    setPmsProgress(0);
+    let p = 0;
+    timerRef.current = setInterval(() => {
+      p += 12;
+      setPmsProgress(p);
+      if (p >= 100) {
+        clearInterval(timerRef.current!);
+        setPmsStatus("connected");
+      }
+    }, 280);
   }
 
   async function goToDashboard() {
     if (sessionToken) {
       try {
-        const user = await authApi.me(sessionToken);
-        setSession(sessionToken, user);
-      } catch {
-        /* session already set */
-      }
+        const u = await authApi.me(sessionToken);
+        setSession(sessionToken, u);
+      } catch {}
     }
-    // Flag: show insight popup + trigger tour guide on first dashboard visit
     sessionStorage.setItem("diq_fresh_login", "1");
-    router.push("/dashboard");
+    setShowLaunch(true);
   }
 
-  return (
+  // ── Shared inline helpers ────────────────────────────────────────────────────
+
+  const ErrorBanner = error ? (
     <div
       style={{
-        minHeight: "100vh",
-        background: "var(--color-background-secondary)",
-        color: "var(--color-text-primary)",
-        fontFamily: "system-ui",
+        marginBottom: 16,
+        padding: "12px 16px",
+        background: "rgba(239,68,68,0.08)",
+        border: "1px solid rgba(239,68,68,0.25)",
+        borderRadius: 10,
+        fontSize: 14,
+        color: "#ef4444",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        animation: "stepFadeUp 0.25s ease-out",
       }}
     >
-      {/* Top nav */}
-      <div
+      <span>⚠</span> {error}
+    </div>
+  ) : null;
+
+  const BackLink =
+    stepIdx > 0 ? (
+      <button
+        onClick={goBack}
         style={{
-          borderBottom: "1px solid var(--color-border-secondary)",
-          background: "var(--color-background-primary)",
-          padding: "0 2rem",
-          height: 60,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          background: "none",
+          border: "none",
+          color: "var(--color-text-tertiary)",
+          fontSize: 13,
+          cursor: "pointer",
+          marginTop: 14,
+          width: "100%",
+          padding: "6px 0",
+          transition: "color 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "var(--color-text-secondary)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--color-text-tertiary)";
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 9,
-              background: "linear-gradient(135deg, #0f766e, #0d9488)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 16,
-              fontWeight: 700,
-              color: "#fff",
-            }}
-          >
-            +
-          </div>
-          <span
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              color: "var(--color-text-primary)",
-              letterSpacing: "-0.03em",
-            }}
-          >
-            DentalIQ
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <ThemeToggle storageKey="diq_pub_theme" variant="pill" />
-          <a
-            href="/login"
-            style={{
-              fontSize: 14,
-              color: "var(--color-text-secondary)",
-              textDecoration: "none",
-            }}
-          >
-            Already have an account?{" "}
-            <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
-              Sign in
-            </span>
-          </a>
-        </div>
-      </div>
+        ← Back
+      </button>
+    ) : null;
 
-      <div
-        style={{ maxWidth: 640, margin: "0 auto", padding: "2.5rem 1.5rem" }}
-      >
-        {/* Step progress */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            marginBottom: "2.5rem",
-            gap: 0,
-          }}
-        >
-          {STEP_NAMES.map((name, i) => (
+  // ── Step renderers ────────────────────────────────────────────────────────────
+
+  function renderStep(id: StepId) {
+    switch (id) {
+      // ── 0: Name ──────────────────────────────────────────────────────────────
+      case "name":
+        return (
+          <>
+            <StepHeader
+              icon="👋"
+              title="Welcome to DentalIQ"
+              sub="Let's get you set up in minutes. First — what's your name?"
+            />
+            {ErrorBanner}
+            <div style={{ marginBottom: 20 }}>
+              <FieldLabel>Your full name</FieldLabel>
+              <FancyInput
+                autoFocus
+                placeholder="Dr. Sarah Chen"
+                value={form.name}
+                onChange={setF("name")}
+                onKeyDown={(e) => e.key === "Enter" && submitName()}
+                style={{ fontSize: 18, padding: "16px 18px" }}
+              />
+            </div>
+            <PrimaryBtn onClick={submitName} disabled={!form.name.trim()}>
+              Let's go →
+            </PrimaryBtn>
+          </>
+        );
+
+      // ── 1: Credentials + Plan ─────────────────────────────────────────────────
+      case "credentials":
+        return (
+          <>
+            <StepHeader
+              icon="🔑"
+              title={`Hi${form.name ? `, ${form.name.split(" ")[0]}` : ""}!`}
+              sub="Set up your login credentials and choose a plan."
+            />
+            {ErrorBanner}
             <div
-              key={name}
               style={{
                 display: "flex",
-                alignItems: "center",
-                flex: i < STEP_NAMES.length - 1 ? 1 : "none",
+                flexDirection: "column",
+                gap: 14,
+                marginBottom: 20,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
+              <div>
+                <FieldLabel>Work email</FieldLabel>
+                <FancyInput
+                  autoFocus
+                  type="email"
+                  placeholder="you@yourclinic.ca"
+                  value={form.email}
+                  onChange={setF("email")}
+                />
+              </div>
+              <div>
+                <FieldLabel>Password</FieldLabel>
+                <div style={{ position: "relative" }}>
+                  <FancyInput
+                    type={showPw ? "text" : "password"}
+                    placeholder="Min. 8 characters"
+                    value={form.password}
+                    onChange={setF("password")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((v) => !v)}
+                    style={{
+                      position: "absolute",
+                      right: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 16,
+                      color: "var(--color-text-tertiary)",
+                      padding: 0,
+                    }}
+                  >
+                    {showPw ? "🙈" : "👁"}
+                  </button>
+                </div>
+                {form.password && (
+                  <div style={{ marginTop: 6, display: "flex", gap: 4 }}>
+                    {[4, 8, 12].map((threshold, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          flex: 1,
+                          height: 3,
+                          borderRadius: 2,
+                          background:
+                            form.password.length >= threshold
+                              ? ["#ef4444", "#f59e0b", "#10b981"][i]
+                              : "var(--color-border-secondary)",
+                          transition: "background 0.3s",
+                        }}
+                      />
+                    ))}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--color-text-tertiary)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {form.password.length < 4
+                        ? "Too short"
+                        : form.password.length < 8
+                          ? "Weak"
+                          : form.password.length < 12
+                            ? "Good"
+                            : "Strong"}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <FieldLabel>Confirm password</FieldLabel>
+                <FancyInput
+                  type="password"
+                  placeholder="Repeat your password"
+                  value={form.confirm}
+                  onChange={setF("confirm")}
+                  style={{
+                    borderColor:
+                      form.confirm && form.confirm !== form.password
+                        ? "#ef4444"
+                        : undefined,
+                  }}
+                />
+                {form.confirm && form.confirm !== form.password && (
+                  <div style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>
+                    Passwords don't match
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <PrimaryBtn
+              onClick={submitCredentials}
+              disabled={
+                loading ||
+                !form.email ||
+                !form.password ||
+                form.password !== form.confirm ||
+                form.password.length < 8
+              }
+            >
+              {loading ? "Creating account…" : "Create account →"}
+            </PrimaryBtn>
+            {BackLink}
+          </>
+        );
+
+      // ── 2: Email verification ─────────────────────────────────────────────────
+      case "verify":
+        return (
+          <>
+            <StepHeader
+              icon="✉️"
+              title="Check your inbox"
+              sub={`We sent a verification link to ${form.email}. Click it to continue.`}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                marginBottom: 36,
+              }}
+            >
+              <div style={{ position: "relative", width: 100, height: 100 }}>
+                {/* Pulse rings */}
+                {!emailVerified && (
+                  <>
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: -12,
+                        borderRadius: "50%",
+                        border: "2px solid var(--color-accent)",
+                        opacity: 0,
+                        animation: "pulseRing 2.5s ease-out infinite",
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: -24,
+                        borderRadius: "50%",
+                        border: "2px solid var(--color-accent)",
+                        opacity: 0,
+                        animation: "pulseRing 2.5s ease-out infinite 0.6s",
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: -36,
+                        borderRadius: "50%",
+                        border: "2px solid var(--color-accent)",
+                        opacity: 0,
+                        animation: "pulseRing 2.5s ease-out infinite 1.2s",
+                      }}
+                    />
+                  </>
+                )}
                 <div
                   style={{
-                    width: 32,
-                    height: 32,
+                    width: 100,
+                    height: 100,
                     borderRadius: "50%",
+                    background: emailVerified
+                      ? "rgba(16,185,129,0.12)"
+                      : "var(--color-accent-muted)",
+                    border: `2px solid ${emailVerified ? "#10b981" : "var(--color-accent)"}`,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    background:
-                      i < step
-                        ? "var(--color-accent)"
-                        : i === step
-                          ? "linear-gradient(135deg, #0f766e, #0d9488)"
-                          : "var(--color-background-primary)",
-                    color: i <= step ? "#fff" : "var(--color-text-secondary)",
-                    border:
-                      i > step
-                        ? "2px solid var(--color-border-secondary)"
-                        : "none",
-                    boxShadow:
-                      i === step ? "0 0 0 4px rgba(15,118,110,0.15)" : "none",
-                    transition: "all 0.3s",
+                    fontSize: 44,
+                    transition: "all 0.4s",
+                    boxShadow: emailVerified
+                      ? "0 0 0 6px rgba(16,185,129,0.12)"
+                      : "0 0 0 6px rgba(15,118,110,0.1)",
                   }}
                 >
-                  {i < step ? "✓" : i + 1}
+                  {emailVerified ? "✅" : "✉️"}
                 </div>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: i === step ? 600 : 400,
-                    color:
-                      i === step
-                        ? "var(--color-accent)"
-                        : i < step
-                          ? "var(--color-text-secondary)"
-                          : "var(--color-text-secondary)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {name}
-                </span>
               </div>
-              {i < STEP_NAMES.length - 1 && (
-                <div
-                  style={{
-                    flex: 1,
-                    height: 2,
-                    background:
-                      i < step
-                        ? "var(--color-accent)"
-                        : "var(--color-border-secondary)",
-                    marginBottom: 18,
-                    transition: "background 0.3s",
-                  }}
-                />
-              )}
             </div>
-          ))}
-        </div>
 
-        {error && (
-          <div
-            style={{
-              marginBottom: 20,
-              padding: "12px 16px",
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: 12,
-              fontSize: 14,
-              color: "#dc2626",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <span>⚠</span> {error}
-          </div>
-        )}
-
-        {/* Step 0: Account details */}
-        {step === 0 && (
-          <form onSubmit={handleRegister}>
             <div
               style={{
                 background: "var(--color-background-primary)",
-                border: "1px solid var(--color-border-secondary)",
-                borderRadius: 16,
-                padding: "2rem",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                border: `1px solid ${emailVerified ? "rgba(16,185,129,0.4)" : "var(--color-border-secondary)"}`,
+                borderRadius: 14,
+                padding: "20px 24px",
+                marginBottom: 20,
+                textAlign: "center",
+                transition: "border-color 0.4s",
               }}
             >
-              <h2
-                style={{
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: "var(--color-text-primary)",
-                  marginBottom: 4,
-                  letterSpacing: "-0.03em",
-                }}
-              >
-                Create your account
-              </h2>
-              <p
-                style={{
-                  fontSize: 14,
-                  color: "var(--color-text-secondary)",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                Start your 14-day free trial — no credit card required.
-              </p>
-
-              {/* Plan selector */}
-              <div style={{ marginBottom: "1.5rem" }}>
-                <label
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: "var(--color-text-secondary)",
-                    display: "block",
-                    marginBottom: 8,
-                  }}
-                >
-                  Choose your plan
-                </label>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: 8,
-                  }}
-                >
-                  {PLANS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setPlan(p.id as any)}
-                      style={{
-                        padding: "12px 8px",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        textAlign: "left",
-                        position: "relative",
-                        border:
-                          plan === p.id
-                            ? `2px solid var(--color-accent)`
-                            : "1.5px solid var(--color-border-secondary)",
-                        background:
-                          plan === p.id
-                            ? "var(--color-accent-muted)"
-                            : "var(--color-background-primary)",
-                        transition: "all 0.2s",
-                        boxShadow: plan === p.id ? "0 4px 14px rgba(15,118,110,0.15)" : "none",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (plan !== p.id) {
-                          e.currentTarget.style.borderColor = "var(--color-accent)";
-                          e.currentTarget.style.transform = "translateY(-1px)";
-                          e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.1)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (plan !== p.id) {
-                          e.currentTarget.style.borderColor = "var(--color-border-secondary)";
-                          e.currentTarget.style.transform = "";
-                          e.currentTarget.style.boxShadow = "none";
-                        }
-                      }}
-                    >
-                      {p.popular && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: -10,
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            background: "var(--color-accent)",
-                            color: "#fff",
-                            fontSize: 10,
-                            fontWeight: 600,
-                            padding: "2px 8px",
-                            borderRadius: 20,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          POPULAR
-                        </div>
-                      )}
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 600,
-                          color:
-                            plan === p.id
-                              ? "var(--color-accent)"
-                              : "var(--color-text-primary)",
-                          marginBottom: 2,
-                        }}
-                      >
-                        {p.name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 18,
-                          fontWeight: 700,
-                          color:
-                            plan === p.id
-                              ? "var(--color-accent)"
-                              : "var(--color-text-primary)",
-                          marginBottom: 2,
-                        }}
-                      >
-                        {p.price ? `$${p.price}` : "Custom"}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "var(--color-text-secondary)",
-                        }}
-                      >
-                        {p.desc}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "10px 14px",
-                    background: "var(--color-accent-muted)",
-                    borderRadius: 8,
-                    border: "1px solid var(--color-accent)",
-                  }}
-                >
+              {emailVerified ? (
+                <>
                   <div
                     style={{
-                      fontSize: 12,
-                      color: "var(--color-accent)",
-                      fontWeight: 500,
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: "#10b981",
                       marginBottom: 4,
                     }}
                   >
-                    {selectedPlan.name} includes:
+                    Email verified! 🎉
                   </div>
-                  {selectedPlan.features.map((f) => (
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    You're all confirmed. Click Continue.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      marginBottom: 6,
+                    }}
+                  >
                     <div
-                      key={f}
                       style={{
-                        fontSize: 12,
-                        color: "var(--color-accent)",
-                        marginBottom: 2,
+                        width: 16,
+                        height: 16,
+                        border: "2.5px solid var(--color-accent)",
+                        borderTopColor: "transparent",
+                        borderRadius: "50%",
+                        animation: "spin 0.8s linear infinite",
+                        flexShrink: 0,
                       }}
-                    >
-                      ✓ {f}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                  marginBottom: 0,
-                }}
-              >
-                <div>
-                  <label
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--color-text-secondary)",
-                      display: "block",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Full name
-                  </label>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-input-bg)",
-                      color: "var(--color-text-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                    }}
-                    placeholder="Dr. Sarah Chen"
-                    value={form.name}
-                    onChange={set("name")}
-                    required
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--color-text-secondary)",
-                      display: "block",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Clinic name
-                  </label>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-input-bg)",
-                      color: "var(--color-text-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                    }}
-                    placeholder="Lakeview Dental Group"
-                    value={form.clinic}
-                    onChange={set("clinic")}
-                    required
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--color-text-secondary)",
-                      display: "block",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Work email
-                  </label>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-input-bg)",
-                      color: "var(--color-text-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                    }}
-                    type="email"
-                    placeholder="you@yourclinic.ca"
-                    value={form.email}
-                    onChange={set("email")}
-                    required
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--color-text-secondary)",
-                      display: "block",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Phone{" "}
+                    />
                     <span
                       style={{
-                        color: "var(--color-text-secondary)",
+                        fontSize: 15,
+                        fontWeight: 600,
+                        color: "var(--color-text-primary)",
+                      }}
+                    >
+                      Waiting for verification…
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    Check your inbox and spam folder.
+                  </div>
+                </>
+              )}
+            </div>
+
+            <PrimaryBtn onClick={advance} disabled={!emailVerified}>
+              {emailVerified ? "Continue →" : "Waiting for email verification…"}
+            </PrimaryBtn>
+          </>
+        );
+
+      // ── 3: Phone ──────────────────────────────────────────────────────────────
+      case "phone":
+        return (
+          <>
+            <StepHeader
+              icon="📱"
+              title="Your phone number"
+              sub="Used for account recovery and SMS two-factor authentication."
+            />
+            {ErrorBanner}
+            <div style={{ marginBottom: 20 }}>
+              <FieldLabel>
+                Phone number{" "}
+                <span
+                  style={{
+                    color: "var(--color-text-tertiary)",
+                    fontWeight: 400,
+                  }}
+                >
+                  (optional)
+                </span>
+              </FieldLabel>
+              <FancyInput
+                autoFocus
+                type="tel"
+                placeholder="+1 (416) 555-0100"
+                value={form.phone}
+                onChange={setF("phone")}
+                onKeyDown={(e) => e.key === "Enter" && advance()}
+                style={{ fontSize: 18, padding: "16px 18px" }}
+              />
+            </div>
+            <PrimaryBtn onClick={advance}>Continue →</PrimaryBtn>
+            <GhostBtn onClick={advance}>Skip for now</GhostBtn>
+            {BackLink}
+          </>
+        );
+
+      // ── 4: Plan selection ─────────────────────────────────────────────────────
+      case "plan":
+        return (
+          <>
+            <StepHeader
+              icon="💎"
+              title="Choose your plan"
+              sub="14-day free trial on every plan. No credit card required."
+            />
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                marginBottom: 20,
+              }}
+            >
+              {PLANS.map((p) => {
+                const sel = plan === p.id;
+                const isCortexPlan = p.id === "cortex";
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPlan(p.id)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0",
+                      borderRadius: 16,
+                      border: sel
+                        ? `2px solid ${isCortexPlan ? "#6366f1" : "var(--color-accent)"}`
+                        : "1.5px solid var(--color-border-secondary)",
+                      background: sel
+                        ? isCortexPlan
+                          ? "rgba(99,102,241,0.06)"
+                          : "var(--color-accent-muted)"
+                        : "var(--color-background-primary)",
+                      cursor: "pointer",
+                      transition: "all 0.18s",
+                      boxShadow: sel
+                        ? isCortexPlan
+                          ? "0 6px 24px rgba(99,102,241,0.2)"
+                          : "0 6px 24px rgba(15,118,110,0.18)"
+                        : "none",
+                      overflow: "hidden",
+                      position: "relative",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!sel) {
+                        e.currentTarget.style.borderColor = isCortexPlan
+                          ? "rgba(99,102,241,0.5)"
+                          : "rgba(15,118,110,0.5)";
+                        e.currentTarget.style.transform = "translateY(-1px)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!sel) {
+                        e.currentTarget.style.borderColor =
+                          "var(--color-border-secondary)";
+                        e.currentTarget.style.transform = "";
+                      }
+                    }}
+                  >
+                    {/* Popular badge */}
+                    {p.popular && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          right: 0,
+                          background: "var(--color-accent)",
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "4px 12px",
+                          borderRadius: "0 14px 0 8px",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        MOST POPULAR
+                      </div>
+                    )}
+                    {isCortexPlan && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          right: 0,
+                          background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "4px 12px",
+                          borderRadius: "0 14px 0 8px",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        AI WORKFORCE
+                      </div>
+                    )}
+
+                    {/* Main card body */}
+                    <div style={{ padding: "18px 20px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 16,
+                        }}
+                      >
+                        {/* Left: name + price */}
+                        <div style={{ minWidth: 100, flexShrink: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 18,
+                              fontWeight: 800,
+                              letterSpacing: "-0.03em",
+                              color: sel
+                                ? isCortexPlan
+                                  ? "#6366f1"
+                                  : "var(--color-accent)"
+                                : "var(--color-text-primary)",
+                              marginBottom: 4,
+                            }}
+                          >
+                            {p.name}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "baseline",
+                              gap: 2,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 28,
+                                fontWeight: 800,
+                                color: sel
+                                  ? isCortexPlan
+                                    ? "#6366f1"
+                                    : "var(--color-accent)"
+                                  : "var(--color-text-primary)",
+                                letterSpacing: "-0.04em",
+                              }}
+                            >
+                              ${p.price}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: "var(--color-text-tertiary)",
+                                fontWeight: 400,
+                              }}
+                            >
+                              /mo
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "var(--color-text-tertiary)",
+                              marginTop: 2,
+                            }}
+                          >
+                            {p.desc}
+                          </div>
+                        </div>
+
+                        {/* Right: features */}
+                        <div style={{ flex: 1 }}>
+                          {p.features.map((f) => (
+                            <div
+                              key={f}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 7,
+                                marginBottom: 5,
+                                fontSize: 13,
+                                color: sel
+                                  ? isCortexPlan
+                                    ? "#818cf8"
+                                    : "var(--color-accent)"
+                                  : "var(--color-text-secondary)",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  flexShrink: 0,
+                                  color:
+                                    isCortexPlan && sel
+                                      ? "#6366f1"
+                                      : "var(--color-accent)",
+                                }}
+                              >
+                                ✓
+                              </span>
+                              {f}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Selection indicator */}
+                        <div
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            flexShrink: 0,
+                            border: `2px solid ${sel ? (isCortexPlan ? "#6366f1" : "var(--color-accent)") : "var(--color-border-secondary)"}`,
+                            background: sel
+                              ? isCortexPlan
+                                ? "#6366f1"
+                                : "var(--color-accent)"
+                              : "transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "#fff",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          {sel ? "✓" : ""}
+                        </div>
+                      </div>
+
+                      {/* Cortex pricing breakdown */}
+                      {isCortexPlan && (
+                        <div
+                          style={{
+                            marginTop: 14,
+                            padding: "12px 14px",
+                            background: sel
+                              ? "rgba(99,102,241,0.08)"
+                              : "var(--color-background-secondary)",
+                            borderRadius: 10,
+                            border: sel
+                              ? "1px solid rgba(99,102,241,0.2)"
+                              : "1px solid var(--color-border-secondary)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: sel
+                                ? "#6366f1"
+                                : "var(--color-text-tertiary)",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.07em",
+                              marginBottom: 8,
+                            }}
+                          >
+                            💳 Cortex Billing Model
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 5,
+                            }}
+                          >
+                            {[
+                              {
+                                label: "Platform base fee",
+                                value: "$299/mo",
+                                sub: "Includes 1 agent for 1st clinic",
+                              },
+                              {
+                                label: "Per approved action",
+                                value: "$1.50",
+                                sub: "Outcome-based — only pay for results",
+                              },
+                              {
+                                label: "Additional agents",
+                                value: "$99/mo",
+                                sub: "Per agent instance, per clinic",
+                              },
+                            ].map((row) => (
+                              <div
+                                key={row.label}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "flex-start",
+                                }}
+                              >
+                                <div>
+                                  <div
+                                    style={{
+                                      fontSize: 12,
+                                      color: sel
+                                        ? "rgba(129,140,248,0.9)"
+                                        : "var(--color-text-secondary)",
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {row.label}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      color: sel
+                                        ? "rgba(99,102,241,0.6)"
+                                        : "var(--color-text-tertiary)",
+                                    }}
+                                  >
+                                    {row.sub}
+                                  </div>
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 14,
+                                    fontWeight: 700,
+                                    color: sel
+                                      ? "#6366f1"
+                                      : "var(--color-text-primary)",
+                                    flexShrink: 0,
+                                    marginLeft: 8,
+                                  }}
+                                >
+                                  {row.value}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 10,
+                              padding: "8px 10px",
+                              background: sel
+                                ? "rgba(99,102,241,0.1)"
+                                : "var(--color-background-primary)",
+                              borderRadius: 8,
+                              fontSize: 11,
+                              color: sel
+                                ? "#818cf8"
+                                : "var(--color-text-tertiary)",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            🎯 <strong>Outcome-based:</strong> Cortex only bills
+                            $1.50 when an action is approved — you're never
+                            charged for work that didn't land.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <PrimaryBtn
+              onClick={advance}
+              accentOverride={
+                plan === "cortex"
+                  ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
+                  : undefined
+              }
+            >
+              Continue with {PLANS.find((p) => p.id === plan)?.name} →
+            </PrimaryBtn>
+            {BackLink}
+          </>
+        );
+
+      // ── 5: Clinic name + address ──────────────────────────────────────────────
+      case "clinic":
+        return (
+          <>
+            <StepHeader
+              icon="🏥"
+              title="Your clinic"
+              sub="Tell us about your practice. We'll set everything up."
+            />
+            {ErrorBanner}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+                marginBottom: 20,
+              }}
+            >
+              <div>
+                <FieldLabel>Clinic name</FieldLabel>
+                <FancyInput
+                  autoFocus
+                  placeholder="Lakeview Dental Group"
+                  value={form.clinic}
+                  onChange={setF("clinic")}
+                  style={{ fontSize: 16 }}
+                />
+              </div>
+              <div>
+                <FieldLabel>
+                  Address{" "}
+                  <span
+                    style={{
+                      color: "var(--color-text-tertiary)",
+                      fontWeight: 400,
+                    }}
+                  >
+                    (optional)
+                  </span>
+                </FieldLabel>
+                <FancyInput
+                  placeholder="123 Main St, Toronto, ON M5V 2T6"
+                  value={form.address}
+                  onChange={setF("address")}
+                />
+              </div>
+
+              {plan !== "starter" && (
+                <div>
+                  <FieldLabel>
+                    Additional locations{" "}
+                    <span
+                      style={{
+                        color: "var(--color-text-tertiary)",
                         fontWeight: 400,
                       }}
                     >
                       (optional)
                     </span>
-                  </label>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-input-bg)",
-                      color: "var(--color-text-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                    }}
-                    placeholder="+1 (416) 555-0100"
-                    value={form.phone}
-                    onChange={set("phone")}
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
+                  </FieldLabel>
+                  {extraClinics.map((n, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        marginBottom: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <FancyInput
+                        placeholder={`Location #${i + 2}`}
+                        value={n}
+                        onChange={(e) => {
+                          const next = [...extraClinics];
+                          next[i] = e.target.value;
+                          setExtraClinics(next);
+                        }}
+                      />
+                      <button
+                        onClick={() =>
+                          setExtraClinics((prev) =>
+                            prev.filter((_, idx) => idx !== i),
+                          )
+                        }
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#ef4444",
+                          fontSize: 20,
+                          cursor: "pointer",
+                          flexShrink: 0,
+                          padding: "0 4px",
+                          lineHeight: 1,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {extraClinics.length + 1 < (plan === "pro" ? 3 : 999) && (
+                    <button
+                      onClick={() => setExtraClinics((p) => [...p, ""])}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        borderRadius: 10,
+                        border: "1.5px dashed var(--color-border-secondary)",
+                        background: "none",
+                        color: "var(--color-text-secondary)",
+                        fontSize: 13,
+                        cursor: "pointer",
+                        transition: "border-color 0.15s, color 0.15s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor =
+                          "var(--color-accent)";
+                        e.currentTarget.style.color = "var(--color-accent)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor =
+                          "var(--color-border-secondary)";
+                        e.currentTarget.style.color =
+                          "var(--color-text-secondary)";
+                      }}
+                    >
+                      + Add another location
+                    </button>
+                  )}
                 </div>
-                <div>
-                  <label
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--color-text-secondary)",
-                      display: "block",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Password
-                  </label>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-input-bg)",
-                      color: "var(--color-text-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                    }}
-                    type="password"
-                    placeholder="Min. 8 characters"
-                    value={form.password}
-                    onChange={set("password")}
-                    required
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
-                </div>
-                <div>
-                  <label
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "var(--color-text-secondary)",
-                      display: "block",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Confirm password
-                  </label>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-input-bg)",
-                      color: "var(--color-text-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                    }}
-                    type="password"
-                    placeholder="••••••••"
-                    value={form.confirm}
-                    onChange={set("confirm")}
-                    required
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
-            <button
-              type="submit"
-              disabled={
-                loading ||
-                !form.name ||
-                !form.clinic ||
-                !form.email ||
-                !form.password
-              }
-              style={{
-                width: "100%",
-                marginTop: 12,
-                padding: "13px",
-                borderRadius: 10,
-                border: "none",
-                background:
-                  loading ||
-                  !form.name ||
-                  !form.clinic ||
-                  !form.email ||
-                  !form.password
-                    ? "var(--color-text-secondary)"
-                    : "linear-gradient(135deg, #0f766e, #0d9488)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: "pointer",
-                letterSpacing: "-0.01em",
-                transition: "all 0.2s",
-                boxShadow:
-                  loading ||
-                  !form.name ||
-                  !form.clinic ||
-                  !form.email ||
-                  !form.password
-                    ? "none"
-                    : "0 4px 14px rgba(15,118,110,0.3)",
-              }}
-              onMouseEnter={(e) => {
-                const disabled =
-                  loading || !form.name || !form.clinic || !form.email || !form.password;
-                if (!disabled) {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                const disabled =
-                  loading || !form.name || !form.clinic || !form.email || !form.password;
-                e.currentTarget.style.boxShadow = disabled ? "none" : "0 4px 14px rgba(15,118,110,0.3)";
-              }}
+            <PrimaryBtn
+              onClick={submitClinic}
+              disabled={loading || !form.clinic.trim()}
             >
-              {loading ? "Creating account…" : "Continue →"}
-            </button>
-          </form>
-        )}
+              {loading ? "Saving…" : "Continue →"}
+            </PrimaryBtn>
+            {BackLink}
+          </>
+        );
 
-        {/* Step 2 (Cortex only): Hire your Agents */}
-        {step === S_AGENTS && isCortex && (
-          <div
-            style={{
-              background: "var(--color-background-primary)",
-              border: "1px solid var(--color-border-secondary)",
-              borderRadius: 16,
-              padding: "2rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
+      // ── 5 (Cortex only): Agent selection ─────────────────────────────────────
+      case "agents":
+        return (
+          <>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                marginBottom: 16,
+                marginBottom: "1.5rem",
+                animation: "stepFadeUp 0.4s ease-out both",
               }}
             >
               <div
                 style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 14,
-                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  width: 68,
+                  height: 68,
+                  borderRadius: 22,
+                  background: "rgba(99,102,241,0.1)",
+                  border: "1.5px solid rgba(99,102,241,0.3)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 24,
-                  boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
+                  fontSize: 34,
+                  marginBottom: 22,
+                  boxShadow: "0 4px 20px rgba(99,102,241,0.2)",
                 }}
               >
                 🧠
               </div>
-              <div>
-                <h2
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: "var(--color-text-primary)",
-                    marginBottom: 4,
-                    letterSpacing: "-0.03em",
-                    margin: 0,
-                  }}
-                >
-                  Hire your Cortex Agents
-                </h2>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: "var(--color-text-secondary)",
-                    margin: 0,
-                  }}
-                >
-                  Select which digital employees you want working for your
-                  clinic.
-                </p>
-              </div>
+              <h1
+                style={{
+                  fontSize: 30,
+                  fontWeight: 800,
+                  letterSpacing: "-0.04em",
+                  color: "var(--color-text-primary)",
+                  marginBottom: 10,
+                  lineHeight: 1.1,
+                }}
+              >
+                Hire your agents
+              </h1>
+              <p
+                style={{
+                  fontSize: 15,
+                  color: "var(--color-text-secondary)",
+                  lineHeight: 1.55,
+                  margin: 0,
+                }}
+              >
+                Choose which AI digital employees will work for your clinic.
+              </p>
             </div>
 
             <div
@@ -1034,112 +1508,69 @@ function SignupPage() {
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: 10,
-                marginBottom: "1.5rem",
+                marginBottom: 20,
               }}
             >
-              {CORTEX_AGENTS.map((agent) => (
-                <div
-                  key={agent.id}
-                  style={{
-                    padding: "14px",
-                    borderRadius: 14,
-                    border: selectedAgents.includes(agent.id)
-                      ? "2px solid #6366f1"
-                      : "1.5px solid var(--color-border-secondary)",
-                    background: selectedAgents.includes(agent.id)
-                      ? "rgba(99,102,241,0.06)"
-                      : "var(--color-background-secondary)",
-                    opacity: agent.status === "coming_soon" ? 0.5 : 1,
-                    cursor:
-                      agent.status === "available" ? "pointer" : "not-allowed",
-                    transition: "all 0.2s",
-                    position: "relative",
-                    boxShadow: selectedAgents.includes(agent.id)
-                      ? "0 4px 14px rgba(99,102,241,0.2)"
-                      : "none",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (agent.status === "available" && !selectedAgents.includes(agent.id)) {
-                      e.currentTarget.style.borderColor = "#6366f150";
-                      e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.boxShadow = "0 8px 20px rgba(99,102,241,0.15)";
+              {CORTEX_AGENTS.map((agent) => {
+                const sel = selectedAgents.includes(agent.id);
+                return (
+                  <div
+                    key={agent.id}
+                    onClick={() =>
+                      setSelectedAgents((p) =>
+                        sel
+                          ? p.filter((a) => a !== agent.id)
+                          : [...p, agent.id],
+                      )
                     }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!selectedAgents.includes(agent.id)) {
-                      e.currentTarget.style.borderColor = "var(--color-border-secondary)";
-                      e.currentTarget.style.transform = "";
-                      e.currentTarget.style.boxShadow = "none";
-                    }
-                  }}
-                  onClick={() => {
-                    if (agent.status !== "available") return;
-                    setSelectedAgents((prev) =>
-                      prev.includes(agent.id)
-                        ? prev.filter((a) => a !== agent.id)
-                        : [...prev, agent.id],
-                    );
-                  }}
-                >
-                  {agent.status === "coming_soon" && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 10,
-                        right: 10,
-                        background: "var(--color-background-primary)",
-                        border: "1px solid var(--color-border-secondary)",
-                        borderRadius: 20,
-                        padding: "2px 8px",
-                        fontSize: 9,
-                        fontWeight: 600,
-                        color: "var(--color-text-secondary)",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Coming Soon
-                    </div>
-                  )}
-                  {agent.status === "available" &&
-                    selectedAgents.includes(agent.id) && (
+                    style={{
+                      padding: "14px",
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      position: "relative",
+                      border: sel
+                        ? "2px solid #6366f1"
+                        : "1.5px solid var(--color-border-secondary)",
+                      background: sel
+                        ? "rgba(99,102,241,0.07)"
+                        : "var(--color-background-primary)",
+                      transition: "all 0.2s",
+                      boxShadow: sel
+                        ? "0 4px 14px rgba(99,102,241,0.2)"
+                        : "none",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!sel)
+                        e.currentTarget.style.borderColor =
+                          "rgba(99,102,241,0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!sel)
+                        e.currentTarget.style.borderColor =
+                          "var(--color-border-secondary)";
+                    }}
+                  >
+                    {sel && (
                       <div
                         style={{
                           position: "absolute",
-                          top: 10,
-                          right: 10,
-                          background: "rgba(16,185,129,0.1)",
-                          border: "1px solid rgba(16,185,129,0.3)",
-                          borderRadius: 20,
-                          padding: "2px 8px",
-                          fontSize: 9,
-                          fontWeight: 600,
-                          color: "#10b981",
-                          textTransform: "uppercase",
+                          top: 8,
+                          right: 8,
+                          width: 20,
+                          height: 20,
+                          borderRadius: "50%",
+                          background: "#6366f1",
                           display: "flex",
                           alignItems: "center",
-                          gap: 3,
+                          justifyContent: "center",
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: 700,
                         }}
                       >
-                        <span
-                          style={{
-                            width: 5,
-                            height: 5,
-                            borderRadius: "50%",
-                            background: "#10b981",
-                            display: "inline-block",
-                          }}
-                        />
-                        Hired
+                        ✓
                       </div>
                     )}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 6,
-                    }}
-                  >
                     <div
                       style={{
                         width: 36,
@@ -1150,454 +1581,208 @@ function SignupPage() {
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: 18,
-                        flexShrink: 0,
+                        marginBottom: 8,
                       }}
                     >
                       {agent.avatar}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "var(--color-text-primary)",
-                        }}
-                      >
-                        {agent.name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#8b5cf6",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {agent.role}
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--color-text-secondary)",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                    }}
-                  >
-                    <span
+                    <div
                       style={{
-                        background: "var(--color-background-primary)",
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 600,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "var(--color-text-primary)",
+                        marginBottom: 2,
                       }}
                     >
-                      {agent.status === "coming_soon" ? "TBD" : agent.fee}
-                    </span>
+                      {agent.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "#8b5cf6",
+                        marginBottom: 6,
+                      }}
+                    >
+                      {agent.role}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: sel ? "#6366f1" : "var(--color-text-tertiary)",
+                      }}
+                    >
+                      {agent.fee}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            <div
-              style={{
-                background: "rgba(99,102,241,0.06)",
-                border: "1px solid rgba(99,102,241,0.15)",
-                borderRadius: 12,
-                padding: "1rem",
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "#6366f1",
-                  marginBottom: 6,
-                }}
-              >
-                💳 Cortex Billing Summary
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--color-text-secondary)",
-                  lineHeight: 1.7,
-                }}
-              >
-                <strong>$299/mo</strong> base platform fee (includes 1 agent for
-                1st clinic)
-                <br />
-                <strong>$1.50</strong> per approved action (outcome-based
-                billing)
-                <br />
-                <strong>$99/mo</strong> per additional agent instance (per
-                clinic)
-              </div>
-            </div>
-
-            <button
-              onClick={() => setStep(S_CLINICS)}
-              style={{
-                width: "100%",
-                padding: "13px",
-                borderRadius: 10,
-                border: "none",
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
-                transition: "all 0.2s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-1px)";
-                e.currentTarget.style.boxShadow = "0 8px 24px rgba(99,102,241,0.45)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                e.currentTarget.style.boxShadow = "0 4px 14px rgba(99,102,241,0.3)";
-              }}
+            <PrimaryBtn
+              onClick={advance}
+              accentOverride="linear-gradient(135deg,#6366f1,#8b5cf6)"
             >
               Continue with {selectedAgents.length} agent
               {selectedAgents.length !== 1 ? "s" : ""} →
-            </button>
-          </div>
-        )}
+            </PrimaryBtn>
+            {BackLink}
+          </>
+        );
 
-        {/* Step 1: Email verify */}
-        {step === 1 && (
-          <div
-            style={{
-              background: "var(--color-background-primary)",
-              border: "1px solid var(--color-border-secondary)",
-              borderRadius: 16,
-              padding: "2rem",
-              boxShadow: "var(--shadow-sm)",
-              animation: "scaleIn 0.25s ease-out",
-            }}
-          >
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: "50%",
-                background: "var(--color-accent-muted)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 26,
-                marginBottom: "1.2rem",
-              }}
-            >
-              ✉️
-            </div>
-            <h2
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: "var(--color-text-primary)",
-                marginBottom: 6,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Verify your email
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: "var(--color-text-secondary)",
-                marginBottom: "1.5rem",
-              }}
-            >
-              We sent a verification link to{" "}
-              <strong style={{ color: "var(--color-text-primary)" }}>
-                {form.email}
-              </strong>
-            </p>
+      // ── 6: 2FA / Security ─────────────────────────────────────────────────────
+      case "security":
+        return (
+          <>
+            <StepHeader
+              icon="🔐"
+              title="Lock it down"
+              sub="PHIPA requires access controls for patient health data. Set up 2FA to protect your account."
+            />
+            {ErrorBanner}
 
-            <div
-              style={{
-                background: "var(--color-accent-muted)",
-                border: "1px solid var(--color-border-secondary)",
-                borderRadius: 12,
-                padding: "20px",
-                marginBottom: "1.5rem",
-                textAlign: "center",
-              }}
-            >
-              <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-primary)", fontWeight: 500 }}>
-                Please check your inbox for a magic link.
-              </p>
-              <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-secondary)" }}>
-                Click the link in the email to securely verify your account, then return here to complete your setup.
-              </p>
-            </div>
-
-            <button
-              onClick={handleVerify}
-              disabled={!emailVerified}
-              style={{
-                width: "100%",
-                padding: "13px",
-                borderRadius: 10,
-                border: "none",
-                background: !emailVerified ? "var(--color-text-secondary)" : "linear-gradient(135deg, #0f766e, #0d9488)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: !emailVerified ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-                boxShadow: !emailVerified ? "none" : "0 4px 14px rgba(15,118,110,0.3)",
-              }}
-              onMouseEnter={(e) => {
-                if (emailVerified) {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                if (emailVerified) {
-                  e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
-                }
-              }}
-            >
-              {emailVerified ? "Continue →" : "Waiting for verification..."}
-            </button>
-
-            {!emailVerified && (
-              <p style={{ marginTop: "12px", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
-                You can continue further once your email is verified.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Clinics step */}
-        {step === S_CLINICS && (
-          <div
-            style={{
-              background: "var(--color-background-primary)",
-              border: "1px solid var(--color-border-secondary)",
-              borderRadius: 16,
-              padding: "2rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: "var(--color-text-primary)",
-                marginBottom: 6,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Clinic locations
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: "var(--color-text-secondary)",
-                marginBottom: "1.5rem",
-              }}
-            >
-              {plan === "starter"
-                ? "The Starter plan includes 1 clinic location."
-                : `Your ${plan} plan allows up to ${plan === "pro" ? "3" : "unlimited"} locations.`}
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 12,
-                marginBottom: "2rem",
-              }}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label
+            {mfaData ? (
+              <div
+                style={{
+                  background: "var(--color-background-primary)",
+                  border: "1px solid var(--color-border-secondary)",
+                  borderRadius: 14,
+                  padding: "20px 24px",
+                  marginBottom: 20,
+                }}
+              >
+                <div
                   style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: "var(--color-text-secondary)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "var(--color-text-primary)",
+                    marginBottom: 14,
                   }}
                 >
-                  Primary location
-                </label>
-                <input
-                  style={{
-                    ...inputStyle,
-                    background: "var(--color-background-secondary)",
-                    border: "1.5px solid var(--color-border-secondary)",
-                    color: "var(--color-text-primary)",
-                  }}
-                  value={form.clinic}
-                  disabled
-                />
-              </div>
-
-              {extraClinics.map((name, i) => (
+                  Scan with Google Authenticator or Authy
+                </div>
                 <div
-                  key={i}
-                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    marginBottom: 14,
+                  }}
                 >
                   <div
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
+                      padding: 8,
+                      background: "#fff",
+                      borderRadius: 12,
+                      boxShadow: "0 2px 12px rgba(0,0,0,0.12)",
                     }}
                   >
-                    <label
+                    <img
+                      src={mfaData.qrCodeDataUrl}
+                      alt="TOTP QR code"
                       style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: "var(--color-text-secondary)",
+                        width: 150,
+                        height: 150,
+                        display: "block",
+                        borderRadius: 8,
                       }}
-                    >
-                      Location #{i + 2}
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExtraClinics((prev) =>
-                          prev.filter((_, idx) => idx !== i),
-                        )
-                      }
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "#ef4444",
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Remove
-                    </button>
+                    />
                   </div>
-                  <input
-                    style={{
-                      ...inputStyle,
-                      background: "var(--color-background-primary)",
-                      border: "1.5px solid var(--color-border-secondary)",
-                      color: "var(--color-text-primary)",
-                    }}
-                    placeholder="e.g. Downtown Office"
-                    value={name}
-                    onChange={(e) => {
-                      const next = [...extraClinics];
-                      next[i] = e.target.value;
-                      setExtraClinics(next);
-                    }}
-                    onFocus={(e) =>
-                      (e.target.style.borderColor = "var(--color-accent)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor =
-                        "var(--color-border-secondary)")
-                    }
-                  />
                 </div>
-              ))}
-
-              {plan !== "starter" &&
-                extraClinics.length + 1 < (plan === "pro" ? 3 : 999) && (
-                  <button
-                    type="button"
-                    onClick={() => setExtraClinics((prev) => [...prev, ""])}
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--color-text-secondary)",
+                    textAlign: "center",
+                    marginBottom: 16,
+                  }}
+                >
+                  Or enter manually:{" "}
+                  <code
                     style={{
-                      padding: "10px",
-                      borderRadius: 10,
-                      border: "1.5px dashed var(--color-border-secondary)",
-                      background: "none",
-                      color: "var(--color-text-secondary)",
-                      fontSize: 14,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
+                      background: "var(--color-background-secondary)",
+                      padding: "2px 8px",
+                      borderRadius: 5,
+                      fontSize: 11,
+                      letterSpacing: "0.05em",
                     }}
                   >
-                    <span>+ Add another location</span>
-                  </button>
-                )}
-            </div>
+                    {mfaData.secret}
+                  </code>
+                </div>
+                <FancyInput
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  placeholder="Enter 6-digit code"
+                  maxLength={6}
+                  inputMode="numeric"
+                  style={{
+                    textAlign: "center",
+                    letterSpacing: "0.35em",
+                    fontSize: 24,
+                    fontFamily: "monospace",
+                    padding: "14px",
+                  }}
+                />
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: "var(--color-background-primary)",
+                  border: "1px solid var(--color-border-secondary)",
+                  borderRadius: 14,
+                  padding: "32px 24px",
+                  marginBottom: 20,
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    border: "2.5px solid var(--color-accent)",
+                    borderTopColor: "transparent",
+                    borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite",
+                    margin: "0 auto 12px",
+                  }}
+                />
+                <div
+                  style={{ fontSize: 14, color: "var(--color-text-secondary)" }}
+                >
+                  Loading authenticator setup…
+                </div>
+              </div>
+            )}
 
-            <button
-              onClick={handleSaveClinics}
-              style={{
-                width: "100%",
-                padding: "13px",
-                borderRadius: 10,
-                border: "none",
-                background: "linear-gradient(135deg, #0f766e, #0d9488)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.2s",
-                boxShadow: "0 4px 14px rgba(15,118,110,0.3)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-1px)";
-                e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
-              }}
-            >
-              Continue →
-            </button>
-          </div>
-        )}
+            <PrimaryBtn onClick={submitMfa} disabled={loading}>
+              {loading
+                ? "Saving…"
+                : mfaData && mfaCode.length === 6
+                  ? "Enable 2FA & continue →"
+                  : "Skip for now →"}
+            </PrimaryBtn>
+            {BackLink}
+          </>
+        );
 
-        {/* Connect PMS step */}
-        {step === S_PMS && (
-          <div
-            style={{
-              background: "var(--color-background-primary)",
-              border: "1px solid var(--color-border-secondary)",
-              borderRadius: 16,
-              padding: "2rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: "var(--color-text-primary)",
-                marginBottom: 6,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Connect your PMS
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: "var(--color-text-secondary)",
-                marginBottom: "1.5rem",
-              }}
-            >
-              Automatically syncs patients, procedures, and insurance plans.
-            </p>
+      // ── 7: Connect PMS ───────────────────────────────────────────────────────
+      case "connect":
+        return (
+          <>
+            <StepHeader
+              icon="🔌"
+              title="Connect your PMS"
+              sub="Automatically sync patients, procedures, and insurance plans."
+            />
 
             {pmsStatus === "idle" && (
               <>
-                {/* Open Dental card */}
                 <div
                   style={{
                     border: "1.5px solid var(--color-accent)",
-                    borderRadius: 12,
-                    padding: "1.2rem",
-                    marginBottom: "1rem",
+                    borderRadius: 14,
+                    padding: "18px",
+                    marginBottom: 12,
                     background: "var(--color-accent-muted)",
                   }}
                 >
@@ -1606,14 +1791,14 @@ function SignupPage() {
                       display: "flex",
                       alignItems: "center",
                       gap: 12,
-                      marginBottom: 10,
+                      marginBottom: 12,
                     }}
                   >
                     <div
                       style={{
                         width: 44,
                         height: 44,
-                        borderRadius: 10,
+                        borderRadius: 12,
                         background: "var(--color-accent)",
                         display: "flex",
                         alignItems: "center",
@@ -1646,11 +1831,11 @@ function SignupPage() {
                     <div
                       style={{
                         fontSize: 11,
-                        background: "rgba(5, 150, 105, 0.2)",
+                        background: "rgba(5,150,105,0.15)",
                         color: "#059669",
                         padding: "3px 10px",
                         borderRadius: 20,
-                        fontWeight: 500,
+                        fontWeight: 600,
                       }}
                     >
                       Supported
@@ -1660,66 +1845,68 @@ function SignupPage() {
                     style={{
                       fontSize: 13,
                       color: "var(--color-text-secondary)",
-                      marginBottom: 12,
+                      marginBottom: 14,
                     }}
                   >
-                    Syncs: patients, procedures, insurance plans, appointment
+                    Syncs patients, procedures, insurance plans, and appointment
                     history
                   </div>
                   <button
-                    onClick={connectPms}
+                    onClick={startPms}
                     style={{
                       width: "100%",
-                      padding: "10px",
-                      borderRadius: 8,
+                      padding: "11px",
+                      borderRadius: 9,
                       border: "none",
-                      background: "linear-gradient(135deg, #0f766e, #0d9488)",
+                      background: "linear-gradient(135deg,#0f766e,#0d9488)",
                       color: "#fff",
                       fontSize: 14,
                       fontWeight: 600,
                       cursor: "pointer",
+                      boxShadow: "0 3px 12px rgba(15,118,110,0.3)",
                       transition: "all 0.2s",
-                      boxShadow: "0 3px 10px rgba(15,118,110,0.3)",
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = "0 6px 16px rgba(15,118,110,0.4)";
+                      e.currentTarget.style.boxShadow =
+                        "0 6px 18px rgba(15,118,110,0.4)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = "";
-                      e.currentTarget.style.boxShadow = "0 3px 10px rgba(15,118,110,0.3)";
+                      e.currentTarget.style.boxShadow =
+                        "0 3px 12px rgba(15,118,110,0.3)";
                     }}
                   >
                     Connect Open Dental →
                   </button>
                 </div>
 
-                {["Dentrix G7+", "ClearDent"].map((name) => (
+                {["Dentrix G7+", "ClearDent"].map((n) => (
                   <div
-                    key={name}
+                    key={n}
                     style={{
                       border: "1px dashed var(--color-border-secondary)",
                       borderRadius: 12,
-                      padding: "1rem",
-                      marginBottom: "0.8rem",
-                      opacity: 0.6,
+                      padding: "14px 18px",
+                      marginBottom: 8,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
+                      opacity: 0.55,
                     }}
                   >
-                    <div
+                    <span
                       style={{
                         fontSize: 14,
                         fontWeight: 500,
                         color: "var(--color-text-primary)",
                       }}
                     >
-                      {name}
-                    </div>
-                    <div
+                      {n}
+                    </span>
+                    <span
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         background: "var(--color-background-secondary)",
                         color: "var(--color-text-secondary)",
                         padding: "3px 10px",
@@ -1727,37 +1914,32 @@ function SignupPage() {
                       }}
                     >
                       Coming soon
-                    </div>
+                    </span>
                   </div>
                 ))}
 
-                <button
-                  onClick={skipPms}
-                  style={{
-                    width: "100%",
-                    marginTop: 8,
-                    padding: "11px",
-                    borderRadius: 10,
-                    border: "1.5px solid var(--color-border-secondary)",
-                    background: "var(--color-background-primary)",
-                    color: "var(--color-text-secondary)",
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }}
-                >
-                  Skip for now — connect manually later
-                </button>
+                <GhostBtn onClick={advance}>
+                  Skip — connect manually later
+                </GhostBtn>
+                {BackLink}
               </>
             )}
 
             {pmsStatus === "connecting" && (
-              <div>
+              <div
+                style={{
+                  background: "var(--color-background-primary)",
+                  border: "1px solid var(--color-border-secondary)",
+                  borderRadius: 14,
+                  padding: "28px 24px",
+                }}
+              >
                 <div
                   style={{
                     height: 6,
                     background: "var(--color-background-secondary)",
                     borderRadius: 3,
-                    marginBottom: "1.5rem",
+                    marginBottom: 24,
                     overflow: "hidden",
                   }}
                 >
@@ -1765,9 +1947,10 @@ function SignupPage() {
                     style={{
                       height: "100%",
                       width: `${pmsProgress}%`,
-                      background: "var(--color-accent)",
+                      background: "linear-gradient(90deg,#0f766e,#14b8a6)",
                       borderRadius: 3,
                       transition: "width 0.3s",
+                      boxShadow: "0 0 8px rgba(15,118,110,0.5)",
                     }}
                   />
                 </div>
@@ -1786,22 +1969,22 @@ function SignupPage() {
                         display: "flex",
                         alignItems: "center",
                         gap: 12,
-                        marginBottom: 12,
-                        opacity: i < done ? 1 : isActive ? 1 : 0.35,
-                        transition: "opacity 0.3s",
+                        marginBottom: 14,
+                        opacity: i < done ? 1 : isActive ? 1 : 0.3,
+                        transition: "opacity 0.4s",
                       }}
                     >
                       <div
                         style={{
-                          width: 24,
-                          height: 24,
+                          width: 26,
+                          height: 26,
                           borderRadius: "50%",
                           flexShrink: 0,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           fontSize: 12,
-                          fontWeight: 600,
+                          fontWeight: 700,
                           background:
                             i < done
                               ? "var(--color-accent)"
@@ -1814,10 +1997,25 @@ function SignupPage() {
                               : isActive
                                 ? "var(--color-accent)"
                                 : "var(--color-text-secondary)",
-                          transition: "all 0.3s",
+                          transition: "all 0.4s",
                         }}
                       >
-                        {i < done ? "✓" : isActive ? "…" : i + 1}
+                        {i < done ? (
+                          "✓"
+                        ) : isActive ? (
+                          <div
+                            style={{
+                              width: 10,
+                              height: 10,
+                              border: "2px solid var(--color-accent)",
+                              borderTopColor: "transparent",
+                              borderRadius: "50%",
+                              animation: "spin 0.8s linear infinite",
+                            }}
+                          />
+                        ) : (
+                          i + 1
+                        )}
                       </div>
                       <span
                         style={{
@@ -1826,6 +2024,7 @@ function SignupPage() {
                             i < done
                               ? "var(--color-accent)"
                               : "var(--color-text-primary)",
+                          fontWeight: i < done ? 500 : 400,
                         }}
                       >
                         {s}
@@ -1837,29 +2036,32 @@ function SignupPage() {
             )}
 
             {pmsStatus === "connected" && (
-              <div>
+              <>
                 <div
                   style={{
-                    background: "rgba(5, 150, 105, 0.1)",
-                    border: "1px solid #059669",
-                    borderRadius: 12,
-                    padding: "1.2rem",
-                    marginBottom: "1.5rem",
+                    background: "rgba(5,150,105,0.08)",
+                    border: "1px solid rgba(5,150,105,0.4)",
+                    borderRadius: 14,
+                    padding: "20px 24px",
+                    marginBottom: 20,
                     display: "flex",
                     alignItems: "center",
-                    gap: 12,
+                    gap: 16,
+                    animation: "stepFadeUp 0.3s ease-out",
                   }}
                 >
                   <div
                     style={{
-                      width: 40,
-                      height: 40,
+                      width: 48,
+                      height: 48,
                       borderRadius: "50%",
                       background: "#059669",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: 18,
+                      color: "#fff",
+                      fontSize: 22,
+                      fontWeight: 700,
                       flexShrink: 0,
                     }}
                   >
@@ -1868,9 +2070,10 @@ function SignupPage() {
                   <div>
                     <div
                       style={{
-                        fontSize: 15,
-                        fontWeight: 600,
+                        fontSize: 16,
+                        fontWeight: 700,
                         color: "#059669",
+                        marginBottom: 2,
                       }}
                     >
                       Open Dental connected!
@@ -1880,478 +2083,485 @@ function SignupPage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setStep(S_MFA);
-                    loadMfa();
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "13px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: "linear-gradient(135deg, #0f766e, #0d9488)",
-                    color: "#fff",
-                    fontSize: 15,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    boxShadow: "0 4px 14px rgba(15,118,110,0.3)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "";
-                    e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
-                  }}
-                >
-                  Continue to security setup →
-                </button>
-              </div>
+                <PrimaryBtn onClick={advance}>Continue →</PrimaryBtn>
+              </>
             )}
-          </div>
-        )}
+          </>
+        );
 
-        {/* Security/MFA step */}
-        {step === S_MFA && (
-          <div
-            style={{
-              background: "var(--color-background-primary)",
-              border: "1px solid var(--color-border-secondary)",
-              borderRadius: 16,
-              padding: "2rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
+      // ── 8: Terms + Launch ────────────────────────────────────────────────────
+      case "launch":
+        return (
+          <>
+            <StepHeader
+              icon="🚀"
+              title="Almost there!"
+              sub={`${form.clinic || "Your clinic"} is ready to launch on DentalIQ.`}
+            />
+
+            {/* Summary cards */}
             <div
               style={{
-                width: 56,
-                height: 56,
-                borderRadius: "50%",
-                background: "rgba(15, 118, 110, 0.1)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 26,
-                marginBottom: "1.2rem",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                marginBottom: 20,
               }}
             >
-              🔐
-            </div>
-            <h2
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: "var(--color-text-primary)",
-                marginBottom: 6,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              Security setup
-            </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: "var(--color-text-secondary)",
-                marginBottom: "1.5rem",
-              }}
-            >
-              PHIPA requires appropriate access controls for patient health
-              information.
-            </p>
-
-            {mfaData ? (
-              <div
-                style={{
-                  border: "1px solid var(--color-border-secondary)",
-                  borderRadius: 12,
-                  padding: "1.2rem",
-                  marginBottom: "1rem",
-                }}
-              >
+              {[
+                { label: "Account", value: form.name || "Created", ok: true },
+                {
+                  label: "Locations",
+                  value: `${extraClinics.length + 1} ready`,
+                  ok: true,
+                },
+                {
+                  label: "Plan",
+                  value: `${PLANS.find((p) => p.id === plan)?.name} · 14-day trial`,
+                  ok: true,
+                },
+                {
+                  label: "AI Copilot",
+                  value: plan === "starter" ? "Upgrade to unlock" : "Active ✓",
+                  ok: plan !== "starter",
+                },
+              ].map(({ label, value, ok }) => (
                 <div
+                  key={label}
                   style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--color-text-primary)",
-                    marginBottom: 8,
+                    background: "var(--color-background-primary)",
+                    border: "1px solid var(--color-border-secondary)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
                   }}
                 >
-                  Scan with Google Authenticator or Authy
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    marginBottom: 12,
-                  }}
-                >
-                  <img
-                    src={mfaData.qrCodeDataUrl}
-                    alt="TOTP QR code"
+                  <div
                     style={{
-                      width: 160,
-                      height: 160,
-                      borderRadius: 12,
-                      border: "1px solid var(--color-border-secondary)",
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--color-text-secondary)",
-                    textAlign: "center",
-                    marginBottom: 14,
-                  }}
-                >
-                  Or enter manually:{" "}
-                  <code
-                    style={{
-                      fontFamily: "monospace",
-                      background: "var(--color-background-secondary)",
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      fontSize: 11,
+                      fontSize: 10,
+                      color: "var(--color-text-tertiary)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.07em",
+                      marginBottom: 4,
                     }}
                   >
-                    {mfaData.secret}
-                  </code>
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: ok ? "#10b981" : "var(--color-text-secondary)",
+                    }}
+                  >
+                    {value}
+                  </div>
                 </div>
-                <input
-                  value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value)}
-                  placeholder="Enter 6-digit code to confirm"
-                  maxLength={6}
-                  inputMode="numeric"
-                  style={{
-                    ...inputStyle,
-                    textAlign: "center",
-                    letterSpacing: "0.3em",
-                    fontSize: 22,
-                    fontFamily: "monospace",
-                    background: "var(--color-background-primary)",
-                    color: "var(--color-text-primary)",
-                    border: "1.5px solid var(--color-border-secondary)",
-                  }}
-                  onFocus={(e) =>
-                    (e.target.style.borderColor = "var(--color-accent)")
-                  }
-                  onBlur={(e) =>
-                    (e.target.style.borderColor =
-                      "var(--color-border-secondary)")
-                  }
-                />
-              </div>
-            ) : (
-              <div
-                style={{
-                  border: "1px solid var(--color-border-secondary)",
-                  borderRadius: 12,
-                  padding: "1.2rem",
-                  marginBottom: "1rem",
-                  background: "var(--color-background-secondary)",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--color-text-primary)",
-                    marginBottom: 6,
-                  }}
-                >
-                  Two-factor authentication
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--color-text-secondary)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Protect access to patient data with an authenticator app. You
-                  can enable this later in Settings.
-                </div>
-              </div>
-            )}
+              ))}
+            </div>
 
-            <button
-              onClick={enableMfa}
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "13px",
-                borderRadius: 10,
-                border: "none",
-                background: loading
-                  ? "var(--color-border-primary)"
-                  : "linear-gradient(135deg, #0f766e, #0d9488)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: loading ? "not-allowed" : "pointer",
-                transition: "all 0.2s",
-                boxShadow: loading ? "none" : "0 4px 14px rgba(15,118,110,0.3)",
-              }}
-              onMouseEnter={(e) => {
-                if (!loading) {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "";
-                e.currentTarget.style.boxShadow = loading ? "none" : "0 4px 14px rgba(15,118,110,0.3)";
-              }}
-            >
-              {loading
-                ? "Enabling…"
-                : mfaData && mfaCode.length === 6
-                  ? "Enable MFA & continue →"
-                  : "Skip for now →"}
-            </button>
-          </div>
-        )}
-
-        {/* Done step */}
-        {step === S_DONE && (
-          <div style={{ textAlign: "center" }}>
+            {/* Terms */}
             <div
               style={{
                 background: "var(--color-background-primary)",
                 border: "1px solid var(--color-border-secondary)",
-                borderRadius: 16,
-                padding: "2.5rem 2rem",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-                marginBottom: 12,
+                borderRadius: 14,
+                padding: "18px 20px",
+                marginBottom: 20,
               }}
             >
               <div
                 style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: "50%",
-                  background: "linear-gradient(135deg, #0f766e, #0d9488)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 32,
-                  margin: "0 auto 1.5rem",
-                  boxShadow: "0 4px 20px rgba(15,118,110,0.3)",
-                }}
-              >
-                ✓
-              </div>
-
-              <h2
-                style={{
-                  fontSize: 26,
-                  fontWeight: 700,
+                  fontSize: 13,
+                  fontWeight: 600,
                   color: "var(--color-text-primary)",
-                  marginBottom: 6,
-                  letterSpacing: "-0.03em",
+                  marginBottom: 10,
                 }}
               >
-                You're all set!
-              </h2>
-              <p
+                Terms & Conditions
+              </div>
+              <div
                 style={{
-                  fontSize: 15,
+                  height: 130,
+                  overflowY: "auto",
+                  padding: "12px 14px",
+                  background: "var(--color-background-secondary)",
+                  borderRadius: 8,
+                  marginBottom: 16,
+                  fontSize: 12,
                   color: "var(--color-text-secondary)",
-                  marginBottom: "2rem",
-                  lineHeight: 1.6,
+                  lineHeight: 1.7,
                 }}
               >
-                {form.clinic || "Your clinic"} is live on DentalIQ. The AI
-                copilot is ready.
-              </p>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                  marginBottom: "2rem",
-                  textAlign: "left",
-                }}
-              >
-                {[
-                  ["Account", "Created ✓"],
-                  ["Locations", `${extraClinics.length + 1} Ready ✓`],
-                  ["Plan", `${selectedPlan.name} — 14-day trial`],
-                  ["AI Copilot", plan === "starter" ? "Inactive" : "Active ✓"],
-                ].map(([l, v]) => (
-                  <div
-                    key={l}
-                    style={{
-                      background: "var(--color-background-secondary)",
-                      border: "1px solid var(--color-border-secondary)",
-                      borderRadius: 10,
-                      padding: "12px 14px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        color: "var(--color-text-secondary)",
-                      }}
-                    >
-                      {l}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        color:
-                          plan === "starter" && l === "AI Copilot"
-                            ? "var(--color-text-secondary)"
-                            : "#059669",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {v}
-                    </span>
-                  </div>
-                ))}
+                <p style={{ margin: "0 0 8px", fontWeight: 600 }}>
+                  DentalIQ Terms of Service
+                </p>
+                <p style={{ margin: "0 0 8px" }}>
+                  DentalIQ is an administrative assistance tool. You remain
+                  solely responsible for verifying all AI-generated content
+                  before submission to insurance providers or patients.
+                </p>
+                <p style={{ margin: "0 0 8px" }}>
+                  DentalIQ complies with PHIPA requirements for handling
+                  personal health information. You agree to maintain appropriate
+                  access controls and to report any suspected security breaches
+                  immediately.
+                </p>
+                <p style={{ margin: "0 0 8px" }}>
+                  Billing is monthly with no long-term commitment. Your 14-day
+                  trial includes full access to all features of your selected
+                  plan at no charge. You may cancel at any time before the trial
+                  ends.
+                </p>
+                <p style={{ margin: 0 }}>
+                  By creating an account you confirm you are authorised to act
+                  on behalf of your clinic and accept these terms on its behalf.
+                </p>
               </div>
 
-              <div
+              <label
                 style={{
-                  background: "var(--color-accent-muted)",
-                  border: "1px solid var(--color-accent)",
-                  borderRadius: 10,
-                  padding: "12px 16px",
-                  marginBottom: "1.5rem",
-                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  cursor: "pointer",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "var(--color-accent)",
-                    marginBottom: 6,
-                  }}
-                >
-                  Quick start checklist
-                </div>
-                {[
-                  "Run your first insurance estimate",
-                  "Add your first patient",
-                  "Connect your PMS (Settings → Integrations)",
-                  "Set up 2FA for PHIPA compliance",
-                ].map((item, i) => (
-                  <div
-                    key={item}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: 6,
-                      fontSize: 13,
-                      color: "var(--color-accent)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: "50%",
-                        background: "var(--color-accent-muted)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 10,
-                        fontWeight: 600,
-                        flexShrink: 0,
-                        border: "1px solid var(--color-accent)",
-                      }}
-                    >
-                      {i + 1}
-                    </div>
-                    {item}
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", gap: 10, textAlign: "left" }}>
                 <input
                   type="checkbox"
-                  id="terms"
                   checked={termsAccepted}
                   onChange={(e) => setTermsAccepted(e.target.checked)}
                   style={{
-                    marginTop: 4,
+                    marginTop: 3,
                     width: 16,
                     height: 16,
-                    cursor: "pointer",
                     accentColor: "var(--color-accent)",
+                    cursor: "pointer",
+                    flexShrink: 0,
                   }}
                 />
-                <label
-                  htmlFor="terms"
+                <span
                   style={{
                     fontSize: 13,
                     color: "var(--color-text-secondary)",
-                    lineHeight: 1.5,
-                    cursor: "pointer",
-                    userSelect: "none",
+                    lineHeight: 1.55,
                   }}
                 >
                   I agree to the{" "}
-                  <Link href="/terms" target="_blank" style={{ color: "var(--color-accent)", fontWeight: 600, textDecoration: "none" }}>
+                  <Link
+                    href="/terms"
+                    target="_blank"
+                    style={{
+                      color: "var(--color-accent)",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                    }}
+                  >
                     Terms of Service
                   </Link>{" "}
                   and{" "}
-                  <Link href="/privacy" target="_blank" style={{ color: "var(--color-accent)", fontWeight: 600, textDecoration: "none" }}>
+                  <Link
+                    href="/privacy"
+                    target="_blank"
+                    style={{
+                      color: "var(--color-accent)",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                    }}
+                  >
                     Privacy Policy
                   </Link>
-                  . I understand that DentalIQ is an administrative assistant tool and I remain responsible for verifying all AI-generated content before submission.
-                </label>
-              </div>
-
-              <button
-                onClick={goToDashboard}
-                disabled={!termsAccepted}
-                style={{
-                  width: "100%",
-                  padding: "14px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: termsAccepted
-                    ? "linear-gradient(135deg, #0f766e, #0d9488)"
-                    : "var(--color-text-tertiary)",
-                  color: "#fff",
-                  fontSize: 16,
-                  fontWeight: 600,
-                  cursor: termsAccepted ? "pointer" : "not-allowed",
-                  letterSpacing: "-0.01em",
-                  boxShadow: termsAccepted ? "0 4px 14px rgba(15,118,110,0.3)" : "none",
-                  transition: "all 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  if (termsAccepted) {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "";
-                  if (termsAccepted) {
-                    e.currentTarget.style.boxShadow = "0 4px 14px rgba(15,118,110,0.3)";
-                  }
-                }}
-              >
-                Launch Dashboard →
-              </button>
+                  . I understand DentalIQ is an administrative tool and I remain
+                  responsible for verifying all AI-generated content.
+                </span>
+              </label>
             </div>
+
+            <PrimaryBtn onClick={goToDashboard} disabled={!termsAccepted}>
+              🚀 Launch Dashboard
+            </PrimaryBtn>
+            {BackLink}
+          </>
+        );
+
+      default:
+        return null;
+    }
+  }
+
+  // ── Layout ────────────────────────────────────────────────────────────────────
+
+  const progress = steps.length > 1 ? stepIdx / (steps.length - 1) : 1;
+
+  // Show launch screen before navigating to dashboard
+  if (showLaunch) {
+    return (
+      <LaunchScreen
+        variant="signup"
+        clinicName={form.clinic || undefined}
+        onDone={() => router.push("/dashboard")}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "var(--color-background-secondary)",
+        color: "var(--color-text-primary)",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* CSS keyframes */}
+      <style>{`
+        @keyframes blobDriftA {
+          0%,100% { transform: translate(0,0) scale(1); }
+          33%      { transform: translate(50px,-35px) scale(1.06); }
+          66%      { transform: translate(-20px,40px) scale(0.97); }
+        }
+        @keyframes blobDriftB {
+          0%,100% { transform: translate(0,0) scale(1); }
+          40%     { transform: translate(-55px,45px) scale(1.07); }
+          70%     { transform: translate(30px,-25px) scale(0.96); }
+        }
+        @keyframes blobDriftC {
+          0%,100% { transform: translate(0,0) scale(1); }
+          50%     { transform: translate(40px,55px) scale(0.94); }
+        }
+        @keyframes pulseRing {
+          0%   { transform: scale(1); opacity: 0.6; }
+          100% { transform: scale(2.0); opacity: 0; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes stepFadeUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      {/* Background animated orbs */}
+      <div
+        aria-hidden
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "none",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            width: 700,
+            height: 700,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(15,118,110,0.11) 0%, transparent 65%)",
+            top: "-22%",
+            left: "-18%",
+            animation: "blobDriftA 24s ease-in-out infinite",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            width: 580,
+            height: 580,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(99,102,241,0.09) 0%, transparent 65%)",
+            bottom: "-10%",
+            right: "-14%",
+            animation: "blobDriftB 30s ease-in-out infinite",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            width: 420,
+            height: 420,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(14,165,233,0.07) 0%, transparent 65%)",
+            top: "48%",
+            left: "52%",
+            animation: "blobDriftC 20s ease-in-out infinite",
+          }}
+        />
+      </div>
+
+      {/* Thin teal progress bar — fixed at very top */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          zIndex: 200,
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            background: "linear-gradient(90deg, #0f766e, #14b8a6, #0d9488)",
+            width: `${progress * 100}%`,
+            transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)",
+            borderRadius: "0 3px 3px 0",
+            boxShadow: "0 0 10px rgba(20,184,166,0.6)",
+          }}
+        />
+      </div>
+
+      {/* Header */}
+      <header
+        style={{
+          position: "relative",
+          zIndex: 10,
+          borderBottom: "1px solid var(--color-border-secondary)",
+          background: "var(--color-background-primary)",
+          padding: "0 2rem",
+          height: 60,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 9,
+              background: "linear-gradient(135deg, #0f766e, #0d9488)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              fontWeight: 800,
+              color: "#fff",
+              boxShadow: "0 2px 10px rgba(15,118,110,0.4)",
+            }}
+          >
+            +
           </div>
-        )}
+          <span
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: "-0.04em",
+              color: "var(--color-text-primary)",
+            }}
+          >
+            DentalIQ
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <ThemeToggle storageKey="diq_pub_theme" variant="pill" />
+          <a
+            href="/login"
+            style={{
+              fontSize: 14,
+              color: "var(--color-text-secondary)",
+              textDecoration: "none",
+            }}
+          >
+            Already have an account?{" "}
+            <span style={{ color: "var(--color-accent)", fontWeight: 600 }}>
+              Sign in
+            </span>
+          </a>
+        </div>
+      </header>
+
+      {/* Step indicator */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 10,
+          paddingTop: 24,
+          paddingBottom: 4,
+        }}
+      >
+        {/* Pill dots */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: 5,
+            marginBottom: 8,
+          }}
+        >
+          {steps.map((s, i) => (
+            <div
+              key={s.id}
+              style={{
+                height: 7,
+                borderRadius: 4,
+                width: i === stepIdx ? 28 : 7,
+                background:
+                  i < stepIdx
+                    ? "var(--color-accent)"
+                    : i === stepIdx
+                      ? "linear-gradient(90deg, #0f766e, #14b8a6)"
+                      : "var(--color-border-secondary)",
+                transition: "all 0.4s cubic-bezier(0.4,0,0.2,1)",
+                boxShadow:
+                  i === stepIdx ? "0 0 8px rgba(15,118,110,0.55)" : "none",
+              }}
+            />
+          ))}
+        </div>
+        {/* Step label */}
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 11,
+            fontWeight: 600,
+            color: "var(--color-text-tertiary)",
+            textTransform: "uppercase",
+            letterSpacing: "0.09em",
+          }}
+        >
+          {steps[stepIdx]?.label ?? ""} · {stepIdx + 1} of {steps.length}
+        </div>
+      </div>
+
+      {/* Slide carousel */}
+      <div style={{ position: "relative", zIndex: 10, overflow: "hidden" }}>
+        <div
+          style={{
+            display: "flex",
+            transform: `translateX(-${stepIdx * 100}%)`,
+            transition: "transform 0.48s cubic-bezier(0.4,0,0.2,1)",
+            willChange: "transform",
+          }}
+        >
+          {steps.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                width: "100%",
+                flexShrink: 0,
+                display: "flex",
+                justifyContent: "center",
+                padding: "36px 16px 72px",
+                minHeight: "calc(100vh - 142px)",
+              }}
+            >
+              <div style={{ maxWidth: 460, width: "100%" }}>
+                {renderStep(s.id as StepId)}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

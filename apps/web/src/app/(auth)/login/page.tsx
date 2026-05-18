@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { authApi, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { LaunchScreen } from "@/components/LaunchScreen";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [showLaunch, setShowLaunch] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -33,7 +35,7 @@ export default function LoginPage() {
         return;
       }
       setSession(result.accessToken, result.user);
-      router.push("/dashboard");
+      setShowLaunch(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed");
       setLoading(false);
@@ -53,6 +55,12 @@ export default function LoginPage() {
     boxShadow:
       focusedField === field ? "0 0 0 3px var(--color-accent-subtle)" : "none",
   });
+
+  if (showLaunch) {
+    return (
+      <LaunchScreen variant="login" onDone={() => router.push("/dashboard")} />
+    );
+  }
 
   return (
     <div
@@ -617,12 +625,15 @@ export default function LoginPage() {
                 onMouseEnter={(e) => {
                   if (!loading) {
                     e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,118,110,0.4)";
+                    e.currentTarget.style.boxShadow =
+                      "0 6px 20px rgba(15,118,110,0.4)";
                   }
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow = loading ? "none" : "var(--shadow-accent)";
+                  e.currentTarget.style.boxShadow = loading
+                    ? "none"
+                    : "var(--shadow-accent)";
                 }}
               >
                 {loading ? (
