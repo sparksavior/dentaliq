@@ -29,6 +29,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   apps/admin:
     dependencies:
@@ -112,6 +115,9 @@ importers:
       typescript:
         specifier: ^5
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   apps/auth-service:
     dependencies:
@@ -243,6 +249,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   apps/tenant-service:
     dependencies:
@@ -359,6 +368,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   packages/config:
     dependencies:
@@ -369,6 +381,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   packages/db:
     dependencies:
@@ -417,6 +432,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   packages/logger:
     dependencies:
@@ -433,6 +451,9 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)(lightningcss@1.32.0)
 
   packages/types:
     devDependencies:

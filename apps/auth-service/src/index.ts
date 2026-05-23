@@ -76,6 +76,9 @@ async function initDb() {
 
   // Add columns for existing DBs that predate these migrations
   for (const col of [
+    // tenants table migrations
+    `ALTER TABLE tenants ADD COLUMN billing_date TEXT`,
+    // users table migrations
     `ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '[]'`,
     `ALTER TABLE users ADD COLUMN invited_by TEXT`,
     `ALTER TABLE users ADD COLUMN mfa_method TEXT NOT NULL DEFAULT 'totp'`,
@@ -85,7 +88,11 @@ async function initDb() {
     `ALTER TABLE users ADD COLUMN mfa_otp_expires TEXT`,
     `ALTER TABLE invite_tokens ADD COLUMN mfa_method TEXT NOT NULL DEFAULT 'totp'`,
   ]) {
-    try { await db.run(sql.raw(col)) } catch { /* column already exists */ }
+    try {
+      await db.run(sql.raw(col));
+    } catch {
+      /* column already exists */
+    }
   }
 
   await db.run(
