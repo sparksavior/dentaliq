@@ -348,9 +348,23 @@ export const inviteApi = {
       body: JSON.stringify({}),
     }),
 
+  setupEmailMfa: (token: string) =>
+    authRequest<{ success: boolean }>(
+      `/users/invite/${token}/setup-email-mfa`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    ),
+
   complete: (
     token: string,
-    body: { password: string; mfaCode: string; tosAgreed: boolean },
+    body: {
+      password: string;
+      mfaCode: string;
+      tosAgreed: boolean;
+      mfaMethod?: string;
+    },
   ) =>
     authRequest<{ accessToken: string; user: AuthUser }>(
       `/users/invite/${token}/complete`,

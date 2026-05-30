@@ -399,14 +399,14 @@ function GlobalSearch({
           .filter(
             (h) =>
               h.cdt_code.toLowerCase().includes(query.toLowerCase()) ||
-              (h.procedure_name || "")
+              ((h as any).procedure_name || "")
                 .toLowerCase()
                 .includes(query.toLowerCase()),
           )
           .map((h) => ({
             type: "estimate" as const,
             id: h.id,
-            title: h.procedure_name,
+            title: (h as any).procedure_name,
             subtitle: `${h.cdt_code} · $${h.insurer_pays} recovered`,
           })),
         ...(query.toLowerCase().includes("rev") ||

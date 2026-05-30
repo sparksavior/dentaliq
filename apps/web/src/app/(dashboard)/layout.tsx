@@ -22,6 +22,8 @@ import { useTheme } from "@/hooks/useTheme";
 import { ToastProvider } from "@/components/Toast";
 import { CommandPalette } from "@/components/CommandPalette";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import { insurancePlansApi } from "@/lib/api";
 
 // permission key that gates this nav item for sub-users (undefined = admin-only)
@@ -235,6 +237,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // ── Forced MFA setup state (admins who skipped during signup) ──
   const [mfaSetupData, setMfaSetupData] = useState<{
@@ -907,8 +910,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             }}
           />
         )}
+        {/* Mobile sidebar backdrop */}
+        <div
+          className="diq-sidebar-backdrop"
+          onClick={() => setIsMobileMenuOpen(false)}
+          style={{
+            display: "none",
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 999,
+            opacity: isMobileMenuOpen ? 1 : 0,
+            pointerEvents: isMobileMenuOpen ? "auto" : "none",
+            transition: "opacity 0.25s ease",
+          }}
+        />
+
         {/* ── SIDEBAR ── */}
         <aside
+          className={`diq-sidebar ${isMobileMenuOpen ? "diq-sidebar--open" : ""}`}
           style={{
             width: isSidebarExpanded ? 240 : 72,
             display: "flex",
@@ -976,6 +996,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           >
             <Link
               href="/dashboard"
+              onClick={() => setIsMobileMenuOpen(false)}
               style={{
                 textDecoration: "none",
                 display: "flex",
@@ -1401,6 +1422,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   key={item.href}
                   href={item.href}
                   title={isSidebarExpanded ? undefined : item.label}
+                  onClick={() => setIsMobileMenuOpen(false)}
                   style={{
                     width: isSidebarExpanded ? "calc(100% - 24px)" : 46,
                     height: 46,
@@ -1510,6 +1532,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                         key={item.href}
                         href={item.href}
                         title={isSidebarExpanded ? undefined : item.label}
+                        onClick={() => setIsMobileMenuOpen(false)}
                         style={{
                           width: isSidebarExpanded ? "calc(100% - 24px)" : 46,
                           height: 46,
@@ -1593,7 +1616,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
             {/* Logout */}
             <button
-              onClick={() => clearSession()}
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                clearSession();
+              }}
               title={isSidebarExpanded ? undefined : "Sign out"}
               style={{
                 width: isSidebarExpanded ? "100%" : 42,
@@ -1714,6 +1740,106 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           }}
           onClick={() => isClinicMenuOpen && setIsClinicMenuOpen(false)}
         >
+          {/* Mobile header */}
+          <div
+            className="diq-mobile-header"
+            style={{
+              display: "none",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 16px",
+              borderBottom: "1px solid var(--color-border-secondary)",
+              background: "var(--color-background-primary)",
+              position: "sticky",
+              top: 0,
+              zIndex: 100,
+            }}
+          >
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: "var(--color-background-secondary)",
+                border: "1px solid var(--color-border-secondary)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--color-text-primary)",
+              }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <Link
+              href="/dashboard"
+              style={{
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 9,
+                  background: "linear-gradient(135deg, #0f766e, #0d9488)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 17,
+                  fontWeight: 800,
+                  color: "#fff",
+                }}
+              >
+                +
+              </div>
+              <span
+                style={{
+                  fontWeight: 800,
+                  fontSize: 17,
+                  letterSpacing: "-0.04em",
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                DentalIQ
+              </span>
+            </Link>
+            <div style={{ width: 40 }} /> {/* spacer for centering */}
+          </div>
+
+          <div
+            className="diq-notif-bar"
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              padding: "12px 32px 0",
+              gap: 8,
+            }}
+          >
+            <NotificationCenter accessToken={accessToken} />
+          </div>
+          <div
+            className="diq-breadcrumbs-wrap"
+            style={{ padding: "20px 32px 0" }}
+          >
+            <Breadcrumbs />
+          </div>
           {children}
 
           {/* Suspended overlay */}
@@ -1826,6 +1952,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           {/* AI Chat Float */}
           {tenant?.plan !== "starter" && (
             <div
+              className="diq-chat-float"
               style={{
                 position: "fixed",
                 bottom: 24,
@@ -1839,6 +1966,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             >
               {isChatOpen && (
                 <div
+                  className="diq-chat-window"
                   style={{
                     width: 380,
                     height: 520,

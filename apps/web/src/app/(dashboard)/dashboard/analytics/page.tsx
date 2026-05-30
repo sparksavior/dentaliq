@@ -750,10 +750,9 @@ export default function AnalyticsPage() {
                       borderRadius: 10,
                       fontSize: 13,
                     }}
-                    formatter={(val: any, name: string) => [
-                      val,
-                      name === "total" ? "Presented" : "Advanced",
-                    ]}
+                    formatter={(val: any, name: any) =>
+                      [val, name === "total" ? "Presented" : "Advanced"] as any
+                    }
                   />
                   <Bar
                     dataKey="total"
