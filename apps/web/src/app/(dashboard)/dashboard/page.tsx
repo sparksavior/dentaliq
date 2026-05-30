@@ -15,7 +15,15 @@ import {
   type Tenant,
 } from "@/lib/api";
 import { useNotifications } from "@/contexts/notification-context";
-import { Search, Bell, History, User, CreditCard, ChevronRight, X as CloseIcon } from "lucide-react";
+import {
+  Search,
+  Bell,
+  History,
+  User,
+  CreditCard,
+  ChevronRight,
+  X as CloseIcon,
+} from "lucide-react";
 
 /* ── Utility ── */
 function timeAgo(dateStr: string): string {
@@ -31,7 +39,8 @@ function timeAgo(dateStr: string): string {
 /* ── Sparkline charts ── */
 function BarSparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data, 1);
-  const W = 76, H = 32;
+  const W = 76,
+    H = 32;
   const barW = Math.floor((W - (data.length - 1) * 2) / data.length);
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
@@ -57,7 +66,8 @@ function LineSparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data, 1);
   const min = Math.min(...data);
   const range = max - min || 1;
-  const W = 76, H = 32;
+  const W = 76,
+    H = 32;
   const points = data
     .map((v, i) => {
       const x = (i / (data.length - 1)) * W;
@@ -69,12 +79,21 @@ function LineSparkline({ data, color }: { data: number[]; color: string }) {
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
       <defs>
-        <linearGradient id={`lg-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient
+          id={`lg-${color.replace("#", "")}`}
+          x1="0"
+          y1="0"
+          x2="0"
+          y2="1"
+        >
           <stop offset="0%" stopColor={color} stopOpacity="0.2" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={areaPoints} fill={`url(#lg-${color.replace("#", "")})`} />
+      <polygon
+        points={areaPoints}
+        fill={`url(#lg-${color.replace("#", "")})`}
+      />
       <polyline
         points={points}
         fill="none"
@@ -88,7 +107,9 @@ function LineSparkline({ data, color }: { data: number[]; color: string }) {
 }
 
 function SemiGauge({ percent, color }: { percent: number; color: string }) {
-  const r = 38, cx = 50, cy = 48;
+  const r = 38,
+    cx = 50,
+    cy = 48;
   const circ = Math.PI * r;
   const offset = circ - (Math.min(percent, 100) / 100) * circ;
   return (
@@ -131,7 +152,8 @@ function RevenueTrendChart({ data }: { data: number[] }) {
   const max = Math.max(...data, 1);
   const min = Math.min(...data);
   const range = max - min || 1;
-  const W = 500, H = 100;
+  const W = 500,
+    H = 100;
   const toCoord = (v: number, i: number) => ({
     x: (i / (data.length - 1)) * W,
     y: H - ((v - min) / range) * (H - 10) - 5,
@@ -160,7 +182,14 @@ function RevenueTrendChart({ data }: { data: number[] }) {
         </linearGradient>
       </defs>
       <path d={areaD} fill="url(#revGrad)" />
-      <path d={pathD} fill="none" stroke="#0f766e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d={pathD}
+        fill="none"
+        stroke="#0f766e"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <circle cx={lastPt.x} cy={lastPt.y} r="4" fill="#0f766e" />
     </svg>
   );
@@ -185,15 +214,22 @@ function AiInsightStrip({
     const now = new Date();
     const thisMonth = history.filter((h) => {
       const d = new Date(h.created_at);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      return (
+        d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      );
     });
     const highRisk = history.filter((h) => h.claim_risk === "high").length;
-    const revenue = thisMonth.reduce((sum, h) => sum + (h.insurer_pays || 0), 0);
+    const revenue = thisMonth.reduce(
+      (sum, h) => sum + (h.insurer_pays || 0),
+      0,
+    );
     const codeCounts: Record<string, number> = {};
     thisMonth.forEach((h) => {
       codeCounts[h.cdt_code] = (codeCounts[h.cdt_code] || 0) + 1;
     });
-    const topCode = Object.entries(codeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const topCode = Object.entries(codeCounts).sort(
+      (a, b) => b[1] - a[1],
+    )[0]?.[0];
 
     const fallback = () => {
       if (history.length === 0)
@@ -235,7 +271,8 @@ function AiInsightStrip({
         display: "flex",
         alignItems: "center",
         gap: 12,
-        background: "linear-gradient(135deg, rgba(15,118,110,0.07), rgba(13,148,136,0.03))",
+        background:
+          "linear-gradient(135deg, rgba(15,118,110,0.07), rgba(13,148,136,0.03))",
         border: "1px solid rgba(15,118,110,0.15)",
         borderRadius: 14,
         padding: "12px 16px",
@@ -291,7 +328,13 @@ function AiInsightStrip({
           >
             AI Insight
           </span>
-          <span style={{ fontSize: 13.5, color: "var(--color-text-primary)", lineHeight: 1.5 }}>
+          <span
+            style={{
+              fontSize: 13.5,
+              color: "var(--color-text-primary)",
+              lineHeight: 1.5,
+            }}
+          >
             {insight}
           </span>
         </div>
@@ -328,15 +371,57 @@ function AiInsightStrip({
 }
 
 /* ── Global Search ── */
-function GlobalSearch({ patients, history }: { patients: Patient[]; history: EstimateHistoryItem[] }) {
+function GlobalSearch({
+  patients,
+  history,
+}: {
+  patients: Patient[];
+  history: EstimateHistoryItem[];
+}) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
 
-  const results = query.trim() ? [
-    ...patients.filter(p => `${p.first_name} ${p.last_name}`.toLowerCase().includes(query.toLowerCase())).map(p => ({ type: 'patient' as const, id: p.id, title: `${p.first_name} ${p.last_name}`, subtitle: p.email })),
-    ...history.filter(h => h.cdt_code.toLowerCase().includes(query.toLowerCase()) || h.procedure_name.toLowerCase().includes(query.toLowerCase())).map(h => ({ type: 'estimate' as const, id: h.id, title: h.procedure_name, subtitle: `${h.cdt_code} · $${h.insurer_pays} recovered` })),
-    ...(query.toLowerCase().includes('rev') || query.toLowerCase().includes('earn') ? [{ type: 'revenue' as const, id: 'rev', title: 'Revenue Report', subtitle: 'View detailed analytics' }] : [])
-  ].slice(0, 8) : [];
+  const results = query.trim()
+    ? [
+        ...patients
+          .filter((p) =>
+            `${p.first_name} ${p.last_name}`
+              .toLowerCase()
+              .includes(query.toLowerCase()),
+          )
+          .map((p) => ({
+            type: "patient" as const,
+            id: p.id,
+            title: `${p.first_name} ${p.last_name}`,
+            subtitle: p.email,
+          })),
+        ...history
+          .filter(
+            (h) =>
+              h.cdt_code.toLowerCase().includes(query.toLowerCase()) ||
+              (h.procedure_name || "")
+                .toLowerCase()
+                .includes(query.toLowerCase()),
+          )
+          .map((h) => ({
+            type: "estimate" as const,
+            id: h.id,
+            title: h.procedure_name,
+            subtitle: `${h.cdt_code} · $${h.insurer_pays} recovered`,
+          })),
+        ...(query.toLowerCase().includes("rev") ||
+        query.toLowerCase().includes("earn")
+          ? [
+              {
+                type: "revenue" as const,
+                id: "rev",
+                title: "Revenue Report",
+                subtitle: "View detailed analytics",
+              },
+            ]
+          : []),
+      ].slice(0, 8)
+    : [];
 
   return (
     <div style={{ position: "relative" }}>
@@ -373,7 +458,16 @@ function GlobalSearch({ patients, history }: { patients: Patient[]; history: Est
           }}
         />
         {query && (
-          <button onClick={() => setQuery("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-tertiary)", padding: 0 }}>
+          <button
+            onClick={() => setQuery("")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--color-text-tertiary)",
+              padding: 0,
+            }}
+          >
             <CloseIcon size={12} />
           </button>
         )}
@@ -381,7 +475,10 @@ function GlobalSearch({ patients, history }: { patients: Patient[]; history: Est
 
       {isOpen && results.length > 0 && (
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 100 }} onClick={() => setIsOpen(false)} />
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 100 }}
+            onClick={() => setIsOpen(false)}
+          />
           <div
             style={{
               position: "absolute",
@@ -400,7 +497,13 @@ function GlobalSearch({ patients, history }: { patients: Patient[]; history: Est
             {results.map((res, i) => (
               <Link
                 key={`${res.type}-${res.id}-${i}`}
-                href={res.type === 'patient' ? `/dashboard/patients?id=${res.id}` : res.type === 'estimate' ? `/dashboard/estimates?id=${res.id}` : '/dashboard/analytics'}
+                href={
+                  res.type === "patient"
+                    ? `/dashboard/patients/${res.id}`
+                    : res.type === "estimate"
+                      ? `/dashboard/claims/${res.id}`
+                      : "/dashboard/analytics"
+                }
                 onClick={() => setIsOpen(false)}
                 style={{
                   display: "flex",
@@ -408,24 +511,72 @@ function GlobalSearch({ patients, history }: { patients: Patient[]; history: Est
                   gap: 12,
                   padding: "10px 14px",
                   textDecoration: "none",
-                  borderBottom: i === results.length - 1 ? "none" : "1px solid var(--color-border-tertiary)",
+                  borderBottom:
+                    i === results.length - 1
+                      ? "none"
+                      : "1px solid var(--color-border-tertiary)",
                   transition: "background 0.1s",
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "var(--color-background-secondary)"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background =
+                    "var(--color-background-secondary)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
               >
-                <div style={{
-                  width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: res.type === 'patient' ? 'rgba(14,116,144,0.1)' : res.type === 'estimate' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                  color: res.type === 'patient' ? '#0e7490' : res.type === 'estimate' ? '#10b981' : '#f59e0b',
-                }}>
-                  {res.type === 'patient' ? <User size={16} /> : res.type === 'estimate' ? <History size={16} /> : <CreditCard size={16} />}
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background:
+                      res.type === "patient"
+                        ? "rgba(14,116,144,0.1)"
+                        : res.type === "estimate"
+                          ? "rgba(16,185,129,0.1)"
+                          : "rgba(245,158,11,0.1)",
+                    color:
+                      res.type === "patient"
+                        ? "#0e7490"
+                        : res.type === "estimate"
+                          ? "#10b981"
+                          : "#f59e0b",
+                  }}
+                >
+                  {res.type === "patient" ? (
+                    <User size={16} />
+                  ) : res.type === "estimate" ? (
+                    <History size={16} />
+                  ) : (
+                    <CreditCard size={16} />
+                  )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "var(--color-text-primary)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
                     {res.title}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--color-text-tertiary)",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
                     {res.subtitle}
                   </div>
                 </div>
@@ -441,7 +592,8 @@ function GlobalSearch({ patients, history }: { patients: Patient[]; history: Est
 
 /* ── Notification Tray ── */
 function NotificationTray() {
-  const { notifications, unreadCount, markAllAsRead, clearNotifications } = useNotifications();
+  const { notifications, unreadCount, markAllAsRead, clearNotifications } =
+    useNotifications();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -495,7 +647,10 @@ function NotificationTray() {
 
       {isOpen && (
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 100 }} onClick={() => setIsOpen(false)} />
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 100 }}
+            onClick={() => setIsOpen(false)}
+          />
           <div
             style={{
               position: "absolute",
@@ -514,14 +669,44 @@ function NotificationTray() {
               animation: "slideInDown 0.18s ease-out",
             }}
           >
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--color-border-secondary)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Notifications</h3>
-              <button onClick={clearNotifications} style={{ background: "none", border: "none", fontSize: 11, color: "var(--color-accent)", cursor: "pointer", fontWeight: 600 }}>Clear all</button>
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: "1px solid var(--color-border-secondary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
+                Notifications
+              </h3>
+              <button
+                onClick={clearNotifications}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 11,
+                  color: "var(--color-accent)",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                Clear all
+              </button>
             </div>
             <div style={{ overflowY: "auto", flex: 1 }}>
               {notifications.length === 0 ? (
-                <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--color-text-tertiary)" }}>
-                  <div style={{ marginBottom: 12, opacity: 0.3 }}><Bell size={40} style={{ margin: "0 auto" }} /></div>
+                <div
+                  style={{
+                    padding: "40px 20px",
+                    textAlign: "center",
+                    color: "var(--color-text-tertiary)",
+                  }}
+                >
+                  <div style={{ marginBottom: 12, opacity: 0.3 }}>
+                    <Bell size={40} style={{ margin: "0 auto" }} />
+                  </div>
                   <div style={{ fontSize: 14 }}>No notifications yet</div>
                 </div>
               ) : (
@@ -530,20 +715,61 @@ function NotificationTray() {
                     key={n.id}
                     style={{
                       padding: "14px 20px",
-                      borderBottom: i === notifications.length - 1 ? "none" : "1px solid var(--color-border-tertiary)",
-                      background: n.read ? "transparent" : "var(--color-background-secondary)",
+                      borderBottom:
+                        i === notifications.length - 1
+                          ? "none"
+                          : "1px solid var(--color-border-tertiary)",
+                      background: n.read
+                        ? "transparent"
+                        : "var(--color-background-secondary)",
                       display: "flex",
                       gap: 12,
                     }}
                   >
-                    <div style={{
-                      width: 8, height: 8, borderRadius: "50%", background: n.type === 'success' ? '#10b981' : n.type === 'warning' ? '#f59e0b' : '#3b82f6',
-                      marginTop: 5, flexShrink: 0
-                    }} />
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background:
+                          n.type === "success"
+                            ? "#10b981"
+                            : n.type === "warning"
+                              ? "#f59e0b"
+                              : "#3b82f6",
+                        marginTop: 5,
+                        flexShrink: 0,
+                      }}
+                    />
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>{n.title}</div>
-                      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.4 }}>{n.message}</div>
-                      <div style={{ fontSize: 10, color: "var(--color-text-tertiary)", marginTop: 6 }}>{timeAgo(n.timestamp)}</div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "var(--color-text-primary)",
+                          marginBottom: 2,
+                        }}
+                      >
+                        {n.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "var(--color-text-secondary)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {n.message}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "var(--color-text-tertiary)",
+                          marginTop: 6,
+                        }}
+                      >
+                        {timeAgo(n.timestamp)}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -571,7 +797,9 @@ export default function OverviewPage() {
     setLoading(true);
     try {
       const [hist, pts, t] = await Promise.all([
-        estimateApi.getHistory(accessToken).catch(() => [] as EstimateHistoryItem[]),
+        estimateApi
+          .getHistory(accessToken)
+          .catch(() => [] as EstimateHistoryItem[]),
         patientsApi.getPatients(accessToken).catch(() => [] as Patient[]),
         tenantsApi.getTenant(accessToken).catch(() => null),
       ]);
@@ -595,13 +823,15 @@ export default function OverviewPage() {
     if (isFreshLogin === "1") {
       sessionStorage.removeItem("diq_fresh_login");
       console.log("[WelcomeTrigger] Triggering welcome email...");
-      authApi.triggerWelcomeEmail(accessToken)
+      authApi
+        .triggerWelcomeEmail(accessToken)
         .then(() => {
           console.log("[WelcomeTrigger] Success");
           addNotification({
             title: "Welcome to DentalIQ!",
-            message: "We've sent a welcome guide to your email. Explore your new dashboard!",
-            type: "success"
+            message:
+              "We've sent a welcome guide to your email. Explore your new dashboard!",
+            type: "success",
           });
         })
         .catch((err) => console.error("[WelcomeTrigger] Failed:", err));
@@ -612,23 +842,31 @@ export default function OverviewPage() {
   const now = new Date();
   const thisMonth = history.filter((h) => {
     const d = new Date(h.created_at);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return (
+      d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    );
   });
-  const revenueRecovered = thisMonth.reduce((sum, h) => sum + (h.insurer_pays || 0), 0);
+  const revenueRecovered = thisMonth.reduce(
+    (sum, h) => sum + (h.insurer_pays || 0),
+    0,
+  );
   const highRiskCount = history.filter((h) => h.claim_risk === "high").length;
   const recent = history.slice(0, 6);
 
   const lastMonthEstimates = history.filter((h) => {
     const d = new Date(h.created_at);
     const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear();
+    return (
+      d.getMonth() === lm.getMonth() && d.getFullYear() === lm.getFullYear()
+    );
   }).length;
   const monthDelta = thisMonth.length - lastMonthEstimates;
 
   const coverageRate =
     history.length > 0
       ? Math.round(
-          history.reduce((sum, h) => sum + (h.coverage_percent || 0), 0) / history.length
+          history.reduce((sum, h) => sum + (h.coverage_percent || 0), 0) /
+            history.length,
         )
       : 0;
 
@@ -638,7 +876,9 @@ export default function OverviewPage() {
     return history
       .filter((h) => {
         const d = new Date(h.created_at);
-        return d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear();
+        return (
+          d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear()
+        );
       })
       .reduce((sum, h) => sum + (h.insurer_pays || 0), 0);
   });
@@ -648,7 +888,9 @@ export default function OverviewPage() {
     const m = new Date(now.getFullYear(), now.getMonth() - 6 + i, 1);
     return history.filter((h) => {
       const d = new Date(h.created_at);
-      return d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear();
+      return (
+        d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear()
+      );
     }).length;
   });
 
@@ -664,11 +906,12 @@ export default function OverviewPage() {
 
   const revenueByMonth7 = monthlyRevenue.slice(-7);
   const riskTrend = Array.from({ length: 7 }, (_, i) =>
-    Math.max(0, highRiskCount - i * 0.5)
+    Math.max(0, highRiskCount - i * 0.5),
   ).reverse();
 
   const hour = now.getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const riskStyle = {
     low: { dot: "#10b981", badge: "rgba(16,185,129,0.12)", text: "#10b981" },
@@ -737,7 +980,14 @@ export default function OverviewPage() {
                 position: "relative",
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="1.8">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--color-text-secondary)"
+                strokeWidth="1.8"
+              >
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
             </div>
@@ -750,7 +1000,11 @@ export default function OverviewPage() {
 
       {/* ── AI INSIGHT (Pro+) ── */}
       {tenant?.plan !== "starter" && (
-        <AiInsightStrip patients={patients} history={history} loading={loading} />
+        <AiInsightStrip
+          patients={patients}
+          history={history}
+          loading={loading}
+        />
       )}
 
       {/* ── STAT CARDS ROW ── */}
@@ -766,7 +1020,11 @@ export default function OverviewPage() {
           Array(4)
             .fill(0)
             .map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: 120, borderRadius: 18 }} />
+              <div
+                key={i}
+                className="skeleton"
+                style={{ height: 120, borderRadius: 18 }}
+              />
             ))
         ) : (
           <>
@@ -866,8 +1124,16 @@ export default function OverviewPage() {
                 </div>
                 <LineSparkline data={patientGrowth} color="#0e7490" />
               </div>
-              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", fontWeight: 500 }}>
-                {patients.length === 0 ? "Add your first patient" : `${patients.length} registered`}
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--color-text-tertiary)",
+                  fontWeight: 500,
+                }}
+              >
+                {patients.length === 0
+                  ? "Add your first patient"
+                  : `${patients.length} registered`}
               </div>
             </div>
 
@@ -908,7 +1174,10 @@ export default function OverviewPage() {
                     lineHeight: 1,
                   }}
                 >
-                  ${revenueRecovered.toLocaleString("en-CA", { maximumFractionDigits: 0 })}
+                  $
+                  {revenueRecovered.toLocaleString("en-CA", {
+                    maximumFractionDigits: 0,
+                  })}
                 </div>
                 <LineSparkline data={revenueByMonth7} color="#10b981" />
               </div>
@@ -929,7 +1198,14 @@ export default function OverviewPage() {
                 boxShadow: "0 4px 20px rgba(15,60,40,0.25)",
               }}
             >
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 10, fontWeight: 500 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.55)",
+                  marginBottom: 10,
+                  fontWeight: 500,
+                }}
+              >
                 Activity
               </div>
               <div
@@ -956,11 +1232,14 @@ export default function OverviewPage() {
               <div
                 style={{
                   fontSize: 11,
-                  color: highRiskCount === 0 ? "rgba(255,255,255,0.45)" : "#fca5a5",
+                  color:
+                    highRiskCount === 0 ? "rgba(255,255,255,0.45)" : "#fca5a5",
                   fontWeight: 600,
                 }}
               >
-                {highRiskCount === 0 ? "No risk flags" : `${highRiskCount} need attention`}
+                {highRiskCount === 0
+                  ? "No risk flags"
+                  : `${highRiskCount} need attention`}
               </div>
             </div>
           </>
@@ -1020,13 +1299,26 @@ export default function OverviewPage() {
                     color: "#10b981",
                   }}
                 >
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <svg
+                    width="9"
+                    height="9"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                   On track
                 </div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--color-text-tertiary)",
+                  marginTop: 2,
+                }}
+              >
                 Last 12 months insurance recovery
               </div>
             </div>
@@ -1048,7 +1340,13 @@ export default function OverviewPage() {
           {/* Two stats */}
           <div style={{ display: "flex", gap: 32, marginBottom: 16 }}>
             <div>
-              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 2 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--color-text-tertiary)",
+                  marginBottom: 2,
+                }}
+              >
                 Saves
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1077,7 +1375,13 @@ export default function OverviewPage() {
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 2 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--color-text-tertiary)",
+                  marginBottom: 2,
+                }}
+              >
                 Total recovered
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1089,16 +1393,25 @@ export default function OverviewPage() {
                     letterSpacing: "-0.03em",
                   }}
                 >
-                  ${history.reduce((s, h) => s + (h.insurer_pays || 0), 0).toLocaleString("en-CA", { maximumFractionDigits: 0 })}
+                  $
+                  {history
+                    .reduce((s, h) => s + (h.insurer_pays || 0), 0)
+                    .toLocaleString("en-CA", { maximumFractionDigits: 0 })}
                 </span>
                 <span
                   style={{
                     fontSize: 11,
                     fontWeight: 600,
-                    color: monthlyRevenue[monthlyRevenue.length - 1] > monthlyRevenue[monthlyRevenue.length - 2] ? "#10b981" : "#ef4444",
-                    background: monthlyRevenue[monthlyRevenue.length - 1] > monthlyRevenue[monthlyRevenue.length - 2]
-                      ? "rgba(16,185,129,0.1)"
-                      : "rgba(239,68,68,0.1)",
+                    color:
+                      monthlyRevenue[monthlyRevenue.length - 1] >
+                      monthlyRevenue[monthlyRevenue.length - 2]
+                        ? "#10b981"
+                        : "#ef4444",
+                    background:
+                      monthlyRevenue[monthlyRevenue.length - 1] >
+                      monthlyRevenue[monthlyRevenue.length - 2]
+                        ? "rgba(16,185,129,0.1)"
+                        : "rgba(239,68,68,0.1)",
                     borderRadius: 100,
                     padding: "1px 7px",
                   }}
@@ -1110,7 +1423,10 @@ export default function OverviewPage() {
           </div>
 
           {loading ? (
-            <div className="skeleton" style={{ height: 100, borderRadius: 8 }} />
+            <div
+              className="skeleton"
+              style={{ height: 100, borderRadius: 8 }}
+            />
           ) : (
             <RevenueTrendChart data={monthlyRevenue} />
           )}
@@ -1126,10 +1442,24 @@ export default function OverviewPage() {
             boxShadow: "var(--shadow-sm)",
           }}
         >
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text-primary)", letterSpacing: "-0.02em", marginBottom: 4 }}>
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: "var(--color-text-primary)",
+              letterSpacing: "-0.02em",
+              marginBottom: 4,
+            }}
+          >
             Earnings
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 16 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-tertiary)",
+              marginBottom: 16,
+            }}
+          >
             Total Expense
           </div>
           <div
@@ -1141,19 +1471,41 @@ export default function OverviewPage() {
               marginBottom: 6,
             }}
           >
-            ${revenueRecovered.toLocaleString("en-CA", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+            $
+            {revenueRecovered.toLocaleString("en-CA", {
+              maximumFractionDigits: 2,
+              minimumFractionDigits: 2,
+            })}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 20 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-secondary)",
+              marginBottom: 20,
+            }}
+          >
             Coverage rate is{" "}
-            <span style={{ color: "#10b981", fontWeight: 600 }}>{coverageRate}%</span> avg this month
+            <span style={{ color: "#10b981", fontWeight: 600 }}>
+              {coverageRate}%
+            </span>{" "}
+            avg this month
           </div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             {loading ? (
-              <div className="skeleton" style={{ width: 100, height: 54, borderRadius: 8 }} />
+              <div
+                className="skeleton"
+                style={{ width: 100, height: 54, borderRadius: 8 }}
+              />
             ) : (
               <div style={{ textAlign: "center" }}>
                 <SemiGauge percent={coverageRate || 0} color="#0f766e" />
-                <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 4 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "var(--color-text-tertiary)",
+                    marginTop: 4,
+                  }}
+                >
                   Coverage Rate
                 </div>
               </div>
@@ -1204,7 +1556,13 @@ export default function OverviewPage() {
           >
             {user?.name}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginBottom: 16 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "var(--color-text-tertiary)",
+              marginBottom: 16,
+            }}
+          >
             {user?.role?.replace("_", " ")} · {tenant?.name || "Your Clinic"}
           </div>
           <div
@@ -1233,7 +1591,11 @@ export default function OverviewPage() {
                   {s.value}
                 </div>
                 <div
-                  style={{ fontSize: 10, color: "var(--color-text-tertiary)", fontWeight: 500 }}
+                  style={{
+                    fontSize: 10,
+                    color: "var(--color-text-tertiary)",
+                    fontWeight: 500,
+                  }}
                 >
                   {s.label}
                 </div>
@@ -1244,7 +1606,13 @@ export default function OverviewPage() {
       </div>
 
       {/* ── BOTTOM ROW: Quick actions + Recent activity + AI/Security ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 220px", gap: 14 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "240px 1fr 220px",
+          gap: 14,
+        }}
+      >
         {/* Quick actions (credit card style section) */}
         <div
           style={{
@@ -1268,12 +1636,43 @@ export default function OverviewPage() {
           >
             Quick actions
           </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              flex: 1,
+            }}
+          >
             {[
-              { href: "/dashboard/estimates", icon: "⚡", label: "Run an estimate", desc: "Check coverage instantly", color: "#0f766e" },
-              { href: "/dashboard/patients", icon: "👤", label: "Add a patient", desc: "Register new patient", color: "#0e7490" },
-              { href: "/dashboard/claims", icon: "🛡", label: "Review claims", desc: "Check risk flags", color: "#6366f1" },
-              { href: "/dashboard/settings", icon: "⚙️", label: "Settings", desc: "Clinic & integrations", color: "#64748b" },
+              {
+                href: "/dashboard/estimates",
+                icon: "⚡",
+                label: "Run an estimate",
+                desc: "Check coverage instantly",
+                color: "#0f766e",
+              },
+              {
+                href: "/dashboard/patients",
+                icon: "👤",
+                label: "Add a patient",
+                desc: "Register new patient",
+                color: "#0e7490",
+              },
+              {
+                href: "/dashboard/claims",
+                icon: "🛡",
+                label: "Review claims",
+                desc: "Check risk flags",
+                color: "#6366f1",
+              },
+              {
+                href: "/dashboard/settings",
+                icon: "⚙️",
+                label: "Settings",
+                desc: "Clinic & integrations",
+                color: "#64748b",
+              },
             ].map((a) => (
               <Link
                 key={a.href}
@@ -1290,14 +1689,18 @@ export default function OverviewPage() {
                   transition: "all 0.15s",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--color-background-primary)";
-                  e.currentTarget.style.borderColor = "var(--color-border-secondary)";
+                  e.currentTarget.style.background =
+                    "var(--color-background-primary)";
+                  e.currentTarget.style.borderColor =
+                    "var(--color-border-secondary)";
                   e.currentTarget.style.boxShadow = "var(--shadow-sm)";
                   e.currentTarget.style.transform = "translateX(2px)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--color-background-secondary)";
-                  e.currentTarget.style.borderColor = "var(--color-border-tertiary)";
+                  e.currentTarget.style.background =
+                    "var(--color-background-secondary)";
+                  e.currentTarget.style.borderColor =
+                    "var(--color-border-tertiary)";
                   e.currentTarget.style.boxShadow = "none";
                   e.currentTarget.style.transform = "translateX(0)";
                 }}
@@ -1318,12 +1721,33 @@ export default function OverviewPage() {
                   {a.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--color-text-primary)",
+                      marginBottom: 1,
+                    }}
+                  >
                     {a.label}
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>{a.desc}</div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "var(--color-text-tertiary)",
+                    }}
+                  >
+                    {a.desc}
+                  </div>
                 </div>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--color-text-tertiary)"
+                  strokeWidth="2"
+                >
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </Link>
@@ -1367,7 +1791,14 @@ export default function OverviewPage() {
               marginBottom: 16,
             }}
           >
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text-primary)", letterSpacing: "-0.02em" }}>
+            <h3
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: "var(--color-text-primary)",
+                letterSpacing: "-0.02em",
+              }}
+            >
               Your Transfers
             </h3>
             <Link
@@ -1383,16 +1814,29 @@ export default function OverviewPage() {
               }}
             >
               View all
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </Link>
           </div>
 
           {loading ? (
-            Array(5).fill(0).map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: 48, borderRadius: 10, marginBottom: 8 }} />
-            ))
+            Array(5)
+              .fill(0)
+              .map((_, i) => (
+                <div
+                  key={i}
+                  className="skeleton"
+                  style={{ height: 48, borderRadius: 10, marginBottom: 8 }}
+                />
+              ))
           ) : recent.length === 0 ? (
             <div style={{ textAlign: "center", padding: "2rem 0" }}>
               <div
@@ -1410,10 +1854,23 @@ export default function OverviewPage() {
               >
                 📋
               </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 6 }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--color-text-primary)",
+                  marginBottom: 6,
+                }}
+              >
                 No activity yet
               </div>
-              <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--color-text-secondary)",
+                  marginBottom: 16,
+                }}
+              >
                 Run your first insurance estimate to get started.
               </div>
               <Link
@@ -1436,12 +1893,15 @@ export default function OverviewPage() {
             </div>
           ) : (
             recent.map((item, idx) => {
-              const rs = riskStyle[item.claim_risk as keyof typeof riskStyle] ?? riskStyle.low;
+              const rs =
+                riskStyle[item.claim_risk as keyof typeof riskStyle] ??
+                riskStyle.low;
               const patientLabel = item.first_name
                 ? `${item.first_name} ${item.last_name ?? ""}`.trim()
                 : null;
               return (
-                <div
+                <Link
+                  href={`/dashboard/claims/${item.id}`}
                   key={item.id}
                   style={{
                     display: "flex",
@@ -1451,12 +1911,16 @@ export default function OverviewPage() {
                     borderRadius: 10,
                     marginBottom: 4,
                     transition: "background 0.12s",
-                    cursor: "default",
+                    cursor: "pointer",
+                    textDecoration: "none",
                   }}
                   onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = "var(--color-background-secondary)")
+                    (e.currentTarget.style.background =
+                      "var(--color-background-secondary)")
                   }
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
                 >
                   <div
                     style={{
@@ -1468,12 +1932,30 @@ export default function OverviewPage() {
                     }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-primary)" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 2,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "var(--color-text-primary)",
+                        }}
+                      >
                         {patientLabel || item.cdt_code}
                       </span>
                       {patientLabel && (
-                        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--color-text-tertiary)",
+                          }}
+                        >
                           · {item.cdt_code}
                         </span>
                       )}
@@ -1487,7 +1969,8 @@ export default function OverviewPage() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {timeAgo(item.created_at)}, {String(item.coverage_percent ?? 0)}% covered
+                      {timeAgo(item.created_at)},{" "}
+                      {String(item.coverage_percent ?? 0)}% covered
                     </div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -1498,7 +1981,10 @@ export default function OverviewPage() {
                         color: rs.text,
                       }}
                     >
-                      +${(item.insurer_pays || 0).toLocaleString("en-CA", { maximumFractionDigits: 0 })}
+                      +$
+                      {(item.insurer_pays || 0).toLocaleString("en-CA", {
+                        maximumFractionDigits: 0,
+                      })}
                     </div>
                     <div
                       style={{
@@ -1514,7 +2000,7 @@ export default function OverviewPage() {
                       {item.claim_risk}
                     </div>
                   </div>
-                </div>
+                </Link>
               );
             })
           )}
@@ -1541,7 +2027,8 @@ export default function OverviewPage() {
               width: 56,
               height: 56,
               borderRadius: "50%",
-              background: "linear-gradient(135deg, rgba(15,118,110,0.1), rgba(13,148,136,0.05))",
+              background:
+                "linear-gradient(135deg, rgba(15,118,110,0.1), rgba(13,148,136,0.05))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1552,11 +2039,25 @@ export default function OverviewPage() {
             🔒
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 6 }}>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: "var(--color-text-primary)",
+                marginBottom: 6,
+              }}
+            >
               Keep you safe!
             </div>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.55 }}>
-              Update your security settings and review clinic access permissions.
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--color-text-secondary)",
+                lineHeight: 1.55,
+              }}
+            >
+              Update your security settings and review clinic access
+              permissions.
             </div>
           </div>
           <Link
@@ -1612,7 +2113,8 @@ export default function OverviewPage() {
         <div
           style={{
             marginTop: 16,
-            background: "linear-gradient(135deg, #0c4a44, #0f766e 40%, #0d9488)",
+            background:
+              "linear-gradient(135deg, #0c4a44, #0f766e 40%, #0d9488)",
             borderRadius: 18,
             padding: "1.5rem 2rem",
             display: "flex",

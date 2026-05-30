@@ -78,7 +78,7 @@ export class MfaController {
       .where(eq(users.id, userId));
 
     this.emailService
-      .sendMfaEnabledEmail(user.email, user.name)
+      .sendMfaEnabledEmail(user.email, user.name, user.demoAccount)
       .catch((err) => console.error("[MfaController] MFA email failed:", err));
   }
 
@@ -112,7 +112,13 @@ export class MfaController {
       .where(eq(users.id, userId));
 
     if (method === "email") {
-      await this.emailService.sendMfaOtpEmail(user.email, user.name, code);
+      await this.emailService.sendMfaOtpEmail(
+        user.email,
+        user.name,
+        code,
+        "email",
+        user.demoAccount,
+      );
     } else if (method === "sms") {
       await this._sendSms(
         user.phoneNumber!,

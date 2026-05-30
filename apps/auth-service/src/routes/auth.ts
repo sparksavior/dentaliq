@@ -140,12 +140,10 @@ export async function authRoutes(app: FastifyInstance) {
         });
       } catch (err: any) {
         const status = err.statusCode ?? 500;
-        return reply
-          .code(status)
-          .send({
-            success: false,
-            error: err.message ?? "Failed to send code",
-          });
+        return reply.code(status).send({
+          success: false,
+          error: err.message ?? "Failed to send code",
+        });
       }
     },
   );
@@ -212,4 +210,22 @@ export async function authRoutes(app: FastifyInstance) {
       message: "Password updated. Please log in.",
     });
   });
+
+  // ── Verify Password (for sensitive actions) ────────────
+  const verifyPasswordSchema = z.object({
+    email: z.string().email(),
+    password: z.string(),
+  });
+
+  app.post(
+    "/verify-password",
+    {
+      config: { rateLimit: { max: 10, timeWindow: "5 minutes" } },
+    },
+    async (req, reply) => {
+      const { email, password } = verifyPasswordSchema.parse(req.body);
+      await ctrl.verifyPassword(email, password);
+      return reply.send({ success: true });
+    },
+  );
 }

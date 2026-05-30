@@ -97,7 +97,28 @@ async function main() {
   const env = getEnv();
 
   // Seed CDT codes into DB if needed, then register the cache
-  await ensureCdtSeeded();
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await ensureCdtSeeded();
+      break;
+    } catch (err: any) {
+      if (err?.code === "SQLITE_BUSY") {
+        retries--;
+        logger.warn(
+          `Database locked, retrying ensureCdtSeeded... (${retries} left)`,
+        );
+        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 500));
+        if (retries === 0) {
+          logger.fatal({ err }, "ensureCdtSeeded failed after retries");
+          process.exit(1);
+        }
+      } else {
+        logger.fatal({ err }, "ensureCdtSeeded failed");
+        process.exit(1);
+      }
+    }
+  }
   registerCdtCache(getCdtCodeCached, getAllCdtCodesCached);
 
   const app = await buildApp();

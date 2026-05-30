@@ -31,8 +31,22 @@ export async function analyticsRoutes(app: FastifyInstance) {
       ? `AND clinic_id = '${clinicId.replace(/'/g, "''")}'`
       : "";
 
+    // Accept optional date range query params
+    const { startDate, endDate } = req.query as {
+      startDate?: string;
+      endDate?: string;
+    };
+    // Default to last 6 months if no range supplied
+    const dateFrom = startDate
+      ? `'${startDate.replace(/'/g, "''")}'`
+      : "date('now', '-6 months')";
+    const dateTo = endDate
+      ? `'${endDate.replace(/'/g, "''")}'`
+      : "date('now', '+1 day')";
+    const dateFilter = `AND created_at >= ${dateFrom} AND created_at <= ${dateTo}`;
+
     try {
-      // ── 1. Case acceptance — last 6 full months ──────────────
+      // ── 1. Case acceptance ──────────────────────────────────
       const caseRows: any[] = await db
         .all(
           sql.raw(`
@@ -43,7 +57,8 @@ export async function analyticsRoutes(app: FastifyInstance) {
                               AND pre_auth_letter != ''
                          THEN 1 ELSE 0 END)            AS advanced
               FROM "${tablePrefix}_estimates"
-              WHERE created_at >= date('now', '-6 months')
+              WHERE 1=1
+                ${dateFilter}
                 ${clinicFilter}
               GROUP BY month
               ORDER BY month ASC
@@ -70,7 +85,8 @@ export async function analyticsRoutes(app: FastifyInstance) {
                 strftime('%Y-%m', created_at) AS month,
                 COUNT(*)                      AS count
               FROM "${tablePrefix}_patients"
-              WHERE created_at >= date('now', '-6 months')
+              WHERE 1=1
+                ${dateFilter}
                 ${clinicFilter}
               GROUP BY month
               ORDER BY month ASC

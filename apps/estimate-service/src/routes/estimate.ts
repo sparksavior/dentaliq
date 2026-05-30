@@ -70,9 +70,9 @@ export async function estimateRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const jwtUser = req.user as any;
-      const db = getDb();
+      const db = getDb() as any;
       const [tenantRow] = await db
-        .select({ plan: tenants.plan })
+        .select()
         .from(tenants)
         .where(eq(tenants.id, jwtUser.tenantId))
         .limit(1);
@@ -143,15 +143,13 @@ export async function estimateRoutes(app: FastifyInstance) {
                 FROM ${sql.raw(`"${tablePrefix}_estimates"`)} e
                 LEFT JOIN ${sql.raw(`"${tablePrefix}_patients"`)} p ON e.patient_id = p.id
                 WHERE e.clinic_id = ${clinicId}
-                ORDER BY e.created_at DESC
-                LIMIT 50`,
+                ORDER BY e.created_at DESC`,
             )
           : await db.all(
               sql`SELECT e.*, p.first_name, p.last_name
                 FROM ${sql.raw(`"${tablePrefix}_estimates"`)} e
                 LEFT JOIN ${sql.raw(`"${tablePrefix}_patients"`)} p ON e.patient_id = p.id
-                ORDER BY e.created_at DESC
-                LIMIT 50`,
+                ORDER BY e.created_at DESC`,
             );
 
         return reply.send({ success: true, data: rows ?? [] });
@@ -160,6 +158,44 @@ export async function estimateRoutes(app: FastifyInstance) {
         return reply
           .code(500)
           .send({ success: false, error: "Failed to load estimate history" });
+      }
+    },
+  );
+
+  // GET /estimate/:id — single estimate details
+  app.get(
+    "/estimate/:id",
+    { preHandler: requireAuth(app) },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const jwtUser = req.user as any;
+      const tablePrefix = await getTablePrefix(jwtUser.tenantId);
+      if (!tablePrefix)
+        return reply
+          .code(404)
+          .send({ success: false, error: "Tenant not found" });
+
+      const db = getDb() as any;
+      try {
+        const [row] = await db.all(
+          sql`SELECT e.*, p.first_name, p.last_name, p.insurance_plan_id, p.date_of_birth
+            FROM ${sql.raw(`"${tablePrefix}_estimates"`)} e
+            LEFT JOIN ${sql.raw(`"${tablePrefix}_patients"`)} p ON e.patient_id = p.id
+            WHERE e.id = ${id.trim()} LIMIT 1`,
+        );
+
+        if (!row) {
+          return reply
+            .code(404)
+            .send({ success: false, error: "Estimate not found" });
+        }
+
+        return reply.send({ success: true, data: row });
+      } catch (err) {
+        logger.error({ err, id }, "Failed to fetch single estimate");
+        return reply
+          .code(500)
+          .send({ success: false, error: "Failed to fetch estimate" });
       }
     },
   );
@@ -244,10 +280,10 @@ async function persistEstimate(
 }
 
 async function getTablePrefix(tenantId: string): Promise<string | null> {
-  const db = getDb();
+  const db = getDb() as any;
   try {
     const rows = await db
-      .select({ schemaName: tenants.schemaName })
+      .select()
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);

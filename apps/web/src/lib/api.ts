@@ -325,6 +325,12 @@ export const authApi = {
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({}),
     }),
+
+  verifyPassword: (input: { email: string; password: string }) =>
+    authRequest<{ success: true }>("/auth/verify-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };
 
 // ── Invite / onboarding (public — no auth token needed) ──────
@@ -580,6 +586,9 @@ export const estimateApi = {
       method: "PATCH",
       body: JSON.stringify({ letter }),
     }),
+
+  getEstimate: (token: string, id: string) =>
+    estimateRequest<EstimateHistoryItem>(`/estimate/${id}`, token),
 };
 
 export const agentsApi = {
@@ -629,8 +638,128 @@ export interface AnalyticsOverview {
 }
 
 export const analyticsApi = {
-  getOverview: (token: string) =>
-    tenantRequest<AnalyticsOverview>("/analytics/overview", token),
+  getOverview: (
+    token: string,
+    opts?: { startDate?: string; endDate?: string },
+  ) => {
+    const params = new URLSearchParams();
+    if (opts?.startDate) params.set("startDate", opts.startDate);
+    if (opts?.endDate) params.set("endDate", opts.endDate);
+    const qs = params.toString();
+    return tenantRequest<AnalyticsOverview>(
+      `/analytics/overview${qs ? `?${qs}` : ""}`,
+      token,
+    );
+  },
+};
+
+// ── Document types & API ────────────────────────────────────
+
+export type DocumentType =
+  | "xray"
+  | "treatment_plan"
+  | "insurance_card"
+  | "consent_form"
+  | "lab_report"
+  | "photo"
+  | "other";
+
+export interface DocumentMeta {
+  id: string;
+  patient_id: string;
+  name: string;
+  type: DocumentType;
+  mime_type: string;
+  size_bytes: number;
+  notes: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentFull extends DocumentMeta {
+  content: string; // base64-encoded
+}
+
+export interface UploadDocumentInput {
+  patientId: string;
+  name: string;
+  type: DocumentType;
+  content: string; // base64
+  mimeType: string;
+  sizeBytes: number;
+  notes?: string;
+}
+
+export const documentsApi = {
+  list: (token: string, patientId?: string) =>
+    tenantRequest<DocumentMeta[]>(
+      patientId ? `/documents?patientId=${patientId}` : "/documents",
+      token,
+    ),
+
+  get: (token: string, id: string) =>
+    tenantRequest<DocumentFull>(`/documents/${id}`, token),
+
+  upload: (token: string, data: UploadDocumentInput) =>
+    tenantRequest<{ id: string; name: string; type: string }>(
+      "/documents",
+      token,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+
+  update: (
+    token: string,
+    id: string,
+    data: { name?: string; type?: DocumentType; notes?: string },
+  ) =>
+    tenantRequest<{ success: true }>(`/documents/${id}`, token, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  delete: (token: string, id: string) =>
+    tenantRequest<{ success: true }>(`/documents/${id}`, token, {
+      method: "DELETE",
+    }),
+};
+
+// ── Notes types & API ───────────────────────────────────────
+
+export type NoteType =
+  | "clinical"
+  | "billing"
+  | "general"
+  | "follow_up"
+  | "phone_call";
+
+export interface PatientNote {
+  id: string;
+  patient_id: string;
+  content: string;
+  type: NoteType;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const notesApi = {
+  list: (token: string, patientId: string) =>
+    tenantRequest<PatientNote[]>(`/notes?patientId=${patientId}`, token),
+
+  create: (
+    token: string,
+    data: { patientId: string; content: string; type?: NoteType },
+  ) =>
+    tenantRequest<PatientNote>("/notes", token, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  delete: (token: string, id: string) =>
+    tenantRequest<{ success: true }>(`/notes/${id}`, token, {
+      method: "DELETE",
+    }),
 };
 
 export const billingApi = {

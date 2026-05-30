@@ -141,6 +141,20 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
           result.agentsRun.push(agent.id);
           result.itemsFound += tasksCreated;
           logger.info({ agent: agent.id, tasksCreated }, "Agent complete");
+
+          // Broadcast SSE event for new tasks
+          if (tasksCreated > 0) {
+            broadcastEvent({
+              type: "task_created",
+              data: {
+                agentId: agent.id,
+                tenantId: tenant.id,
+                clinicId: clinic.id,
+                tasksCreated,
+              },
+              timestamp: new Date().toISOString(),
+            });
+          }
         } catch (err: any) {
           logger.error({ agent: agent.id, err }, "Agent failed");
           result.status = "error";
@@ -157,6 +171,17 @@ async function runAgentCycle(singleTenantId?: string): Promise<ScanResult[]> {
     { tenants: cortexTenants.length, results: results.length },
     "Agent cycle complete",
   );
+
+  // Broadcast scan completion
+  broadcastEvent({
+    type: "scan_complete",
+    data: {
+      tenantCount: cortexTenants.length,
+      totalTasks: results.reduce((s, r) => s + r.itemsFound, 0),
+    },
+    timestamp: new Date().toISOString(),
+  });
+
   return results;
 }
 
@@ -171,6 +196,20 @@ function extractTenantId(authHeader: string | undefined): string | null {
     return payload.tenantId ?? null;
   } catch {
     return null;
+  }
+}
+
+// ── SSE (Server-Sent Events) client tracking ─────────────
+const sseClients = new Set<http.ServerResponse>();
+
+function broadcastEvent(event: { type: string; data: any; timestamp: string }) {
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
   }
 }
 
@@ -302,6 +341,13 @@ const server = http.createServer(async (req, res) => {
       .where(eq(agentTasks.id, taskId))
       .returning();
 
+    // Broadcast SSE event
+    broadcastEvent({
+      type: status === "approved" ? "task_approved" : "task_rejected",
+      data: { taskId, agentId: updated?.agentId, tenantId },
+      timestamp: new Date().toISOString(),
+    });
+
     return json({ success: true, data: updated });
   }
 
@@ -376,6 +422,22 @@ const server = http.createServer(async (req, res) => {
         lastUpdated: new Date().toISOString(),
       },
     });
+  }
+
+  // ── GET /events — Server-Sent Events stream ─────────────
+  if (url.pathname === "/events" && req.method === "GET") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "Access-Control-Allow-Origin": corsOrigin,
+    });
+    res.write(
+      `data: ${JSON.stringify({ type: "connected", data: {}, timestamp: new Date().toISOString() })}\n\n`,
+    );
+    sseClients.add(res);
+    req.on("close", () => sseClients.delete(res));
+    return;
   }
 
   json({ error: "Not found" }, 404);

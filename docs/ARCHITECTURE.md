@@ -41,20 +41,29 @@ DentalIQ is a modern full-stack monorepo managed by **Turborepo** with **pnpm wo
 │  │  Ollama (local LLM)   │    │  Claude / OpenAI (cloud LLM)│   │
 │  │  port 11434           │    │  Automatic fallback chain    │   │
 │  └──────────────────────┘    └─────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    OBSERVABILITY (Optional)                       │
+│  ┌──────────────────────┐    ┌─────────────────────────────┐   │
+│  │  Prometheus           │    │  Grafana                     │   │
+│  │  Scrapes health/metrics│   │  Dashboards (port 3008)      │   │
+│  └──────────────────────┘    └─────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Service Port Map
 
-| Service          | Port     | Purpose                                     |
-| ---------------- | -------- | ------------------------------------------- |
-| Web Frontend     | **3000** | Public landing page + clinic dashboard      |
-| Auth Service     | **3001** | Registration, login, JWT, MFA, email        |
-| Tenant Service   | **3002** | Clinic data, patients, billing, PMS         |
-| Billing Service  | **3003** | Stripe subscription management              |
-| Estimate Service | **3004** | CDT cost engine + AI narrative generation   |
-| Admin Portal     | **3005** | Internal operations dashboard               |
-| Agent Manager    | **3006** | Cortex agent scheduling + task approval queue|
+| Service          | Port     | Purpose                                       |
+| ---------------- | -------- | --------------------------------------------- |
+| Web Frontend     | **3000** | Public landing page + clinic dashboard        |
+| Auth Service     | **3001** | Registration, login, JWT, MFA, email          |
+| Tenant Service   | **3002** | Clinic data, patients, billing, PMS           |
+| Billing Service  | **3003** | Stripe subscription management                |
+| Estimate Service | **3004** | CDT cost engine + AI narrative generation     |
+| Admin Portal     | **3005** | Internal operations dashboard                 |
+| Agent Manager    | **3006** | Cortex agent scheduling + task approval queue |
 
 ---
 
@@ -100,15 +109,15 @@ The web app uses the Next.js **App Router** with React Server Components where p
 
 ### Route Groups
 
-| Route Group        | Purpose                                                        |
-| ------------------ | -------------------------------------------------------------- |
-| `/`                | Public landing page (homepage, pricing, Cortex marketing page) |
-| `/(auth)/`         | Login, signup, forgot/reset password, email verify             |
-| `/(dashboard)/`    | Protected clinic dashboard — requires valid JWT                |
-| `/demo/[plan]/`    | Fully static demo — no auth, no database, pure React state     |
-| `/cortex/`         | Public Cortex AI marketing page                                |
-| `/pricing/`        | Public pricing page with plan comparison table                 |
-| `/legal/`, etc.    | Terms of service, privacy policy, legal pages                  |
+| Route Group     | Purpose                                                        |
+| --------------- | -------------------------------------------------------------- |
+| `/`             | Public landing page (homepage, pricing, Cortex marketing page) |
+| `/(auth)/`      | Login, signup, forgot/reset password, email verify             |
+| `/(dashboard)/` | Protected clinic dashboard — requires valid JWT                |
+| `/demo/[plan]/` | Fully static demo — no auth, no database, pure React state     |
+| `/cortex/`      | Public Cortex AI marketing page                                |
+| `/pricing/`     | Public pricing page with plan comparison table                 |
+| `/legal/`, etc. | Terms of service, privacy policy, legal pages                  |
 
 ### State Management
 
@@ -119,6 +128,7 @@ The web app uses the Next.js **App Router** with React Server Components where p
 ### API Client
 
 `lib/api.ts` is a fully typed `fetch` wrapper that:
+
 - Injects `Authorization: Bearer <token>` on every request
 - Injects `x-clinic-id` for tenant isolation
 - Throws typed `ApiError` instances for non-2xx responses
@@ -133,6 +143,7 @@ Inline styles with CSS custom properties only — no Tailwind classes in product
 ## Backend Architecture (Fastify)
 
 All backend services use **Fastify 4** (not Express) for:
+
 - Schema-based request validation (JSON Schema / Zod)
 - 2–3× better throughput than Express
 - Plugin-based architecture (CORS, Helmet, JWT, rate-limit)
@@ -141,22 +152,23 @@ All backend services use **Fastify 4** (not Express) for:
 
 ```typescript
 // Every service follows this pattern:
-import Fastify from 'fastify'
-import { requireAuth } from './middleware/requireAuth'
-import { errorHandler } from './middleware/errorHandler'
+import Fastify from "fastify";
+import { requireAuth } from "./middleware/requireAuth";
+import { errorHandler } from "./middleware/errorHandler";
 
-const app = Fastify({ logger: createLogger('service-name') })
-app.register(cors, { origin: getAllowedOrigins() })
-app.register(helmet)
-app.setErrorHandler(errorHandler)
+const app = Fastify({ logger: createLogger("service-name") });
+app.register(cors, { origin: getAllowedOrigins() });
+app.register(helmet);
+app.setErrorHandler(errorHandler);
 
 // Health check (required by Kubernetes probes)
-app.get('/health', async () => ({ status: 'ok' }))
+app.get("/health", async () => ({ status: "ok" }));
 ```
 
 ### Tenant Isolation
 
 Every authenticated request must carry:
+
 1. `Authorization: Bearer <accessToken>` — signed JWT containing `userId` and `tenantId`
 2. `x-clinic-id` header — verified against `tenantId` in the JWT
 
@@ -165,9 +177,10 @@ The `requireAuth` middleware rejects requests where these don't match, making cr
 ### Database Access
 
 All services import from `@dentaliq/db`:
+
 ```typescript
-import { getDb, schema } from '@dentaliq/db'
-const db = getDb() // Returns the Drizzle instance for dentaliq.db
+import { getDb, schema } from "@dentaliq/db";
+const db = getDb(); // Returns the Drizzle instance for dentaliq.db
 ```
 
 A single `dentaliq.db` file at the repo root is shared by all services in development. In production (PostgreSQL), the same Drizzle schema targets the cloud database — no code changes required.
@@ -213,10 +226,10 @@ All AI calls go through `packages/llm-interface`, which provides a unified `gene
 
 ```typescript
 // Usage in any service:
-import { getLLMWithFallback } from '@dentaliq/llm-interface'
+import { getLLMWithFallback } from "@dentaliq/llm-interface";
 
-const llm = getLLMWithFallback()
-const narrative = await llm.generateText(prompt, systemPrompt)
+const llm = getLLMWithFallback();
+const narrative = await llm.generateText(prompt, systemPrompt);
 ```
 
 ### Automatic Fallback Chain
@@ -235,12 +248,12 @@ This means estimates always return results even if every AI provider is down.
 
 ### Provider Configuration
 
-| `LLM_PROVIDER` | Required Env Var      | Notes                                    |
-| -------------- | --------------------- | ---------------------------------------- |
-| `ollama`       | _(none)_              | Default. Requires Ollama running locally |
-| `openai`       | `OPENAI_API_KEY`      | gpt-4o-mini by default                   |
-| `claude`       | `ANTHROPIC_API_KEY`   | claude-3-5-haiku by default              |
-| `gemini`       | `GOOGLE_API_KEY`      | gemini-1.5-flash by default              |
+| `LLM_PROVIDER` | Required Env Var    | Notes                                    |
+| -------------- | ------------------- | ---------------------------------------- |
+| `ollama`       | _(none)_            | Default. Requires Ollama running locally |
+| `openai`       | `OPENAI_API_KEY`    | gpt-4o-mini by default                   |
+| `claude`       | `ANTHROPIC_API_KEY` | claude-3-5-haiku by default              |
+| `gemini`       | `GOOGLE_API_KEY`    | gemini-1.5-flash by default              |
 
 ---
 

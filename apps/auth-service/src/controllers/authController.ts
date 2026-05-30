@@ -83,7 +83,12 @@ export class AuthController {
 
       // Send verification email (non-blocking)
       this.emailService
-        .sendVerificationEmail(user.email, user.name, emailVerifyToken)
+        .sendVerificationEmail(
+          user.email,
+          user.name,
+          emailVerifyToken,
+          user.demoAccount,
+        )
         .catch((err) => logger.error({ err }, "Verification email failed"));
 
       logger.info(
@@ -237,6 +242,30 @@ export class AuthController {
     };
   }
 
+  // ── Verify Password ───────────────────────────────────────
+  async verifyPassword(email: string, password: string) {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()))
+      .limit(1);
+
+    if (!user) {
+      const err = new Error("Invalid password");
+      (err as any).statusCode = 401;
+      throw err;
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      const err = new Error("Invalid password");
+      (err as any).statusCode = 401;
+      throw err;
+    }
+
+    return { success: true };
+  }
+
   // ── Login: send OTP before verifying (unauthenticated) ───
   async loginSendOtp(email: string, password: string, method: "email" | "sms") {
     const [user] = await this.db
@@ -373,6 +402,7 @@ export class AuthController {
       user.email,
       user.name,
       token,
+      user.demoAccount,
     );
   }
 

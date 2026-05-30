@@ -261,11 +261,25 @@ async function runTrialExpiryCheck() {
 async function main() {
   const env = getEnv();
 
-  try {
-    await initDb();
-  } catch (err) {
-    logger.fatal({ err }, "Database init failed");
-    process.exit(1);
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await initDb();
+      break;
+    } catch (err: any) {
+      if (err?.code === "SQLITE_BUSY") {
+        retries--;
+        logger.warn(`Database locked, retrying... (${retries} left)`);
+        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 500));
+        if (retries === 0) {
+          logger.fatal({ err }, "Database init failed after retries");
+          process.exit(1);
+        }
+      } else {
+        logger.fatal({ err }, "Database init failed");
+        process.exit(1);
+      }
+    }
   }
 
   const app = await buildApp();

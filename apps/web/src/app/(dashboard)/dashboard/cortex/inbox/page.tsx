@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { tenantsApi, type Tenant } from "@/lib/api";
+import { useAgentEvents } from "@/hooks/useAgentEvents";
 import {
   Sparkles,
   Check,
@@ -151,6 +152,19 @@ export default function CortexInbox() {
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+
+  // Auto-refresh inbox when agent events arrive via SSE
+  useAgentEvents(
+    useCallback(
+      (event) => {
+        if (event.type === "task_created" || event.type === "scan_complete") {
+          fetchTasks();
+        }
+      },
+      [fetchTasks],
+    ),
+    !!accessToken,
+  );
 
   const handleAction = async (
     id: string,

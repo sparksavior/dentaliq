@@ -40,6 +40,10 @@ export const users = sqliteTable("users", {
   mfaOtpExpires: text("mfa_otp_expires"),
   // Phone number for SMS 2FA
   phoneNumber: text("phone_number"),
+  // Flag to skip email notifications for demo/test accounts
+  demoAccount: integer("demo_account", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

@@ -8,47 +8,78 @@ interface EmailPayload {
   subject: string;
   html: string;
   text: string;
+  skipDemoCheck?: boolean; // If true, send even if recipient is a demo account
 }
 
 export class EmailService {
   private env = getEnv();
 
-  async sendVerificationEmail(email: string, name: string, token: string) {
+  async sendVerificationEmail(
+    email: string,
+    name: string,
+    token: string,
+    isDemoAccount = false,
+  ) {
     const url = `${this.env.APP_URL}/verify-email?token=${token}`;
-    await this.send({
-      to: email,
-      subject: "One step left — verify your DentalIQ account",
-      html: verificationEmailHtml(name, url),
-      text: `Hi ${name},\n\nVerify your email address to activate your DentalIQ account:\n${url}\n\nThis link expires in 24 hours. If you didn't sign up, you can safely ignore this email.\n\n— The DentalIQ Team`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: "One step left — verify your DentalIQ account",
+        html: verificationEmailHtml(name, url),
+        text: `Hi ${name},\n\nVerify your email address to activate your DentalIQ account:\n${url}\n\nThis link expires in 24 hours. If you didn't sign up, you can safely ignore this email.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
-  async sendPasswordResetEmail(email: string, name: string, token: string) {
+  async sendPasswordResetEmail(
+    email: string,
+    name: string,
+    token: string,
+    isDemoAccount = false,
+  ) {
     const url = `${this.env.APP_URL}/reset-password?token=${token}`;
-    await this.send({
-      to: email,
-      subject: "Reset your DentalIQ password",
-      html: passwordResetEmailHtml(name, url),
-      text: `Hi ${name},\n\nWe received a request to reset your DentalIQ password. Click the link below to set a new one:\n${url}\n\nThis link expires in 1 hour. If you didn't request this, no action is needed — your password remains unchanged.\n\n— The DentalIQ Team`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: "Reset your DentalIQ password",
+        html: passwordResetEmailHtml(name, url),
+        text: `Hi ${name},\n\nWe received a request to reset your DentalIQ password. Click the link below to set a new one:\n${url}\n\nThis link expires in 1 hour. If you didn't request this, no action is needed — your password remains unchanged.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
-  async sendPasswordChangedEmail(email: string, name: string) {
-    await this.send({
-      to: email,
-      subject: "Your DentalIQ password was changed",
-      html: passwordChangedEmailHtml(name),
-      text: `Hi ${name},\n\nYour DentalIQ password was successfully updated.\n\nIf you made this change, no action is needed.\n\nIf you did NOT make this change, contact our security team immediately at security@dentaliq.ca.\n\n— The DentalIQ Team`,
-    });
+  async sendPasswordChangedEmail(
+    email: string,
+    name: string,
+    isDemoAccount = false,
+  ) {
+    await this.send(
+      {
+        to: email,
+        subject: "Your DentalIQ password was changed",
+        html: passwordChangedEmailHtml(name),
+        text: `Hi ${name},\n\nYour DentalIQ password was successfully updated.\n\nIf you made this change, no action is needed.\n\nIf you did NOT make this change, contact our security team immediately at security@dentaliq.ca.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
-  async sendMfaEnabledEmail(email: string, name: string) {
-    await this.send({
-      to: email,
-      subject: "Two-factor authentication is now active",
-      html: mfaEnabledEmailHtml(name),
-      text: `Hi ${name},\n\nTwo-factor authentication (MFA) is now enabled on your DentalIQ account. Your clinic is PHIPA-compliant.\n\nEach login will now require a 6-digit code from your authenticator app.\n\nKeep your backup codes saved in a safe, offline location.\n\nIf you did not make this change, contact security@dentaliq.ca immediately.\n\n— The DentalIQ Team`,
-    });
+  async sendMfaEnabledEmail(
+    email: string,
+    name: string,
+    isDemoAccount = false,
+  ) {
+    await this.send(
+      {
+        to: email,
+        subject: "Two-factor authentication is now active",
+        html: mfaEnabledEmailHtml(name),
+        text: `Hi ${name},\n\nTwo-factor authentication (MFA) is now enabled on your DentalIQ account. Your clinic is PHIPA-compliant.\n\nEach login will now require a 6-digit code from your authenticator app.\n\nKeep your backup codes saved in a safe, offline location.\n\nIf you did not make this change, contact security@dentaliq.ca immediately.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
   async sendWelcomeEmail(
@@ -56,28 +87,36 @@ export class EmailService {
     name: string,
     clinicName: string,
     plan: string,
+    isDemoAccount = false,
   ) {
     const dashboardUrl = `${this.env.APP_URL}/dashboard`;
-    await this.send({
-      to: email,
-      subject: `${clinicName} is live on DentalIQ — let's get started`,
-      html: welcomeEmailHtml(name, clinicName, plan, dashboardUrl),
-      text: `Hi ${name},\n\nWelcome to DentalIQ! Your workspace for ${clinicName} is fully set up on the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan.\n\nOpen your dashboard: ${dashboardUrl}\n\nNeed help? Reply to this email or visit docs.dentaliq.ca.\n\n— The DentalIQ Team`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: `${clinicName} is live on DentalIQ — let's get started`,
+        html: welcomeEmailHtml(name, clinicName, plan, dashboardUrl),
+        text: `Hi ${name},\n\nWelcome to DentalIQ! Your workspace for ${clinicName} is fully set up on the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan.\n\nOpen your dashboard: ${dashboardUrl}\n\nNeed help? Reply to this email or visit docs.dentaliq.ca.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
   async sendAgentTaskNotification(
     email: string,
     clinicName: string,
     taskCount: number,
+    isDemoAccount = false,
   ) {
     const url = `${this.env.APP_URL}/dashboard/cortex/inbox`;
-    await this.send({
-      to: email,
-      subject: `Cortex: ${taskCount} item${taskCount !== 1 ? "s" : ""} need your review — ${clinicName}`,
-      html: agentTaskEmailHtml(clinicName, taskCount, url),
-      text: `Your Cortex agents completed their scan for ${clinicName}.\n\n${taskCount} new item${taskCount !== 1 ? "s" : ""} require your review before any action is taken.\n\nOpen your inbox: ${url}\n\nTasks expire automatically after 7 days.\n\n— Cortex by DentalIQ`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: `Cortex: ${taskCount} item${taskCount !== 1 ? "s" : ""} need your review — ${clinicName}`,
+        html: agentTaskEmailHtml(clinicName, taskCount, url),
+        text: `Your Cortex agents completed their scan for ${clinicName}.\n\n${taskCount} new item${taskCount !== 1 ? "s" : ""} require your review before any action is taken.\n\nOpen your inbox: ${url}\n\nTasks expire automatically after 7 days.\n\n— Cortex by DentalIQ`,
+      },
+      isDemoAccount,
+    );
   }
 
   async sendInviteEmail(
@@ -86,23 +125,30 @@ export class EmailService {
     clinicName: string,
     adminName: string,
     inviteUrl: string,
+    isDemoAccount = false,
   ) {
-    await this.send({
-      to: email,
-      subject: `${adminName} has invited you to ${clinicName} on DentalIQ`,
-      html: inviteEmailHtml(name, clinicName, adminName, inviteUrl),
-      text: `Hi ${name},\n\n${clinicName} uses DentalIQ and ${adminName} has created access for you to the clinic.\n\nClick the link below to set up your account. This link expires in 7 days.\n\n${inviteUrl}\n\nYou'll be guided through setting a password, enabling two-factor authentication, and agreeing to DentalIQ's terms before you can access the dashboard.\n\nIf you weren't expecting this invitation, you can safely ignore this email.\n\n— The DentalIQ Team`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: `${adminName} has invited you to ${clinicName} on DentalIQ`,
+        html: inviteEmailHtml(name, clinicName, adminName, inviteUrl),
+        text: `Hi ${name},\n\n${clinicName} uses DentalIQ and ${adminName} has created access for you to the clinic.\n\nClick the link below to set up your account. This link expires in 7 days.\n\n${inviteUrl}\n\nYou'll be guided through setting a password, enabling two-factor authentication, and agreeing to DentalIQ's terms before you can access the dashboard.\n\nIf you weren't expecting this invitation, you can safely ignore this email.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
-  async sendAgreementEmail(email: string, name: string) {
+  async sendAgreementEmail(email: string, name: string, isDemoAccount = false) {
     const appUrl = this.env.APP_URL;
-    await this.send({
-      to: email,
-      subject: "Your DentalIQ Legal Agreement & Privacy Notice",
-      html: agreementEmailHtml(name, appUrl),
-      text: `Hi ${name},\n\nThank you for creating a DentalIQ account. This email contains a summary of the legal agreements that govern your use of our platform.\n\nBy creating your account and using DentalIQ, you confirmed that you have read and agreed to:\n\n1. Terms of Service — ${appUrl}/legal/terms\n2. Privacy Policy — ${appUrl}/legal/privacy\n3. Data Processing Agreement — ${appUrl}/legal/dpa\n4. Acceptable Use Policy — ${appUrl}/legal/acceptable-use\n\nThese documents govern how DentalIQ operates, how we handle your clinic's data, and your rights as a user.\n\nFor PHIPA-related inquiries, email: privacy@dentaliq.ca\nFor general legal questions: legal@dentaliq.ca\n\nDentalIQ Technologies Inc.\nToronto, ON, Canada\n\n— The DentalIQ Team`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: "Your DentalIQ Legal Agreement & Privacy Notice",
+        html: agreementEmailHtml(name, appUrl),
+        text: `Hi ${name},\n\nThank you for creating a DentalIQ account. This email contains a summary of the legal agreements that govern your use of our platform.\n\nBy creating your account and using DentalIQ, you confirmed that you have read and agreed to:\n\n1. Terms of Service — ${appUrl}/legal/terms\n2. Privacy Policy — ${appUrl}/legal/privacy\n3. Data Processing Agreement — ${appUrl}/legal/dpa\n4. Acceptable Use Policy — ${appUrl}/legal/acceptable-use\n\nThese documents govern how DentalIQ operates, how we handle your clinic's data, and your rights as a user.\n\nFor PHIPA-related inquiries, email: privacy@dentaliq.ca\nFor general legal questions: legal@dentaliq.ca\n\nDentalIQ Technologies Inc.\nToronto, ON, Canada\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
   async sendMfaOtpEmail(
@@ -110,16 +156,29 @@ export class EmailService {
     name: string,
     code: string,
     method: "email" | "sms" = "email",
+    isDemoAccount = false,
   ) {
-    await this.send({
-      to: email,
-      subject: "Your DentalIQ verification code",
-      html: mfaOtpEmailHtml(name, code),
-      text: `Hi ${name},\n\nYour DentalIQ verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\nIf you didn't request this, contact security@dentaliq.ca immediately.\n\n— The DentalIQ Team`,
-    });
+    await this.send(
+      {
+        to: email,
+        subject: "Your DentalIQ verification code",
+        html: mfaOtpEmailHtml(name, code),
+        text: `Hi ${name},\n\nYour DentalIQ verification code is: ${code}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\nIf you didn't request this, contact security@dentaliq.ca immediately.\n\n— The DentalIQ Team`,
+      },
+      isDemoAccount,
+    );
   }
 
-  private async send(payload: EmailPayload) {
+  private async send(payload: EmailPayload, isDemoAccount = false) {
+    // Skip email for demo accounts
+    if (isDemoAccount) {
+      logger.info(
+        { to: payload.to, subject: payload.subject },
+        "Skipping email for demo account",
+      );
+      return;
+    }
+
     const mode = this.env.EMAIL_MODE ?? "console";
     logger.info(
       { to: payload.to, subject: payload.subject, mode },

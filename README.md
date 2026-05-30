@@ -14,6 +14,7 @@
 6. [Environment Variables — Complete Reference](#6-environment-variables)
 7. [Running the Application](#7-running-the-application)
 8. [Demo Mode (No Account Required)](#8-demo-mode)
+   8.5. [Test Account Credentials](#85-test-account-credentials)
 9. [Database Guide](#9-database-guide)
 10. [LLM / AI Provider Guide](#10-llm-provider-guide)
 11. [Email Setup](#11-email-setup)
@@ -444,6 +445,124 @@ Then visit:
 | http://localhost:3000/demo/cortex  | Cortex — full AI workforce dashboard |
 
 > **Production note:** Leave `NEXT_PUBLIC_ENABLE_DEMO` unset (or set to `false`) in production deployments that serve real clinics. Demo routes expose simulated but realistic-looking clinical data and should only be enabled on dedicated marketing demo deployments.
+
+---
+
+## 8.5. Test Account Credentials (Development & Demo)
+
+To seed a complete test environment with realistic patient and estimate data, run:
+
+```bash
+pnpm seed:demo
+```
+
+Or directly with `tsx`:
+
+```bash
+tsx scripts/seed-demo.ts
+```
+
+This will:
+
+- **Clear the entire database**
+- Create two test accounts
+- Populate 800 patients with diverse demographics
+- Generate ~3,000-4,000 realistic estimates over 6 months
+- Ensure the dashboard displays real data based on procedures and insurance coverage
+
+### 🔐 Admin Account (Internal — Port 3005)
+
+**Purpose:** System administration, tenant management, user audits
+
+```
+Email:    admin@dentaliq.ca
+Password: admin
+Plan:     Enterprise
+```
+
+**Accessing the Admin Portal:**
+
+```bash
+# Admin portal runs on a different port
+http://localhost:3005/admin
+
+# Login with credentials above
+```
+
+**Admin Permissions:**
+
+- View all tenants
+- Manage users and permissions
+- Access audit logs
+- System health monitoring
+- ⚠️ **Note:** This account does NOT receive email notifications
+
+### 🎭 Demo Client Account (Cortex Plan — Port 3000)
+
+**Purpose:** Full product demonstration with live patient & procedure data
+
+```
+Email:    demo@dentaliq.ca
+Password: demo
+Plan:     Cortex (with Agents)
+Clinic:   Demo Dental Clinic
+```
+
+**Accessing the Dashboard:**
+
+```bash
+# Main dashboard
+http://localhost:3000/login
+
+# Login with credentials above
+# You'll have immediate access to:
+# - 800 realistic patients (ages 6-85)
+# - ~3,500 stored estimates with cost breakdowns
+# - Real insurance provider coverage data
+# - Full Cortex agent inbox (for testing approval workflows)
+```
+
+**Dashboard Sections Available:**
+
+- ✅ **Patients** — Browse 800 patients with demographics, insurance, and estimate history
+- ✅ **Estimates** — View ~3,500 procedures with coverage calculations
+- ✅ **Analytics** — See real claims, MoM trends, AR aging, case acceptance rates
+- ✅ **Cortex Inbox** — Test agent task approval workflows
+- ✅ **Cortex Agents** — Manage 6 autonomous AI agents
+
+**Demo Data Characteristics:**
+
+- **Patient Ages:** 6-85 years (realistic distribution)
+- **Insurance Providers:** 10+ Canadian insurers (Sun Life, Manulife, Green Shield, etc.)
+- **Procedures:** 60+ CDT codes across all treatment categories
+- **Risk Distribution:** 60% low-risk, 30% medium, 10% high-risk claims
+- **Timeline:** Estimates from last 6 months (for analytics trends)
+- **Coverage:** Realistic coverage percentages (50-100%) and cost splits
+
+**⚠️ Important Notes:**
+
+1. **Email Notifications Disabled:** Both demo accounts have `demoAccount=true` set in the database. The email service will skip sending any notifications to these accounts, preventing accidental emails.
+
+2. **Data Persistence:** The seeded data persists until you run the seed script again. Once created, you can log in repeatedly without re-running the seed.
+
+3. **Resetting Data:** To clear and re-seed:
+
+   ```bash
+   # This deletes all data and recreates fresh demo accounts
+   pnpm seed:demo
+   ```
+
+4. **Real API Integration:** All dashboard data comes from actual API calls to your backend services (tenant, estimate, analytics services), not static files. This lets you test the full stack.
+
+### Example Dashboard Insights (Live Data)
+
+Once logged in as the demo client, you'll see real analytics:
+
+- **Case Acceptance:** 60-75% of estimates for major work have pre-auth letters
+- **New Patients:** ~130 patients added per month across 6 months
+- **Average Treatment Cost:** $800-$1,200 per procedure
+- **AR Aging:** Mix of current, watch, overdue, and critical claims
+- **Insurance Mix:** Distributed across 10+ Canadian carriers
 
 ---
 
@@ -1030,13 +1149,15 @@ docker-compose down -v
 
 ### Services in docker-compose.yml
 
-| Service        | Port                   | Start Command                                  |
-| -------------- | ---------------------- | ---------------------------------------------- |
-| **PostgreSQL** | 5432                   | Always starts                                  |
-| **Redis**      | 6379                   | Always starts                                  |
-| **Ollama**     | 11434                  | Always starts (pulls llama3.1:8b on first run) |
-| **Mailpit**    | 1025 (SMTP), 8025 (UI) | Always starts                                  |
-| **pgAdmin**    | 5050                   | Only with `--profile tools`                    |
+| Service        | Port                   | Start Command                                                         |
+| -------------- | ---------------------- | --------------------------------------------------------------------- |
+| **PostgreSQL** | 5432                   | Always starts                                                         |
+| **Redis**      | 6379                   | Always starts                                                         |
+| **Ollama**     | 11434                  | Always starts (pulls llama3.1:8b on first run)                        |
+| **Mailpit**    | 1025 (SMTP), 8025 (UI) | Always starts                                                         |
+| **Prometheus** | 9090                   | Only with `--profile tools`                                           |
+| **Grafana**    | 3008                   | Only with `--profile tools` (user/pass: admin@dentaliq.ca / localdev) |
+| **pgAdmin**    | 5050                   | Only with `--profile tools`                                           |
 
 ### Start Only Selected Services
 
@@ -1044,7 +1165,7 @@ docker-compose down -v
 # Just PostgreSQL and Redis
 docker-compose up postgres redis -d
 
-# With pgAdmin for database inspection
+# With observability and DB inspection tools (Grafana, Prometheus, pgAdmin)
 docker-compose --profile tools up -d
 ```
 

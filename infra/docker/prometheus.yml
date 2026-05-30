@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'dentaliq-services'
+    metrics_path: '/health' # Or /metrics if you add an exporter
+    static_configs:
+      - targets:
+          # Note: In docker-compose, localhost refers to the container itself.
+          # To scrape the host's pnpm dev services from within docker on Windows/Mac, use host.docker.internal
+          - 'host.docker.internal:3001' # auth-service
+          - 'host.docker.internal:3002' # tenant-service
+          - 'host.docker.internal:3004' # estimate-service
+          - 'host.docker.internal:3006' # agent-manager

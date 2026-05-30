@@ -13,6 +13,8 @@ import { clinicsRoutes } from "./routes/clinics";
 import { agentsRoutes } from "./routes/agents";
 import { billingRoutes } from "./routes/billing";
 import { analyticsRoutes } from "./routes/analytics";
+import { documentsRoutes } from "./routes/documents";
+import { notesRoutes } from "./routes/notes";
 
 // ─────────────────────────────────────────────────────────
 // DentalIQ — Tenant Service  (port 3002)
@@ -78,6 +80,8 @@ async function buildApp() {
   await app.register(agentsRoutes, { prefix: "/agents" });
   await app.register(billingRoutes, { prefix: "/billing" });
   await app.register(analyticsRoutes, { prefix: "/analytics" });
+  await app.register(documentsRoutes, { prefix: "/documents" });
+  await app.register(notesRoutes, { prefix: "/notes" });
 
   return app;
 }
